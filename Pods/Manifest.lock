@@ -1,0 +1,43 @@
+PODS:
+  - AWAREFramework (1.14.18):
+    - AWAREFramework/Core (= 1.14.18)
+  - AWAREFramework/Bluetooth (1.14.18):
+    - AWAREFramework/Core
+  - AWAREFramework/Calendar (1.14.18):
+    - AWAREFramework/Core
+  - AWAREFramework/Contact (1.14.18):
+    - AWAREFramework/Core
+  - AWAREFramework/Core (1.14.18)
+  - AWAREFramework/HealthKit (1.14.18):
+    - AWAREFramework/Core
+  - AWAREFramework/MotionActivity (1.14.18):
+    - AWAREFramework/Core
+  - DGCharts (5.1.0):
+    - DGCharts/Core (= 5.1.0)
+  - DGCharts/Core (5.1.0)
+  - DynamicColor (5.0.1)
+
+DEPENDENCIES:
+  - AWAREFramework (~> 1.14.5)
+  - AWAREFramework/Bluetooth (~> 1.14.5)
+  - AWAREFramework/Calendar (~> 1.14.5)
+  - AWAREFramework/Contact (~> 1.14.5)
+  - AWAREFramework/HealthKit (~> 1.14.5)
+  - AWAREFramework/MotionActivity (~> 1.14.5)
+  - DGCharts (~> 5.1.0)
+  - DynamicColor (~> 5.0.1)
+
+SPEC REPOS:
+  trunk:
+    - AWAREFramework
+    - DGCharts
+    - DynamicColor
+
+SPEC CHECKSUMS:
+  AWAREFramework: 37ddb76d1757bc21c3019de539d379d68cd16523
+  DGCharts: 1c6daf585b6cfc78807af44ea690d357c410627f
+  DynamicColor: d049834ef86d8ecf150b0ca1ebe54ee733a0ec22
+
+PODFILE CHECKSUM: c8cf00809f0cc2710a2ed66bba569e1126effc3f
+
+COCOAPODS: 1.16.2

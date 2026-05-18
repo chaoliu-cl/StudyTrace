@@ -1,0 +1,144 @@
+/* 
+  Localizable.strings
+  aware-client-ios-v2
+
+  Created by Yuuki Nishiyama on 2020/03/02.
+  Copyright © 2020 Yuuki Nishiyama. All rights reserved.
+*/
+
+
+/// settings
+"device_id" = "Device ID";
+"device_name" = "Device Name";
+"advanced_settings" = "Advanced Settings";
+
+/// sensors
+"Accelerometer" = "Accelerometer";
+"Gyroscope"     = "Gyroscope";
+"Magnetometer"  = "Magnetometer";
+"Rotation"      = "Rotation";
+"Linear Accelerometer" = "Linear Accelerometer";
+"Activity Recognition" = "Activity Recognition";
+"Location" = "Location";
+"Pedometer" = "Pedometer";
+"Barometer" = "Barometer";
+"Battery" = "Battery";
+"Network" = "Network";
+"Communication" = "Communication";
+"Bluetooth" = "Bluetooth";
+"Processor" = "Processor";
+"Timezone" = "Timezone";
+"WiFi" = "WiFi";
+"Screen" = "Screen";
+"Ambient Noise" = "Ambient Noise";
+"Heart Rate"= "Heart Rate";
+"Calendar" = "Calendar";
+"Contacts" = "Contacts";
+"Fitbit" = "Fitbit";
+"Google Login"="Google Login";
+"NTP" = "NTP";
+"Weather" = "Weather";
+"Conversation" = "Conversation";
+"Fused Location" = "Fused Location";
+"HealthKit" = "HealthKit";
+"Device Usage" = "Device Usage";
+"iOS ESM" = "iOS ESM";
+"Google Calendar ESM" = "Google Calendar ESM";
+"Significant Motion" = "Significant Motion";
+"Push Notification" = "Push Notification";
+"Headphone Motion" = "Headphone Motion";
+
+/// sensors details
+"accelerometer_detail" = "Acceleration, including the force of gravity";
+"gyro_detail" = "Rotation rate of device";
+"mag_detail"  = "Geomagnetic field strength around the device";
+"rotation_detail"      = "Orientation of the device in all axis";
+"l_accelerometer_detail" = "Acceleration applied to the sensor built-in into the device, excluding the force of gravity";
+"activity_recognition_detail" = "User's estimated activity (e.g., stationary, walking, running, automotive, cycling, and unknown)";
+"pedometer_detail" = "User's step count";
+"location_detail" = "User's estimated location";
+"barometer_detail" = "Atomospheric air pressure";
+"battery_detail" = "Battery (0-100%) and power event";
+"network_detail" = "Network usage (e.g., mobile, wifi, and unknown)";
+"communication_detail" = "Communication events such as calls, performed by or received by the user";
+"bluetooth_detail" = "Bluetooth devices around the device";
+"processor_detail" = "CPU workload for user, system and idle(%)";
+"timezone_detail" = "User’s current timezone";
+"wifi_detail" = "Connected WiFi access point information";
+"screen_detail" = "Screen events (locked/unlocked)";
+"ambient_noise_detail" = "Ambient noise collected from a microphone on the device";
+"heartrate_detail"= "Collect heart rate data from an external heart rate sensor via BLE.";
+"calendar_detail" = "Calendar events on Calendar.app";
+"contacts_detail" = "Contact list on Contacts.app";
+"fitbit_detail" = "Fitbit data which is collected from Fitbit API";
+"google_login_detail"="Multi-device management using Google Account";
+"ntp_detail" = "Measure device's clock drift from an NTP server";
+"weather_detail" = "Weather information provided by OpenWeatherMap API";
+"conversation_detail" = "";
+"fused_location_detail" = "User's estimated location";
+"healthkit_detail" = "Health-related data on HealthKit";
+"device_usage_detail" = "Device usage time based on lock/unlock events";
+"ios_esm_detail" = "Scheduling an ESM based on a JSON format configuration file";
+"google_calendar_esm_detail" = "Scheduling an ESM based on a Google Calendar";
+"significant_motion_detail" = "Significant motion events based on Accelerometer";
+"push_notification_detail" = "";
+"headphone_motion_detail" = "Motion data from a headphone (AirPods Air and AirPods Max)";
+
+// onboarding
+"onbording_overview_title" = "About StudyTrace";
+"onbording_overview_body"  = "StudyTrace is a research app that collects sensor data to help scientists understand human behavior and context.";
+
+"onbording_data_title" = "Your Data";
+"onbording_data_body"  = "StudyTrace captures location, screen time, and survey responses in the background when you grant permission. Data is stored locally and synced to your research team's server over Wi-Fi.";
+
+"onbording_study_title" = "For Researchers";
+"onbording_study_body" = "Running a mobile study is simple. Configure sensors and surveys on the server, then participants join via QR code or URL. Privacy is enforced by design — no personal information like phone numbers or contacts is logged.";
+
+"onboarding_permission_loc_title" = "Permission: Location";
+"onboarding_permission_loc_body" = "StudyTrace needs location access to collect mobility data in the background.\n(NOTE: Location data is only stored when location sensors are enabled by your study.)";
+
+"onboarding_permission_notif_title" = "Permission: Notifications";
+"onboarding_permission_notif_body" = "StudyTrace uses notifications to remind you about surveys and provide study updates.";
+
+"onboarding_welcome_title" = "Welcome to StudyTrace";
+"onboarding_welcome_body" = "You're all set. StudyTrace will run quietly in the background collecting data for your study.";
+
+// consent
+"onboarding_consent_title" = "Informed Consent";
+"onboarding_consent_body" = "By participating in this study, you agree to allow StudyTrace to collect sensor data (such as location and screen time) and survey responses as configured by your research team.\n\nYour data is stored securely and used only for research purposes. You may withdraw at any time by quitting the study in Settings.\n\nPlease confirm that you understand and consent to participate.";
+"onboarding_consent_agree" = "I Agree to Participate";
+"onboarding_consent_decline" = "Decline";
+
+
+/// general
+"Next" = "Next";
+"Allow" = "Allow";
+"Cancel" = "Cancel";
+"Execute" = "Execute";
+"Update" = "Update";
+"Close" = "Close";
+
+
+/// setting view
+"setting_view_manual_upload_title" = "Do you upload stored sensor data manually?";
+"setting_view_manual_upload_msg"   = "This upload process is executed without WiFi connection and battery charging. Please check these conditions again.";
+"setting_view_config_refresh_title" = "Your client configuration is refreshed.";
+"setting_view_upload_comp_title"    = "Data upload is completed";
+
+
+/// context card
+"context_card_no_active_sensors_title" = "No active sensors";
+"context_card_no_active_sensors_msg"   = "Please activate one or more sensors from Setting View";
+"context_card_add_title"               = "Which context-card do you add?";
+"context_card_add_msg"                 = "Please select a context-card from the following items.";
+"context_card_remove_title"            = "Which context-card do you remove?";
+"context_card_remove_msg"              = "Please select a context-card from the following items.";
+"context_card_item_remove_all"         = "Remove all";
+
+/// terminate
+"terminate_title" = "StudyTrace stopped";
+"terminate_msg"   = "Please reopen the app to continue data collection.";
+
+/// ESN
+"Tap to answer survey(s)" = "Tap to answer survey(s)";
+"No pending survey(s)" = "No pending survey(s)";

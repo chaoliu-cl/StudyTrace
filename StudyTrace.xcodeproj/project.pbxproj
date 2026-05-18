@@ -1,0 +1,945 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 51;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		166FFA66C3A60DE408D54444 /* Pods_StudyTrace.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D83C1A3254FCB129D5EBD903 /* Pods_StudyTrace.framework */; };
+		40C62C7F2FBB845900B81347 /* studytracelogo.icon in Resources */ = {isa = PBXBuildFile; fileRef = 40C62C7E2FBB845900B81347 /* studytracelogo.icon */; };
+		4F0BC9A1222D4952006348E4 /* AdvancedSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0BC9A0222D4952006348E4 /* AdvancedSettingsViewController.swift */; };
+		4F0BC9A3222D6BE3006348E4 /* SensorSettingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0BC9A2222D6BE3006348E4 /* SensorSettingViewController.swift */; };
+		4F1B11B022286E75006F3176 /* MapCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1B11AA22286E74006F3176 /* MapCard.swift */; };
+		4F1B11B122286E75006F3176 /* DeviceUsageCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1B11AB22286E74006F3176 /* DeviceUsageCard.swift */; };
+		4F1B11B222286E75006F3176 /* ContextCard.xib in Resources */ = {isa = PBXBuildFile; fileRef = 4F1B11AC22286E74006F3176 /* ContextCard.xib */; };
+		4F1B11B322286E75006F3176 /* ScatterChartCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1B11AD22286E74006F3176 /* ScatterChartCard.swift */; };
+		4F1B11B422286E75006F3176 /* ContextCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1B11AE22286E74006F3176 /* ContextCard.swift */; };
+		4F1B11B522286E75006F3176 /* BarChartCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1B11AF22286E74006F3176 /* BarChartCard.swift */; };
+		4F387DCD29EBC5B7002D5300 /* OnboardingContentViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 4F387DC929EBC5B4002D5300 /* OnboardingContentViewController.m */; };
+		4F387DCE29EBC5B7002D5300 /* OnboardingViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 4F387DCB29EBC5B6002D5300 /* OnboardingViewController.m */; };
+		4F530264240D4EEE008E3342 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4F530266240D4EEE008E3342 /* Localizable.strings */; };
+		4F70E8AD241DA28000A8AAA8 /* LocationPermissionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F70E8AC241DA28000A8AAA8 /* LocationPermissionViewController.swift */; };
+		4FC60F4C2395E37D007740E4 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FC60F4B2395E37D007740E4 /* MapKit.framework */; };
+		4FDA1E4A2423B51C004F891F /* ESMCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FDA1E492423B51C004F891F /* ESMCard.swift */; };
+		4FDB55F4233C49B50095E7D7 /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */; };
+		4FEA0298237B8D1700CFDC2F /* OnboardingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FEA0297237B8D1700CFDC2F /* OnboardingManager.swift */; };
+		4FFAC5EF2231089D00FE40B0 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FFAC5EE2231089D00FE40B0 /* QuartzCore.framework */; };
+		4FFAC5F122356FA500FE40B0 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FFAC5F022356FA500FE40B0 /* HealthKit.framework */; };
+		4FFE19772226A10B00C4715E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19762226A10B00C4715E /* AppDelegate.swift */; };
+		4FFE19792226A10B00C4715E /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19782226A10B00C4715E /* ViewController.swift */; };
+		4FFE197C2226A10B00C4715E /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 4FFE197A2226A10B00C4715E /* Main.storyboard */; };
+		4FFE197F2226A10B00C4715E /* StudyTrace.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE197D2226A10B00C4715E /* StudyTrace.xcdatamodeld */; };
+		4FFE19812226A10D00C4715E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4FFE19802226A10D00C4715E /* Assets.xcassets */; };
+		4FFE19842226A10D00C4715E /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 4FFE19822226A10D00C4715E /* LaunchScreen.storyboard */; };
+		4FFE198F2226A10D00C4715E /* StudyTraceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE198E2226A10D00C4715E /* StudyTraceTests.swift */; };
+		4FFE199A2226A10D00C4715E /* StudyTraceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19992226A10D00C4715E /* StudyTraceUITests.swift */; };
+		4FFE19A82226A41900C4715E /* ContextCardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19A72226A41900C4715E /* ContextCardViewController.swift */; };
+		4FFE19AC2226A47300C4715E /* QRCodeReaderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19AB2226A47300C4715E /* QRCodeReaderViewController.swift */; };
+		4FFE19B02226C7DC00C4715E /* ESMViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19AF2226C7DC00C4715E /* ESMViewController.swift */; };
+		4FFE19B22226D2C100C4715E /* StudyTraceTableViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19B12226D2C100C4715E /* StudyTraceTableViewCell.swift */; };
+		6751B417299E72271CA99EAA /* Pods_StudyTraceTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5CC70354397A1A5E6C53574B /* Pods_StudyTraceTests.framework */; };
+		AA00000100000001AABBCC01 /* PhotoQuestionHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000001AABBCC02 /* PhotoQuestionHelper.swift */; };
+		FD3C74F7F08E6CB236571130 /* Pods_StudyTraceUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2037B1A5CBF8297D303D2168 /* Pods_StudyTraceUITests.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4FFE198B2226A10D00C4715E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4FFE196B2226A10B00C4715E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4FFE19722226A10B00C4715E;
+			remoteInfo = StudyTrace;
+		};
+		4FFE19962226A10D00C4715E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4FFE196B2226A10B00C4715E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4FFE19722226A10B00C4715E;
+			remoteInfo = StudyTrace;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		2037B1A5CBF8297D303D2168 /* Pods_StudyTraceUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_StudyTraceUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		31057451989BC97C547C3052 /* Pods-StudyTraceUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTraceUITests.release.xcconfig"; path = "Target Support Files/Pods-StudyTraceUITests/Pods-StudyTraceUITests.release.xcconfig"; sourceTree = "<group>"; };
+		40C62C7E2FBB845900B81347 /* studytracelogo.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = studytracelogo.icon; sourceTree = "<group>"; };
+		4F0BC9A0222D4952006348E4 /* AdvancedSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedSettingsViewController.swift; sourceTree = "<group>"; };
+		4F0BC9A2222D6BE3006348E4 /* SensorSettingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SensorSettingViewController.swift; sourceTree = "<group>"; };
+		4F1B11AA22286E74006F3176 /* MapCard.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MapCard.swift; sourceTree = "<group>"; };
+		4F1B11AB22286E74006F3176 /* DeviceUsageCard.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DeviceUsageCard.swift; sourceTree = "<group>"; };
+		4F1B11AC22286E74006F3176 /* ContextCard.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = ContextCard.xib; sourceTree = "<group>"; };
+		4F1B11AD22286E74006F3176 /* ScatterChartCard.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ScatterChartCard.swift; sourceTree = "<group>"; };
+		4F1B11AE22286E74006F3176 /* ContextCard.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ContextCard.swift; sourceTree = "<group>"; };
+		4F1B11AF22286E74006F3176 /* BarChartCard.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BarChartCard.swift; sourceTree = "<group>"; };
+		4F387DC729EBC5B2002D5300 /* StudyTrace-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "StudyTrace-Bridging-Header.h"; sourceTree = "<group>"; };
+		4F387DC829EBC5B4002D5300 /* OnboardingContentViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnboardingContentViewController.h; sourceTree = "<group>"; };
+		4F387DC929EBC5B4002D5300 /* OnboardingContentViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OnboardingContentViewController.m; sourceTree = "<group>"; };
+		4F387DCA29EBC5B5002D5300 /* OnboardingViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnboardingViewController.h; sourceTree = "<group>"; };
+		4F387DCB29EBC5B6002D5300 /* OnboardingViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OnboardingViewController.m; sourceTree = "<group>"; };
+		4F387DCC29EBC5B7002D5300 /* OnboardingContentViewController_Private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OnboardingContentViewController_Private.h; sourceTree = "<group>"; };
+		4F53025B240D4BB5008E3342 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/LaunchScreen.strings; sourceTree = "<group>"; };
+		4F530267240D4EF2008E3342 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		4F530268240D5A88008E3342 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		4F530269240FB13D008E3342 /* StudyTrace.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StudyTrace.entitlements; sourceTree = "<group>"; };
+		4F70E8AB241D9CB500A8AAA8 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Main.strings; sourceTree = "<group>"; };
+		4F70E8AC241DA28000A8AAA8 /* LocationPermissionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPermissionViewController.swift; sourceTree = "<group>"; };
+		4FC60F4B2395E37D007740E4 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
+		4FDA1E492423B51C004F891F /* ESMCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESMCard.swift; sourceTree = "<group>"; };
+		4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExternalAccessory.framework; path = System/Library/Frameworks/ExternalAccessory.framework; sourceTree = SDKROOT; };
+		4FEA0297237B8D1700CFDC2F /* OnboardingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingManager.swift; sourceTree = "<group>"; };
+		4FFAC5EE2231089D00FE40B0 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		4FFAC5F022356FA500FE40B0 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
+		4FFE19732226A10B00C4715E /* StudyTrace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StudyTrace.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4FFE19762226A10B00C4715E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		4FFE19782226A10B00C4715E /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		4FFE197B2226A10B00C4715E /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		4FFE197E2226A10B00C4715E /* StudyTrace.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = StudyTrace.xcdatamodel; sourceTree = "<group>"; };
+		4FFE19802226A10D00C4715E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		4FFE19832226A10D00C4715E /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		4FFE19852226A10D00C4715E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		4FFE198A2226A10D00C4715E /* StudyTraceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StudyTraceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4FFE198E2226A10D00C4715E /* StudyTraceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceTests.swift; sourceTree = "<group>"; };
+		4FFE19902226A10D00C4715E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		4FFE19952226A10D00C4715E /* StudyTraceUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StudyTraceUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4FFE19992226A10D00C4715E /* StudyTraceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceUITests.swift; sourceTree = "<group>"; };
+		4FFE199B2226A10D00C4715E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		4FFE19A72226A41900C4715E /* ContextCardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextCardViewController.swift; sourceTree = "<group>"; };
+		4FFE19AB2226A47300C4715E /* QRCodeReaderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeReaderViewController.swift; sourceTree = "<group>"; };
+		4FFE19AF2226C7DC00C4715E /* ESMViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESMViewController.swift; sourceTree = "<group>"; };
+		4FFE19B12226D2C100C4715E /* StudyTraceTableViewCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceTableViewCell.swift; sourceTree = "<group>"; };
+		5CC70354397A1A5E6C53574B /* Pods_StudyTraceTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_StudyTraceTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		8F053FEBEEB8141AAF6B81D0 /* Pods-StudyTraceUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTraceUITests.debug.xcconfig"; path = "Target Support Files/Pods-StudyTraceUITests/Pods-StudyTraceUITests.debug.xcconfig"; sourceTree = "<group>"; };
+		AA00000100000001AABBCC02 /* PhotoQuestionHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoQuestionHelper.swift; sourceTree = "<group>"; };
+		C2A52DF7C3B2DCDC02A2CFA0 /* Pods-StudyTraceTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTraceTests.release.xcconfig"; path = "Target Support Files/Pods-StudyTraceTests/Pods-StudyTraceTests.release.xcconfig"; sourceTree = "<group>"; };
+		D83C1A3254FCB129D5EBD903 /* Pods_StudyTrace.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_StudyTrace.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		DEF9D4B89EF357AC1A9ECC9A /* Pods-StudyTrace.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTrace.release.xcconfig"; path = "Target Support Files/Pods-StudyTrace/Pods-StudyTrace.release.xcconfig"; sourceTree = "<group>"; };
+		DF69C50BE55C23E1E9F6FF05 /* Pods-StudyTraceTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTraceTests.debug.xcconfig"; path = "Target Support Files/Pods-StudyTraceTests/Pods-StudyTraceTests.debug.xcconfig"; sourceTree = "<group>"; };
+		EB402EB089B2FB5413B6C2A4 /* Pods-StudyTrace.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTrace.debug.xcconfig"; path = "Target Support Files/Pods-StudyTrace/Pods-StudyTrace.debug.xcconfig"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4FFE19702226A10B00C4715E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4FFAC5F122356FA500FE40B0 /* HealthKit.framework in Frameworks */,
+				4FFAC5EF2231089D00FE40B0 /* QuartzCore.framework in Frameworks */,
+				4FC60F4C2395E37D007740E4 /* MapKit.framework in Frameworks */,
+				4FDB55F4233C49B50095E7D7 /* ExternalAccessory.framework in Frameworks */,
+				166FFA66C3A60DE408D54444 /* Pods_StudyTrace.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4FFE19872226A10D00C4715E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6751B417299E72271CA99EAA /* Pods_StudyTraceTests.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4FFE19922226A10D00C4715E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FD3C74F7F08E6CB236571130 /* Pods_StudyTraceUITests.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1BD07D752FCF16516FA57EDA /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				4FC60F4B2395E37D007740E4 /* MapKit.framework */,
+				4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */,
+				4FFAC5F022356FA500FE40B0 /* HealthKit.framework */,
+				4FFAC5EE2231089D00FE40B0 /* QuartzCore.framework */,
+				D83C1A3254FCB129D5EBD903 /* Pods_StudyTrace.framework */,
+				5CC70354397A1A5E6C53574B /* Pods_StudyTraceTests.framework */,
+				2037B1A5CBF8297D303D2168 /* Pods_StudyTraceUITests.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		4F1B11A922286E74006F3176 /* ContextCard */ = {
+			isa = PBXGroup;
+			children = (
+				4F1B11AA22286E74006F3176 /* MapCard.swift */,
+				4F1B11AB22286E74006F3176 /* DeviceUsageCard.swift */,
+				4F1B11AC22286E74006F3176 /* ContextCard.xib */,
+				4F1B11AD22286E74006F3176 /* ScatterChartCard.swift */,
+				4F1B11AE22286E74006F3176 /* ContextCard.swift */,
+				4F1B11AF22286E74006F3176 /* BarChartCard.swift */,
+				4FDA1E492423B51C004F891F /* ESMCard.swift */,
+			);
+			path = ContextCard;
+			sourceTree = "<group>";
+		};
+		4F387DC629EBC59A002D5300 /* Onboard */ = {
+			isa = PBXGroup;
+			children = (
+				4F387DCC29EBC5B7002D5300 /* OnboardingContentViewController_Private.h */,
+				4F387DC829EBC5B4002D5300 /* OnboardingContentViewController.h */,
+				4F387DC929EBC5B4002D5300 /* OnboardingContentViewController.m */,
+				4F387DCA29EBC5B5002D5300 /* OnboardingViewController.h */,
+				4F387DCB29EBC5B6002D5300 /* OnboardingViewController.m */,
+				4F387DC729EBC5B2002D5300 /* StudyTrace-Bridging-Header.h */,
+			);
+			path = Onboard;
+			sourceTree = "<group>";
+		};
+		4FFE196A2226A10B00C4715E = {
+			isa = PBXGroup;
+			children = (
+				4F530266240D4EEE008E3342 /* Localizable.strings */,
+				4FFE19752226A10B00C4715E /* StudyTrace */,
+				4FFE198D2226A10D00C4715E /* StudyTraceTests */,
+				4FFE19982226A10D00C4715E /* StudyTraceUITests */,
+				4FFE19742226A10B00C4715E /* Products */,
+				AFB7007A2C4835F2172F535E /* Pods */,
+				1BD07D752FCF16516FA57EDA /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		4FFE19742226A10B00C4715E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4FFE19732226A10B00C4715E /* StudyTrace.app */,
+				4FFE198A2226A10D00C4715E /* StudyTraceTests.xctest */,
+				4FFE19952226A10D00C4715E /* StudyTraceUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		4FFE19752226A10B00C4715E /* StudyTrace */ = {
+			isa = PBXGroup;
+			children = (
+				40C62C7E2FBB845900B81347 /* studytracelogo.icon */,
+				4F530269240FB13D008E3342 /* StudyTrace.entitlements */,
+				4FFE19762226A10B00C4715E /* AppDelegate.swift */,
+				4FFE19782226A10B00C4715E /* ViewController.swift */,
+				4FFE19B12226D2C100C4715E /* StudyTraceTableViewCell.swift */,
+				4FFE19A72226A41900C4715E /* ContextCardViewController.swift */,
+				4FFE19AB2226A47300C4715E /* QRCodeReaderViewController.swift */,
+				4FFE19AF2226C7DC00C4715E /* ESMViewController.swift */,
+				4F0BC9A0222D4952006348E4 /* AdvancedSettingsViewController.swift */,
+				4F0BC9A2222D6BE3006348E4 /* SensorSettingViewController.swift */,
+				4FEA0297237B8D1700CFDC2F /* OnboardingManager.swift */,
+				AA00000100000001AABBCC02 /* PhotoQuestionHelper.swift */,
+				4F70E8AC241DA28000A8AAA8 /* LocationPermissionViewController.swift */,
+				4F387DC629EBC59A002D5300 /* Onboard */,
+				4FFE197A2226A10B00C4715E /* Main.storyboard */,
+				4FFE19802226A10D00C4715E /* Assets.xcassets */,
+				4FFE19822226A10D00C4715E /* LaunchScreen.storyboard */,
+				4FFE19852226A10D00C4715E /* Info.plist */,
+				4FFE197D2226A10B00C4715E /* StudyTrace.xcdatamodeld */,
+				4F1B11A922286E74006F3176 /* ContextCard */,
+			);
+			path = StudyTrace;
+			sourceTree = "<group>";
+		};
+		4FFE198D2226A10D00C4715E /* StudyTraceTests */ = {
+			isa = PBXGroup;
+			children = (
+				4FFE198E2226A10D00C4715E /* StudyTraceTests.swift */,
+				4FFE19902226A10D00C4715E /* Info.plist */,
+			);
+			path = StudyTraceTests;
+			sourceTree = "<group>";
+		};
+		4FFE19982226A10D00C4715E /* StudyTraceUITests */ = {
+			isa = PBXGroup;
+			children = (
+				4FFE19992226A10D00C4715E /* StudyTraceUITests.swift */,
+				4FFE199B2226A10D00C4715E /* Info.plist */,
+			);
+			path = StudyTraceUITests;
+			sourceTree = "<group>";
+		};
+		AFB7007A2C4835F2172F535E /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				EB402EB089B2FB5413B6C2A4 /* Pods-StudyTrace.debug.xcconfig */,
+				DEF9D4B89EF357AC1A9ECC9A /* Pods-StudyTrace.release.xcconfig */,
+				DF69C50BE55C23E1E9F6FF05 /* Pods-StudyTraceTests.debug.xcconfig */,
+				C2A52DF7C3B2DCDC02A2CFA0 /* Pods-StudyTraceTests.release.xcconfig */,
+				8F053FEBEEB8141AAF6B81D0 /* Pods-StudyTraceUITests.debug.xcconfig */,
+				31057451989BC97C547C3052 /* Pods-StudyTraceUITests.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4FFE19722226A10B00C4715E /* StudyTrace */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4FFE199E2226A10D00C4715E /* Build configuration list for PBXNativeTarget "StudyTrace" */;
+			buildPhases = (
+				281341DDC22F96C9FC20050A /* [CP] Check Pods Manifest.lock */,
+				4FFE196F2226A10B00C4715E /* Sources */,
+				4FFE19702226A10B00C4715E /* Frameworks */,
+				4FFE19712226A10B00C4715E /* Resources */,
+				DF2625B046F4277F03BE604C /* [CP] Embed Pods Frameworks */,
+				5C2B54338F029362C1E870A9 /* [CP] Copy Pods Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StudyTrace;
+			productName = StudyTrace;
+			productReference = 4FFE19732226A10B00C4715E /* StudyTrace.app */;
+			productType = "com.apple.product-type.application";
+		};
+		4FFE19892226A10D00C4715E /* StudyTraceTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4FFE19A12226A10D00C4715E /* Build configuration list for PBXNativeTarget "StudyTraceTests" */;
+			buildPhases = (
+				172D26D71BD842DA1EFAB004 /* [CP] Check Pods Manifest.lock */,
+				4FFE19862226A10D00C4715E /* Sources */,
+				4FFE19872226A10D00C4715E /* Frameworks */,
+				4FFE19882226A10D00C4715E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4FFE198C2226A10D00C4715E /* PBXTargetDependency */,
+			);
+			name = StudyTraceTests;
+			productName = StudyTraceTests;
+			productReference = 4FFE198A2226A10D00C4715E /* StudyTraceTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		4FFE19942226A10D00C4715E /* StudyTraceUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4FFE19A42226A10D00C4715E /* Build configuration list for PBXNativeTarget "StudyTraceUITests" */;
+			buildPhases = (
+				5C4E60BAC98EE34A25C4EDF6 /* [CP] Check Pods Manifest.lock */,
+				4FFE19912226A10D00C4715E /* Sources */,
+				4FFE19922226A10D00C4715E /* Frameworks */,
+				4FFE19932226A10D00C4715E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4FFE19972226A10D00C4715E /* PBXTargetDependency */,
+			);
+			name = StudyTraceUITests;
+			productName = StudyTraceUITests;
+			productReference = 4FFE19952226A10D00C4715E /* StudyTraceUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4FFE196B2226A10B00C4715E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1010;
+				LastUpgradeCheck = 1010;
+				ORGANIZATIONNAME = "Yuuki Nishiyama";
+				TargetAttributes = {
+					4FFE19722226A10B00C4715E = {
+						CreatedOnToolsVersion = 10.1;
+						LastSwiftMigration = 1430;
+						ProvisioningStyle = Automatic;
+						SystemCapabilities = {
+							com.apple.AccessWiFi = {
+								enabled = 1;
+							};
+							com.apple.BackgroundModes = {
+								enabled = 1;
+							};
+							com.apple.HealthKit = {
+								enabled = 1;
+							};
+							com.apple.Push = {
+								enabled = 1;
+							};
+						};
+					};
+					4FFE19892226A10D00C4715E = {
+						CreatedOnToolsVersion = 10.1;
+						DevelopmentTeam = FH352PYMNC;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 4FFE19722226A10B00C4715E;
+					};
+					4FFE19942226A10D00C4715E = {
+						CreatedOnToolsVersion = 10.1;
+						DevelopmentTeam = FH352PYMNC;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 4FFE19722226A10B00C4715E;
+					};
+				};
+			};
+			buildConfigurationList = 4FFE196E2226A10B00C4715E /* Build configuration list for PBXProject "StudyTrace" */;
+			compatibilityVersion = "Xcode 10.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				ja,
+			);
+			mainGroup = 4FFE196A2226A10B00C4715E;
+			productRefGroup = 4FFE19742226A10B00C4715E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4FFE19722226A10B00C4715E /* StudyTrace */,
+				4FFE19892226A10D00C4715E /* StudyTraceTests */,
+				4FFE19942226A10D00C4715E /* StudyTraceUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4FFE19712226A10B00C4715E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4F530264240D4EEE008E3342 /* Localizable.strings in Resources */,
+				4FFE19842226A10D00C4715E /* LaunchScreen.storyboard in Resources */,
+				40C62C7F2FBB845900B81347 /* studytracelogo.icon in Resources */,
+				4FFE19812226A10D00C4715E /* Assets.xcassets in Resources */,
+				4FFE197C2226A10B00C4715E /* Main.storyboard in Resources */,
+				4F1B11B222286E75006F3176 /* ContextCard.xib in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4FFE19882226A10D00C4715E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4FFE19932226A10D00C4715E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		172D26D71BD842DA1EFAB004 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-StudyTraceTests-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		281341DDC22F96C9FC20050A /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-StudyTrace-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		5C2B54338F029362C1E870A9 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-StudyTrace/Pods-StudyTrace-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-StudyTrace/Pods-StudyTrace-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-StudyTrace/Pods-StudyTrace-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		5C4E60BAC98EE34A25C4EDF6 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-StudyTraceUITests-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		DF2625B046F4277F03BE604C /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-StudyTrace/Pods-StudyTrace-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-StudyTrace/Pods-StudyTrace-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-StudyTrace/Pods-StudyTrace-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4FFE196F2226A10B00C4715E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4F1B11B522286E75006F3176 /* BarChartCard.swift in Sources */,
+				4FFE19A82226A41900C4715E /* ContextCardViewController.swift in Sources */,
+				4FDA1E4A2423B51C004F891F /* ESMCard.swift in Sources */,
+				4FFE19B22226D2C100C4715E /* StudyTraceTableViewCell.swift in Sources */,
+				4FFE19AC2226A47300C4715E /* QRCodeReaderViewController.swift in Sources */,
+				4F387DCE29EBC5B7002D5300 /* OnboardingViewController.m in Sources */,
+				4F0BC9A1222D4952006348E4 /* AdvancedSettingsViewController.swift in Sources */,
+				4FFE197F2226A10B00C4715E /* StudyTrace.xcdatamodeld in Sources */,
+				4F70E8AD241DA28000A8AAA8 /* LocationPermissionViewController.swift in Sources */,
+				4F1B11B322286E75006F3176 /* ScatterChartCard.swift in Sources */,
+				4F387DCD29EBC5B7002D5300 /* OnboardingContentViewController.m in Sources */,
+				4FFE19792226A10B00C4715E /* ViewController.swift in Sources */,
+				4F1B11B422286E75006F3176 /* ContextCard.swift in Sources */,
+				4F0BC9A3222D6BE3006348E4 /* SensorSettingViewController.swift in Sources */,
+				4F1B11B022286E75006F3176 /* MapCard.swift in Sources */,
+				4F1B11B122286E75006F3176 /* DeviceUsageCard.swift in Sources */,
+				4FEA0298237B8D1700CFDC2F /* OnboardingManager.swift in Sources */,
+				AA00000100000001AABBCC01 /* PhotoQuestionHelper.swift in Sources */,
+				4FFE19B02226C7DC00C4715E /* ESMViewController.swift in Sources */,
+				4FFE19772226A10B00C4715E /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4FFE19862226A10D00C4715E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4FFE198F2226A10D00C4715E /* StudyTraceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4FFE19912226A10D00C4715E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4FFE199A2226A10D00C4715E /* StudyTraceUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4FFE198C2226A10D00C4715E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4FFE19722226A10B00C4715E /* StudyTrace */;
+			targetProxy = 4FFE198B2226A10D00C4715E /* PBXContainerItemProxy */;
+		};
+		4FFE19972226A10D00C4715E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4FFE19722226A10B00C4715E /* StudyTrace */;
+			targetProxy = 4FFE19962226A10D00C4715E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		4F530266240D4EEE008E3342 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				4F530267240D4EF2008E3342 /* ja */,
+				4F530268240D5A88008E3342 /* en */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		4FFE197A2226A10B00C4715E /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				4FFE197B2226A10B00C4715E /* Base */,
+				4F70E8AB241D9CB500A8AAA8 /* ja */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		4FFE19822226A10D00C4715E /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				4FFE19832226A10D00C4715E /* Base */,
+				4F53025B240D4BB5008E3342 /* ja */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		4FFE199C2226A10D00C4715E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		4FFE199D2226A10D00C4715E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		4FFE199F2226A10D00C4715E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = EB402EB089B2FB5413B6C2A4 /* Pods-StudyTrace.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = studytracelogo;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = StudyTrace/StudyTrace.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 77;
+				DEVELOPMENT_TEAM = 2F9Z668JPM;
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
+				INFOPLIST_FILE = StudyTrace/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.14.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.liuchao.studytrace;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OBJC_BRIDGING_HEADER = "StudyTrace/Onboard/StudyTrace-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 4.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		4FFE19A02226A10D00C4715E /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = DEF9D4B89EF357AC1A9ECC9A /* Pods-StudyTrace.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = studytracelogo;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = StudyTrace/StudyTrace.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 77;
+				DEVELOPMENT_TEAM = 2F9Z668JPM;
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
+				INFOPLIST_FILE = StudyTrace/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.14.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.liuchao.studytrace;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_OBJC_BRIDGING_HEADER = "StudyTrace/Onboard/StudyTrace-Bridging-Header.h";
+				SWIFT_VERSION = 4.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		4FFE19A22226A10D00C4715E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = DF69C50BE55C23E1E9F6FF05 /* Pods-StudyTraceTests.debug.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FH352PYMNC;
+				INFOPLIST_FILE = StudyTraceTests/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.liuchao.studytrace.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 4.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/StudyTrace.app/StudyTrace";
+			};
+			name = Debug;
+		};
+		4FFE19A32226A10D00C4715E /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = C2A52DF7C3B2DCDC02A2CFA0 /* Pods-StudyTraceTests.release.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FH352PYMNC;
+				INFOPLIST_FILE = StudyTraceTests/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.liuchao.studytrace.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 4.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/StudyTrace.app/StudyTrace";
+			};
+			name = Release;
+		};
+		4FFE19A52226A10D00C4715E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8F053FEBEEB8141AAF6B81D0 /* Pods-StudyTraceUITests.debug.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FH352PYMNC;
+				INFOPLIST_FILE = StudyTraceUITests/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.liuchao.studytrace.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 4.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = StudyTrace;
+			};
+			name = Debug;
+		};
+		4FFE19A62226A10D00C4715E /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 31057451989BC97C547C3052 /* Pods-StudyTraceUITests.release.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FH352PYMNC;
+				INFOPLIST_FILE = StudyTraceUITests/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.liuchao.studytrace.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 4.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = StudyTrace;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4FFE196E2226A10B00C4715E /* Build configuration list for PBXProject "StudyTrace" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4FFE199C2226A10D00C4715E /* Debug */,
+				4FFE199D2226A10D00C4715E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4FFE199E2226A10D00C4715E /* Build configuration list for PBXNativeTarget "StudyTrace" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4FFE199F2226A10D00C4715E /* Debug */,
+				4FFE19A02226A10D00C4715E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4FFE19A12226A10D00C4715E /* Build configuration list for PBXNativeTarget "StudyTraceTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4FFE19A22226A10D00C4715E /* Debug */,
+				4FFE19A32226A10D00C4715E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4FFE19A42226A10D00C4715E /* Build configuration list for PBXNativeTarget "StudyTraceUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4FFE19A52226A10D00C4715E /* Debug */,
+				4FFE19A62226A10D00C4715E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCVersionGroup section */
+		4FFE197D2226A10B00C4715E /* StudyTrace.xcdatamodeld */ = {
+			isa = XCVersionGroup;
+			children = (
+				4FFE197E2226A10B00C4715E /* StudyTrace.xcdatamodel */,
+			);
+			currentVersion = 4FFE197E2226A10B00C4715E /* StudyTrace.xcdatamodel */;
+			path = StudyTrace.xcdatamodeld;
+			sourceTree = "<group>";
+			versionGroupType = wrapper.xcdatamodel;
+		};
+/* End XCVersionGroup section */
+	};
+	rootObject = 4FFE196B2226A10B00C4715E /* Project object */;
+}
