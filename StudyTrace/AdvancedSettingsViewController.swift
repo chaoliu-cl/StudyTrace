@@ -8,6 +8,7 @@
 
 import UIKit
 import AWAREFramework
+import CoreLocation
 
 class AdvancedSettingsViewController: UIViewController {
 
@@ -270,7 +271,9 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
                 let directoryContents = try FileManager.default.contentsOfDirectory(at: documentsUrl, includingPropertiesForKeys: nil)
                 print(directoryContents)
 
-                let alert = UIAlertController(title: "Please select a file to export", message: nil, preferredStyle: .alert)
+                let alert = UIAlertController(title: "Export StudyTrace Data",
+                                              message: "Choose a local database file to share or save.",
+                                              preferredStyle: .alert)
                 
                 // if you want to filter the directory contents you can do like this:
                 switch AWAREStudy.shared().getDBType() {
@@ -313,6 +316,16 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
             } catch {
                 print(error)
             }
+            break
+        case AdvancedSettingsIdentifiers.version.rawValue:
+            let studyURL = AWAREStudy.shared().getURL() ?? ""
+            showInfoAlert(title: "StudyTrace Version",
+                          message: """
+                          App: StudyTrace
+                          Version: \(getAppVersion()) (\(getAppBuildNumber()))
+                          Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unavailable")
+                          Study URL: \(studyURL.isEmpty ? "Not configured" : studyURL)
+                          """)
             break
         case AdvancedSettingsIdentifiers.uiMode.rawValue:
             let alert = UIAlertController(title: row.title, message: nil, preferredStyle: .alert)
@@ -372,7 +385,8 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
             self.present(alert, animated: true, completion: nil)
             break
         case AdvancedSettingsIdentifiers.complianceCheck.rawValue:
-            AWARECore.shared().checkCompliance(with: self, showDetail: true, showSummary: true)
+            showInfoAlert(title: "StudyTrace Readiness",
+                          message: buildComplianceSummary())
         case AdvancedSettingsIdentifiers.onboarding.rawValue:
             OnboardingManager().startOnboarding(with: self)
         case AdvancedSettingsIdentifiers.pushNotification.rawValue:
@@ -418,18 +432,29 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
             self.present(alert, animated: true, completion: nil)
             break
         case AdvancedSettingsIdentifiers.team.rawValue:
-            UIApplication.shared.open(URL(string:"https://awareframework.com/team/")!, options: [:]) { (isOpened) in
+            showInfoAlert(title: "StudyTrace Team",
+                          message: """
+                          StudyTrace is configured by your research team.
 
-            }
+                          For study-specific questions, consent updates, or withdrawal requests, please contact the coordinator who invited you to this study.
+                          """)
         case AdvancedSettingsIdentifiers.aboutStudyTrace.rawValue:
-            UIApplication.shared.open(URL(string: "https://awareframework.com/")!, options: [:]) { (isOpened) in
+            showInfoAlert(title: "About StudyTrace",
+                          message: """
+                          StudyTrace is a research data collection app for surveys, location, and device-use data.
 
-            }
+                          It stores data on-device and uploads only to the study server you configure in the app.
+                          """)
             break
         case AdvancedSettingsIdentifiers.privacy.rawValue:
-            UIApplication.shared.open(URL(string: "https://awareframework.com/privacy/")!, options: [:]) { (isOpened) in
+            showInfoAlert(title: "StudyTrace Privacy",
+                          message: """
+                          StudyTrace collects only the data streams enabled for your study.
 
-            }
+                          Data is stored locally on your device first and may then be uploaded to your configured study server.
+
+                          You can review permissions in iOS Settings and export your local database from this screen at any time.
+                          """)
             break
         default:
             break
@@ -579,6 +604,44 @@ extension AdvancedSettingsViewController {
     
     func getAppBuildNumber() -> String {
         return Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as! String
+    }
+
+    private func buildComplianceSummary() -> String {
+        let locationManager = CLLocationManager()
+        let locationStatus: String
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways:
+            locationStatus = "Always allowed"
+        case .authorizedWhenInUse:
+            locationStatus = "While using app"
+        case .notDetermined:
+            locationStatus = "Not requested"
+        case .denied:
+            locationStatus = "Denied"
+        case .restricted:
+            locationStatus = "Restricted"
+        @unknown default:
+            locationStatus = "Unknown"
+        }
+
+        let autoUpload = AWAREStudy.shared().isAutoDBSync() ? "On" : "Off"
+        let studyURL = (AWAREStudy.shared().getURL() ?? "").isEmpty ? "Not configured" : "Configured"
+        let pushState = UserDefaults.standard.bool(forKey: AdvancedSettingsIdentifiers.pushNotification.rawValue) ? "Configured" : "Not configured"
+
+        return """
+        Study URL: \(studyURL)
+        Auto Upload: \(autoUpload)
+        Location Permission: \(locationStatus)
+        Push Token Upload: \(pushState)
+
+        If any required item is missing, reopen onboarding or review iOS Settings for StudyTrace.
+        """
+    }
+
+    private func showInfoAlert(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 }
 
