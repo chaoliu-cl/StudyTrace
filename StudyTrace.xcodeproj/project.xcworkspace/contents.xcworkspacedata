@@ -2,6 +2,9 @@
 <Workspace
    version = "1.0">
    <FileRef
-      location = "self:aware-client-ios-v2.xcodeproj">
+      location = "self:">
+   </FileRef>
+   <FileRef
+      location = "group:../Pods/Pods.xcodeproj">
    </FileRef>
 </Workspace>
