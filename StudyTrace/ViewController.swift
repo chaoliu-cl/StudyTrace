@@ -29,12 +29,19 @@ class ViewController: UIViewController {
     private let networkMonitor = NWPathMonitor()
     private var isConnected = true
     private let offlineBanner = UIView()
+    private let lastSyncFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter
+    }()
 
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "StudyTrace"
         tableView.delegate = self
         tableView.dataSource = self
+        sortSensors()
+        settings = getSettings()
         configureInterface()
         setupOfflineBanner()
         startNetworkMonitoring()
@@ -43,6 +50,13 @@ class ViewController: UIViewController {
         refreshControl.tintColor = AWARETheme.accent
         refreshControl.addTarget(self, action: #selector(handlePullToRefresh(_:)), for: .valueChanged)
         tableView.refreshControl = refreshControl
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        refreshStudySection()
+        updateUploadButtonState()
+        hideContextViewIfNeeded()
     }
 
     private func setupOfflineBanner() {
@@ -91,23 +105,11 @@ class ViewController: UIViewController {
     }
     
     override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
 
         AWARECore.shared().checkCompliance(with: self, showDetail: true)
-
-        settings = getSettings()
-        sensors.sort { (val1, val2) -> Bool in
-
-            if Language().isJapanese() {
-                return val1.identifier.localizedStandardCompare(val2.identifier) == .orderedAscending
-            }else{
-                return val1.title.localizedStandardCompare(val2.title) == .orderedAscending
-            }
-        }
-
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true, block: { [weak self] (timer) in
-            guard let self = self else { return }
-            self.tableView.reloadData()
-        })
+        refreshStudySection()
+        startRefreshTimerIfNeeded()
 
         googleLoginRequestObserver = NotificationCenter.default.addObserver(forName: Notification.Name(ACTION_AWARE_GOOGLE_LOGIN_REQUEST),
                                                object: nil, queue: .main) { (notification) in
@@ -124,18 +126,6 @@ class ViewController: UIViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackgroundNotification(notification:)), name: UIApplication.didEnterBackgroundNotification, object: nil)
 
         self.checkESMSchedules()
-
-        if AWAREStudy.shared().getURL() != "" {
-            uploadButton.tintColor = AWARETheme.accent
-            uploadButton.image = UIImage(systemName: "icloud.and.arrow.up")
-            uploadButton.isEnabled = true
-        }else{
-            uploadButton.tintColor = AWARETheme.secondaryInk
-            uploadButton.image = UIImage(systemName: "icloud.and.arrow.up")
-            uploadButton.isEnabled = false
-        }
-
-        self.hideContextViewIfNeeded()
          _ = LocationPermissionManager().isAuthorizedAlways(with: self)
     }
     
@@ -152,16 +142,10 @@ class ViewController: UIViewController {
     }
     
     @objc func willEnterForegroundNotification(notification: NSNotification) {
-        DispatchQueue.main.async {
-            self.settings = self.getSettings()
-        }
+        refreshStudySection()
 
         self.checkESMSchedules()
-        if refreshTimer == nil {
-            refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true, block: { [weak self] (timer) in
-                self?.tableView.reloadData()
-            })
-        }
+        startRefreshTimerIfNeeded()
         _ = LocationPermissionManager().isAuthorizedAlways(with: self)
     }
 
@@ -183,8 +167,7 @@ class ViewController: UIViewController {
                     manager.startAllSensors()
                     sender.endRefreshing()
                     AWARETheme.notificationFeedback(.success)
-                    self?.settings = self?.getSettings() ?? []
-                    self?.tableView.reloadData()
+                    self?.refreshStudySection()
                 }
             }
         } else {
@@ -193,8 +176,7 @@ class ViewController: UIViewController {
             manager.createDBTablesOnAwareServer()
             manager.startAllSensors()
             sender.endRefreshing()
-            settings = getSettings()
-            tableView.reloadData()
+            refreshStudySection()
         }
     }
     
@@ -308,9 +290,7 @@ class ViewController: UIViewController {
     func getSettings() -> [TableRowContent] {
         let lastSyncText: String
         if let lastSync = UserDefaults.standard.object(forKey: "aware.lastSyncDate") as? Date {
-            let formatter = RelativeDateTimeFormatter()
-            formatter.unitsStyle = .short
-            lastSyncText = "Last sync: " + formatter.localizedString(for: lastSync, relativeTo: Date())
+            lastSyncText = "Last sync: " + lastSyncFormatter.localizedString(for: lastSync, relativeTo: Date())
         } else {
             lastSyncText = "Never synced"
         }
@@ -357,6 +337,53 @@ class ViewController: UIViewController {
         ]
         return contents
     }()
+
+    private func sortSensors() {
+        sensors.sort { lhs, rhs in
+            if Language().isJapanese() {
+                return lhs.identifier.localizedStandardCompare(rhs.identifier) == .orderedAscending
+            } else {
+                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+            }
+        }
+    }
+
+    private func refreshStudySection() {
+        settings = getSettings()
+
+        guard isViewLoaded else { return }
+        tableView.reloadData()
+    }
+
+    private func updateUploadButtonState() {
+        let hasStudyURL = !(AWAREStudy.shared().getURL() ?? "").isEmpty
+        uploadButton.tintColor = hasStudyURL ? AWARETheme.accent : AWARETheme.secondaryInk
+        uploadButton.image = UIImage(systemName: "icloud.and.arrow.up")
+        uploadButton.isEnabled = hasStudyURL
+    }
+
+    private func startRefreshTimerIfNeeded() {
+        guard refreshTimer == nil else { return }
+
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true, block: { [weak self] _ in
+            self?.reloadDynamicContent()
+        })
+    }
+
+    private func reloadDynamicContent() {
+        guard isViewLoaded else { return }
+
+        let sectionCount = numberOfSections(in: tableView)
+        guard sectionCount > 0 else { return }
+
+        var sectionsToReload = IndexSet(integer: 0)
+        if sectionCount > 1 {
+            sectionsToReload.insert(1)
+        }
+
+        settings = getSettings()
+        tableView.reloadSections(sectionsToReload, with: .none)
+    }
 }
 
 extension ViewController: UITableViewDataSource {

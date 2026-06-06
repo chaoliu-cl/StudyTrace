@@ -55,16 +55,28 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>StudyTrace needs camera access to capture photos for survey responses.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>StudyTrace may access your calendar to collect scheduling context for research studies you join when calendar data collection is enabled.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>StudyTrace may access your contacts to collect contact-related research data for studies you join when contact data collection is enabled.</string>
 	<key>NSFamilyControlsUsageDescription</key>
 	<string>StudyTrace uses Screen Time permission so you can choose the specific apps whose usage should be monitored for the study.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>StudyTrace may read your Health data to collect health and activity measures for research studies you join when Health data sharing is enabled.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>StudyTrace may write study-generated health measurements to the Health app only when a research study you join requires it and you grant permission.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>For collecting your activity, this application needs to access your location data.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>For collecting your activity, this application needs to access your location data.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>For collecting your activity, this application needs to access your location data.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>StudyTrace may access motion and fitness data to measure physical activity for research studies you join when motion data collection is enabled.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>StudyTrace needs photo library access so you can attach images to survey responses.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>StudyTrace may use Bluetooth to detect nearby devices or study sensors for research studies you join when Bluetooth data collection is enabled.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
