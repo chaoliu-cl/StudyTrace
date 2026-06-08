@@ -670,15 +670,45 @@ extension ViewController {
 /// alerts
 extension UIViewController {
 
-    /// Returns true only for a well-formed https:// URL. The app enforces
-    /// HTTPS for all study servers so that uploads meet Apple's ATS
-    /// requirements; insecure http:// servers are rejected.
-    func isSecureStudyURL(_ urlString: String) -> Bool {
-        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let scheme = url.scheme?.lowercased() else {
-            return false
+    /// Normalizes a study URL to a secure https:// URL, accepting AWARE's
+    /// custom schemes. "aware-ssl://" and "aware://" are AWARE conventions
+    /// that are mapped to https://. A plain "https://" URL is accepted as-is.
+    /// Returns nil for anything that cannot be made secure (e.g. http://),
+    /// so insecure uploads are never permitted while AWARE servers remain
+    /// fully supported.
+    func normalizedSecureStudyURL(_ urlString: String) -> String? {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), let scheme = url.scheme?.lowercased() else {
+            return nil
         }
-        return scheme == "https" && (url.host?.isEmpty == false)
+        var normalized = trimmed
+        switch scheme {
+        case "https":
+            break
+        case "aware-ssl":
+            if let range = normalized.range(of: "aware-ssl") {
+                normalized = normalized.replacingCharacters(in: range, with: "https")
+            }
+        case "aware":
+            if let range = normalized.range(of: "aware") {
+                normalized = normalized.replacingCharacters(in: range, with: "https")
+            }
+        default:
+            return nil
+        }
+        // Confirm the result is a well-formed https URL with a host.
+        guard let secureURL = URL(string: normalized),
+              secureURL.scheme?.lowercased() == "https",
+              secureURL.host?.isEmpty == false else {
+            return nil
+        }
+        return normalized
+    }
+
+    /// Returns true when the URL can be used as a secure study server,
+    /// i.e. it is https:// or an AWARE scheme that maps to https://.
+    func isSecureStudyURL(_ urlString: String) -> Bool {
+        return normalizedSecureStudyURL(urlString) != nil
     }
 
     /// Presents a standard alert explaining that only HTTPS servers are allowed.
@@ -703,13 +733,13 @@ extension UIViewController {
                 if textFields.count > 0 {
                     if let textField = textFields.first {
                         if let text = textField.text{
-                            guard self.isSecureStudyURL(text) else {
+                            guard let secureURL = self.normalizedSecureStudyURL(text) else {
                                 self.showInsecureURLAlert()
                                 return
                             }
                             let study = AWAREStudy.shared()
-                            study.setStudyURL(text)
-                            study.join(withURL: text, completion: { (settings, study, error) in
+                            study.setStudyURL(secureURL)
+                            study.join(withURL: secureURL, completion: { (settings, study, error) in
                                 let sensorManager = AWARESensorManager.shared()
                                 sensorManager.addSensors(with: AWAREStudy.shared())
                                 sensorManager.createDBTablesOnAwareServer()

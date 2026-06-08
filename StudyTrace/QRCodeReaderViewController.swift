@@ -180,12 +180,12 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
             
             switch scannedContent {
             case .url:
-                guard isSecureStudyURL(qr) else {
+                guard let secureURL = normalizedSecureStudyURL(qr) else {
                     showInsecureURLAlert()
                     return
                 }
                 startIndicator()
-                study.join(withURL: qr, completion: { (settings, status, error) in
+                study.join(withURL: secureURL, completion: { (settings, status, error) in
                     DispatchQueue.main.async {
                         
                         switch status {
