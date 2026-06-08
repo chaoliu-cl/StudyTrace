@@ -158,7 +158,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             } else if studyURL.prefix(5) == "aware" {
                 let range = studyURL.range(of: "aware")
                 if let range = range {
-                    studyURL = studyURL.replacingCharacters(in: range, with: "http")
+                    // Enforce HTTPS: the plain "aware" scheme is mapped to https,
+                    // never http, so study joins always use a secure connection.
+                    studyURL = studyURL.replacingCharacters(in: range, with: "https")
                 }
             }
             let study = AWAREStudy.shared()

@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		166FFA66C3A60DE408D54444 /* Pods_StudyTrace.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D83C1A3254FCB129D5EBD903 /* Pods_StudyTrace.framework */; };
 		40C62C7F2FBB845900B81347 /* studytracelogo.icon in Resources */ = {isa = PBXBuildFile; fileRef = 40C62C7E2FBB845900B81347 /* studytracelogo.icon */; };
+		AA00000100000001AABBCC10 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA00000100000001AABBCC11 /* PrivacyInfo.xcprivacy */; };
 		4F0BC9A1222D4952006348E4 /* AdvancedSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0BC9A0222D4952006348E4 /* AdvancedSettingsViewController.swift */; };
 		4F0BC9A3222D6BE3006348E4 /* SensorSettingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0BC9A2222D6BE3006348E4 /* SensorSettingViewController.swift */; };
 		4F1B11B022286E75006F3176 /* MapCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1B11AA22286E74006F3176 /* MapCard.swift */; };
@@ -99,6 +100,7 @@
 		4FFE19802226A10D00C4715E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4FFE19832226A10D00C4715E /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		4FFE19852226A10D00C4715E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA00000100000001AABBCC11 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		4FFE198A2226A10D00C4715E /* StudyTraceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StudyTraceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4FFE198E2226A10D00C4715E /* StudyTraceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceTests.swift; sourceTree = "<group>"; };
 		4FFE19902226A10D00C4715E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -236,6 +238,7 @@
 				4FFE19802226A10D00C4715E /* Assets.xcassets */,
 				4FFE19822226A10D00C4715E /* LaunchScreen.storyboard */,
 				4FFE19852226A10D00C4715E /* Info.plist */,
+				AA00000100000001AABBCC11 /* PrivacyInfo.xcprivacy */,
 				4FFE197D2226A10B00C4715E /* StudyTrace.xcdatamodeld */,
 				4F1B11A922286E74006F3176 /* ContextCard */,
 			);
@@ -406,6 +409,7 @@
 				4F530264240D4EEE008E3342 /* Localizable.strings in Resources */,
 				4FFE19842226A10D00C4715E /* LaunchScreen.storyboard in Resources */,
 				40C62C7F2FBB845900B81347 /* studytracelogo.icon in Resources */,
+				AA00000100000001AABBCC10 /* PrivacyInfo.xcprivacy in Resources */,
 				4FFE19812226A10D00C4715E /* Assets.xcassets in Resources */,
 				4FFE197C2226A10B00C4715E /* Main.storyboard in Resources */,
 				4F1B11B222286E75006F3176 /* ContextCard.xib in Resources */,

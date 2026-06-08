@@ -669,6 +669,28 @@ extension ViewController {
 
 /// alerts
 extension UIViewController {
+
+    /// Returns true only for a well-formed https:// URL. The app enforces
+    /// HTTPS for all study servers so that uploads meet Apple's ATS
+    /// requirements; insecure http:// servers are rejected.
+    func isSecureStudyURL(_ urlString: String) -> Bool {
+        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = url.scheme?.lowercased() else {
+            return false
+        }
+        return scheme == "https" && (url.host?.isEmpty == false)
+    }
+
+    /// Presents a standard alert explaining that only HTTPS servers are allowed.
+    func showInsecureURLAlert() {
+        let alert = UIAlertController(
+            title: NSLocalizedString("Insecure Server URL", comment: ""),
+            message: NSLocalizedString("StudyTrace only connects to servers over HTTPS. Please enter a secure https:// URL.", comment: ""),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+        self.present(alert, animated: true, completion: nil)
+    }
+
     func showAlertForSettingStudyId(){
         let alert = UIAlertController(title:"Study URL", message:nil, preferredStyle: .alert)
         alert.addTextField(configurationHandler: { textField in
@@ -681,6 +703,10 @@ extension UIViewController {
                 if textFields.count > 0 {
                     if let textField = textFields.first {
                         if let text = textField.text{
+                            guard self.isSecureStudyURL(text) else {
+                                self.showInsecureURLAlert()
+                                return
+                            }
                             let study = AWAREStudy.shared()
                             study.setStudyURL(text)
                             study.join(withURL: text, completion: { (settings, study, error) in
