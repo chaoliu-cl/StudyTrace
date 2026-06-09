@@ -43,6 +43,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         IOSESM.setESMAppearedState(false)
 
+        // Pull in any Screen Time usage events recorded by the
+        // DeviceActivityMonitor extension while the app was not running.
+        SpecificAppUsageManager.shared.drainPendingUsage()
+
         let key = "studytrace.setting.key.is-not-first-time"
         if(!UserDefaults.standard.bool(forKey:key)){
             study.setCleanOldDataType(cleanOldDataTypeNever)
@@ -119,6 +123,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
+        SpecificAppUsageManager.shared.drainPendingUsage()
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationWillEnterForeground:"]);
     }

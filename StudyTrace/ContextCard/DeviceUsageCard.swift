@@ -203,7 +203,7 @@ final class SpecificAppUsageManager {
     var explanationText: String {
         #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity)
         if #available(iOS 16.0, *) {
-            return "StudyTrace logs overall phone active time locally. Selected-app tracking uses Apple's Screen Time controls and needs the Family Controls entitlement before per-app activity can be monitored on device."
+            return "StudyTrace logs overall phone active time locally. Selected-app tracking uses Apple's Screen Time controls; usage milestones for the apps you choose are recorded on device and uploaded to the research server."
         }
         #endif
         return "This device or SDK does not expose Apple's Screen Time app-selection APIs. Overall phone usage is still logged from lock and unlock events."
@@ -297,17 +297,34 @@ final class SpecificAppUsageManager {
     @available(iOS 16.0, *)
     private func startMonitoring(selection: FamilyActivitySelection) {
         let center = DeviceActivityCenter()
-        let activityName = DeviceActivityName("studytrace.selected.apps.daily")
-        let eventName = DeviceActivityEvent.Name("studytrace.selected.apps.usage")
+        let activityName = DeviceActivityName(ScreenTimeShared.activityName)
         let schedule = DeviceActivitySchedule(intervalStart: DateComponents(hour: 0, minute: 0),
                                               intervalEnd: DateComponents(hour: 23, minute: 59),
                                               repeats: true)
-        let event = DeviceActivityEvent(applications: selection.applicationTokens,
-                                        categories: selection.categoryTokens,
-                                        webDomains: selection.webDomainTokens,
-                                        threshold: DateComponents(minute: 1))
+
+        // Register one event per escalating cumulative-usage threshold. Each
+        // event fires once when usage of the selected apps crosses that many
+        // minutes within the day, so the monitor extension records coarse usage
+        // buckets (5m, 15m, 30m, ...). iOS never hands the app raw per-app
+        // durations, so thresholds are how usage magnitude is captured.
+        var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
+        for minutes in ScreenTimeShared.thresholdsMinutes {
+            let name = DeviceActivityEvent.Name("\(ScreenTimeShared.eventNamePrefix).\(minutes)")
+            events[name] = DeviceActivityEvent(applications: selection.applicationTokens,
+                                               categories: selection.categoryTokens,
+                                               webDomains: selection.webDomainTokens,
+                                               threshold: DateComponents(minute: minutes))
+        }
+
+        // Restart cleanly so stale schedules from a previous selection are removed.
+        center.stopMonitoring([activityName])
         do {
-            try center.startMonitoring(activityName, during: schedule, events: [eventName: event])
+            try center.startMonitoring(activityName, during: schedule, events: events)
+            AWAREEventLogger.shared().logEvent([
+                "class": "SpecificAppUsageManager",
+                "event": "screen_time_monitoring_started",
+                "threshold_count": "\(events.count)"
+            ])
         } catch {
             AWAREEventLogger.shared().logEvent([
                 "class": "SpecificAppUsageManager",
@@ -317,6 +334,25 @@ final class SpecificAppUsageManager {
         }
     }
     #endif
+
+    /// Drains usage events recorded by the DeviceActivityMonitor extension into
+    /// AWARE storage so they upload on the normal sync cycle. Safe to call on
+    /// every launch / foreground; it no-ops when there is nothing pending.
+    func drainPendingUsage() {
+        let pending = ScreenTimeUsageStore.shared.drain()
+        guard !pending.isEmpty else { return }
+        let logger = AWAREEventLogger.shared()
+        for record in pending {
+            logger.logEvent([
+                "class": "SpecificAppUsageManager",
+                "event": "screen_time_threshold_reached",
+                "screen_time_event": record.event,
+                "threshold_minutes": "\(record.thresholdMinutes)",
+                "activity": record.activity,
+                "event_timestamp": "\(record.timestamp)"
+            ])
+        }
+    }
 }
 
 #if canImport(SwiftUI) && canImport(FamilyControls)
