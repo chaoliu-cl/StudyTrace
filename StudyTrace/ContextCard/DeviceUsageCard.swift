@@ -96,6 +96,11 @@ class DeviceUsageCard: ContextCard {
         stack.addArrangedSubview(configureButton)
 
         baseStackView.insertArrangedSubview(stack, at: 2)
+
+        // This card stacks more content than the default fixed card height, so
+        // become self-sizing. Otherwise the bottom content (the configure
+        // button) overflows the card bounds and cannot receive touches.
+        makeSelfSizing()
         refresh()
     }
 
@@ -185,6 +190,8 @@ final class SpecificAppUsageManager {
     static let shared = SpecificAppUsageManager()
 
     private let selectionCountKey = "studytrace.selected-app-usage.count"
+    private let selectionCategoryCountKey = "studytrace.selected-app-usage.category-count"
+    private let selectionWebCountKey = "studytrace.selected-app-usage.web-count"
     private let authorizationKey = "studytrace.selected-app-usage.authorization"
     private let selectionDataKey = "studytrace.selected-app-usage.selection"
     private var completion: (() -> Void)?
@@ -193,11 +200,36 @@ final class SpecificAppUsageManager {
         return UserDefaults.standard.integer(forKey: selectionCountKey)
     }
 
+    var selectedCategoryCount: Int {
+        return UserDefaults.standard.integer(forKey: selectionCategoryCountKey)
+    }
+
+    var selectedWebDomainCount: Int {
+        return UserDefaults.standard.integer(forKey: selectionWebCountKey)
+    }
+
+    /// Total of every selected token kind. Selecting whole categories (or
+    /// "select all") populates categoryTokens with no applicationTokens, so the
+    /// app count alone is not a reliable signal that a selection exists.
+    var selectedTotalCount: Int {
+        return selectedAppCount + selectedCategoryCount + selectedWebDomainCount
+    }
+
     var statusText: String {
-        if selectedAppCount > 0 {
-            return "\(selectedAppCount) selected app\(selectedAppCount == 1 ? "" : "s") configured"
+        guard selectedTotalCount > 0 else {
+            return "No apps selected yet"
         }
-        return "No apps selected yet"
+        var parts: [String] = []
+        if selectedAppCount > 0 {
+            parts.append("\(selectedAppCount) app\(selectedAppCount == 1 ? "" : "s")")
+        }
+        if selectedCategoryCount > 0 {
+            parts.append("\(selectedCategoryCount) categor\(selectedCategoryCount == 1 ? "y" : "ies")")
+        }
+        if selectedWebDomainCount > 0 {
+            parts.append("\(selectedWebDomainCount) site\(selectedWebDomainCount == 1 ? "" : "s")")
+        }
+        return parts.joined(separator: ", ") + " selected"
     }
 
     var explanationText: String {
@@ -230,13 +262,17 @@ final class SpecificAppUsageManager {
         viewController.present(alert, animated: true, completion: nil)
     }
 
-    private func saveSelectionCount(_ count: Int) {
-        UserDefaults.standard.set(count, forKey: selectionCountKey)
+    private func saveSelectionCounts(apps: Int, categories: Int, webDomains: Int) {
+        UserDefaults.standard.set(apps, forKey: selectionCountKey)
+        UserDefaults.standard.set(categories, forKey: selectionCategoryCountKey)
+        UserDefaults.standard.set(webDomains, forKey: selectionWebCountKey)
         UserDefaults.standard.set(true, forKey: authorizationKey)
         AWAREEventLogger.shared().logEvent([
             "class": "SpecificAppUsageManager",
             "event": "screen_time_selection_updated",
-            "selected_app_count": "\(count)"
+            "selected_app_count": "\(apps)",
+            "selected_category_count": "\(categories)",
+            "selected_web_count": "\(webDomains)"
         ])
     }
 
@@ -289,8 +325,9 @@ final class SpecificAppUsageManager {
         if let data = try? PropertyListEncoder().encode(selection) {
             UserDefaults.standard.set(data, forKey: selectionDataKey)
         }
-        let count = selection.applicationTokens.count
-        saveSelectionCount(count)
+        saveSelectionCounts(apps: selection.applicationTokens.count,
+                            categories: selection.categoryTokens.count,
+                            webDomains: selection.webDomainTokens.count)
         startMonitoring(selection: selection)
     }
 
@@ -352,6 +389,19 @@ final class SpecificAppUsageManager {
                 "event_timestamp": "\(record.timestamp)"
             ])
         }
+    }
+
+    func resetMonitoringAndSelection() {
+        UserDefaults.standard.removeObject(forKey: selectionCountKey)
+        UserDefaults.standard.removeObject(forKey: authorizationKey)
+        UserDefaults.standard.removeObject(forKey: selectionDataKey)
+
+        #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity)
+        if #available(iOS 16.0, *) {
+            let center = DeviceActivityCenter()
+            center.stopMonitoring([DeviceActivityName(ScreenTimeShared.activityName)])
+        }
+        #endif
     }
 }
 

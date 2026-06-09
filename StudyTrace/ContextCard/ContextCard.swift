@@ -26,24 +26,33 @@ import AWAREFramework
     var backwardHandler:(()->Void)?
     var forwardHandler:(()->Void)?
     var navigatorTitleButtonHandler:(()->Void)?
-    
+
+    /// The view loaded from ContextCard.xib (added as a subview in setup()).
+    /// Exposed so subclasses with content taller than the default fixed height
+    /// can switch it to Auto Layout and let content drive the card height.
+    private(set) weak var nibContainerView: UIView?
+    /// The fixed-height constraint applied in setup(). Subclasses may deactivate
+    /// it to become self-sizing.
+    private(set) var cardHeightConstraint: NSLayoutConstraint?
+
     var currentDate = Date()
-    
+
     override init(frame:CGRect) {
         super.init(frame: frame)
         setup()
     }
-    
+
     required init(coder aCoder: NSCoder) {
         super.init(coder: aCoder)!
         setup()
     }
-    
+
     func setup() {
         let view = Bundle.main.loadNibNamed("ContextCard", owner: self, options: nil)?.first as! UIView
         view.frame = self.bounds
         view.backgroundColor = .clear
         self.addSubview(view)
+        self.nibContainerView = view
         self.backgroundColor = AWARETheme.card
         self.layer.cornerRadius = 16
         self.layer.borderWidth = 0.5
@@ -63,10 +72,29 @@ import AWAREFramework
 
         let height = frame.height - titleLabel.frame.height - spaceView.frame.height
         indicatorHeightLayoutConstraint.isActive = false
-        self.heightAnchor.constraint(equalToConstant:height).isActive = true
+        let heightConstraint = self.heightAnchor.constraint(equalToConstant:height)
+        heightConstraint.isActive = true
+        self.cardHeightConstraint = heightConstraint
 
         currentDate = Date()
         self.setTitleToNavigationView(with: currentDate)
+    }
+
+    /// Switches the card from its default fixed height to self-sizing: the nib
+    /// container is pinned to the card with Auto Layout so the stacked content
+    /// determines the card height. Without this, content taller than the fixed
+    /// height overflows the card bounds and becomes untappable.
+    func makeSelfSizing() {
+        cardHeightConstraint?.isActive = false
+        cardHeightConstraint = nil
+        guard let container = nibContainerView else { return }
+        container.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            container.topAnchor.constraint(equalTo: self.topAnchor),
+            container.bottomAnchor.constraint(equalTo: self.bottomAnchor),
+            container.leadingAnchor.constraint(equalTo: self.leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: self.trailingAnchor)
+        ])
     }
     
     public func setTitleToNavigationView(with date:Date){
