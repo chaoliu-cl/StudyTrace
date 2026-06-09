@@ -83,4 +83,9 @@ public final class ScreenTimeUsageStore {
         defaults?.removeObject(forKey: pendingKey)
         return events
     }
+
+    /// Clears any queued events without draining them into app storage.
+    public func clear() {
+        defaults?.removeObject(forKey: pendingKey)
+    }
 }

@@ -397,6 +397,13 @@ extension SensorSettingViewController: UITableViewDataSource{
     
     func restartAllSensorsWithPermissionRequest(){
         self.tableView.reloadData()
+        guard StudyParticipationController.hasConsent() else {
+            StudyParticipationController.refreshCollectionState(
+                fitbitPresenter: self,
+                createRemoteTables: !(AWAREStudy.shared().getURL() ?? "").isEmpty
+            )
+            return
+        }
         AWARECore.shared().requestPermissionForBackgroundSensing { (locationStatus) in
             AWARECore.shared().requestPermissionForPushNotification { (notificationState, error) in
                 self.restartAllSensors()
@@ -406,22 +413,10 @@ extension SensorSettingViewController: UITableViewDataSource{
     }
     
     func restartAllSensors(){
-        AWARECore.shared().activate()
-        let manager = AWARESensorManager.shared()
-        manager.stopAndRemoveAllSensors()
-        AWARESlimConfiguration.apply()
-        manager.addSensors(with: AWAREStudy.shared())
-        manager.add(AWAREEventLogger.shared())
-        manager.createDBTablesOnAwareServer()
-        if let fitbit = manager.getSensor(SENSOR_PLUGIN_FITBIT) as? Fitbit {
-            fitbit.viewController = self
-        }
-        if let healthKit = manager.getSensor(SENSOR_HEALTH_KIT) as? AWAREHealthKit {
-            healthKit.requestAuthorization { result, errror in
-                // TODO
-            }
-        }
-        manager.startAllSensors()
+        StudyParticipationController.refreshCollectionState(
+            fitbitPresenter: self,
+            createRemoteTables: !(AWAREStudy.shared().getURL() ?? "").isEmpty
+        )
         
         self.settings = self.getSettings()
         self.tableView.reloadData()

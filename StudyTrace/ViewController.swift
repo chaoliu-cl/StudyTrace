@@ -107,7 +107,9 @@ class ViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
 
-        AWARECore.shared().checkCompliance(with: self, showDetail: true)
+        if StudyParticipationController.hasConsent() {
+            AWARECore.shared().checkCompliance(with: self, showDetail: true)
+        }
         refreshStudySection()
         startRefreshTimerIfNeeded()
 
@@ -125,8 +127,10 @@ class ViewController: UIViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(willEnterForegroundNotification(notification:)), name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackgroundNotification(notification:)), name: UIApplication.didEnterBackgroundNotification, object: nil)
 
-        self.checkESMSchedules()
-         _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        if StudyParticipationController.hasConsent() {
+            self.checkESMSchedules()
+            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        }
     }
     
     override func viewDidDisappear(_ animated: Bool) {
@@ -144,37 +148,34 @@ class ViewController: UIViewController {
     @objc func willEnterForegroundNotification(notification: NSNotification) {
         refreshStudySection()
 
-        self.checkESMSchedules()
+        if StudyParticipationController.hasConsent() {
+            self.checkESMSchedules()
+            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        }
         startRefreshTimerIfNeeded()
-        _ = LocationPermissionManager().isAuthorizedAlways(with: self)
     }
 
     @objc func handlePullToRefresh(_ sender: UIRefreshControl) {
         AWARETheme.mediumImpact()
         let study = AWAREStudy.shared()
-        let manager = AWARESensorManager.shared()
-
-        manager.stopAndRemoveAllSensors()
-        AWARESlimConfiguration.apply()
 
         if let studyURL = study.getURL(), !studyURL.isEmpty {
             study.join(withURL: studyURL) { [weak self] (settings, status, error) in
                 DispatchQueue.main.async {
-                    AWARESlimConfiguration.apply()
-                    manager.addSensors(with: study)
-                    manager.add(AWAREEventLogger.shared())
-                    manager.createDBTablesOnAwareServer()
-                    manager.startAllSensors()
+                    StudyParticipationController.refreshCollectionState(
+                        fitbitPresenter: self,
+                        createRemoteTables: true
+                    )
                     sender.endRefreshing()
                     AWARETheme.notificationFeedback(.success)
                     self?.refreshStudySection()
                 }
             }
         } else {
-            manager.addSensors(with: study)
-            manager.add(AWAREEventLogger.shared())
-            manager.createDBTablesOnAwareServer()
-            manager.startAllSensors()
+            StudyParticipationController.refreshCollectionState(
+                fitbitPresenter: self,
+                createRemoteTables: false
+            )
             sender.endRefreshing()
             refreshStudySection()
         }
@@ -246,15 +247,11 @@ class ViewController: UIViewController {
     
     @IBAction func didPushRefreshButton(_ sender: UIBarButtonItem) {
         let study = AWAREStudy.shared()
-        let manager = AWARESensorManager.shared()
-        
-        manager.stopAndRemoveAllSensors()
-        AWARESlimConfiguration.apply()
         if study.getURL() == "" {
-            manager.addSensors(with: study)
-            manager.add(AWAREEventLogger.shared())
-            manager.createDBTablesOnAwareServer()
-            manager.startAllSensors()
+            StudyParticipationController.refreshCollectionState(
+                fitbitPresenter: self,
+                createRemoteTables: false
+            )
             let alert = UIAlertController(title: NSLocalizedString("setting_view_config_refresh_title", comment: ""),
                                           message: nil, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel, handler: { (action) in
@@ -265,11 +262,10 @@ class ViewController: UIViewController {
             if let studyURL = study.getURL() {
                 study.join(withURL: studyURL) { (settings, status, error) in
                     DispatchQueue.main.async {
-                        AWARESlimConfiguration.apply()
-                        manager.addSensors(with: study)
-                        manager.add(AWAREEventLogger.shared())
-                        manager.createDBTablesOnAwareServer()
-                        manager.startAllSensors()
+                        StudyParticipationController.refreshCollectionState(
+                            fitbitPresenter: self,
+                            createRemoteTables: true
+                        )
                         self.showReloadCompletionAlert()
                     }
                 }
@@ -740,10 +736,12 @@ extension UIViewController {
                             let study = AWAREStudy.shared()
                             study.setStudyURL(secureURL)
                             study.join(withURL: secureURL, completion: { (settings, study, error) in
-                                let sensorManager = AWARESensorManager.shared()
-                                sensorManager.addSensors(with: AWAREStudy.shared())
-                                sensorManager.createDBTablesOnAwareServer()
-                                sensorManager.startAllSensors()
+                                DispatchQueue.main.async {
+                                    StudyParticipationController.refreshCollectionState(
+                                        fitbitPresenter: self,
+                                        createRemoteTables: true
+                                    )
+                                }
                             })
                         }
                     }

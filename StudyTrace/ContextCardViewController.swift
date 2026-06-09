@@ -74,7 +74,9 @@ class ContextCardViewController: UIViewController {
         if contextCards.count == 0 {
             setupContextCards()
         }
-        _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        if StudyParticipationController.hasConsent() {
+            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        }
     }
     
     override func viewDidDisappear(_ animated: Bool) {
@@ -98,7 +100,9 @@ class ContextCardViewController: UIViewController {
                 self.tabBarController?.selectedIndex = 0
             }
         }
-        _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        if StudyParticipationController.hasConsent() {
+            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        }
     }
     
     func removeAllContextCards(){

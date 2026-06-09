@@ -21,24 +21,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-
-        let core    = AWARECore.shared()
-        let manager = AWARESensorManager.shared()
-        let study   = AWAREStudy.shared()
-
-        AWARESlimConfiguration.apply()
-        manager.addSensors(with: study)
-        if manager.getAllSensors().count > 0 {
-            core.setAnchor()
-            if let fitbit = manager.getSensor(SENSOR_PLUGIN_FITBIT) as? Fitbit {
-                fitbit.viewController = window?.rootViewController
-            }
-            core.activate()
-            manager.add(AWAREEventLogger.shared())
-
-            core.requestPermissionForPushNotification { (status, error) in
-
-            }
+        let study = AWAREStudy.shared()
+        StudyParticipationController.refreshCollectionState(
+            fitbitPresenter: window?.rootViewController,
+            createRemoteTables: false
+        )
+        if StudyParticipationController.hasConsent() {
+            AWARECore.shared().requestPermissionForPushNotification { (_, _) in }
         }
 
         IOSESM.setESMAppearedState(false)
@@ -75,6 +64,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func scheduleBackgroundSync() {
+        guard StudyParticipationController.hasConsent() else { return }
         let request = BGProcessingTaskRequest(identifier: Self.bgSyncTaskIdentifier)
         request.requiresNetworkConnectivity = true
         request.requiresExternalPower = false
@@ -83,12 +73,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func scheduleBackgroundRefresh() {
+        guard StudyParticipationController.hasConsent() else { return }
         let request = BGAppRefreshTaskRequest(identifier: Self.bgRefreshTaskIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
         try? BGTaskScheduler.shared.submit(request)
     }
 
     private func handleBackgroundSync(task: BGProcessingTask) {
+        guard StudyParticipationController.hasConsent() else {
+            task.setTaskCompleted(success: true)
+            return
+        }
         scheduleBackgroundSync()
 
         let manager = AWARESensorManager.shared()
@@ -116,8 +111,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func applicationDidEnterBackground(_ application: UIApplication) {
         IOSESM.setESMAppearedState(false)
         UIApplication.shared.applicationIconBadgeNumber = 0
-        scheduleBackgroundSync()
-        scheduleBackgroundRefresh()
+        if StudyParticipationController.hasConsent() {
+            scheduleBackgroundSync()
+            scheduleBackgroundRefresh()
+        }
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationDidEnterBackground:"]);
     }
@@ -172,19 +169,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
              study.join(withURL: studyURL) { (settings, status, error) in
                 if status == AwareStudyStateUpdate || status == AwareStudyStateNew {
                     let core = AWARECore.shared()
-                    core.requestPermissionForPushNotification { (notifState, error) in
-                        core.requestPermissionForBackgroundSensing{ (locStatus) in
-                            core.activate()
-                            let manager = AWARESensorManager.shared()
-                            manager.stopAndRemoveAllSensors()
-                            AWARESlimConfiguration.apply()
-                            manager.addSensors(with: study)
-                            if let fitbit = manager.getSensor(SENSOR_PLUGIN_FITBIT) as? Fitbit {
-                                fitbit.viewController = self.window?.rootViewController
-                            }
-                            manager.add(AWAREEventLogger.shared())
-                            manager.startAllSensors()
-                            manager.createDBTablesOnAwareServer()
+                    guard StudyParticipationController.hasConsent() else { return }
+                    core.requestPermissionForPushNotification { (_, _) in
+                        core.requestPermissionForBackgroundSensing { _ in
+                            StudyParticipationController.refreshCollectionState(
+                                fitbitPresenter: self.window?.rootViewController,
+                                createRemoteTables: true
+                            )
                         }
                     }
                 }else {
@@ -241,6 +232,67 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
+}
+
+enum StudyParticipationController {
+
+    static let consentKey = "com.studytrace.user-consented"
+    static let consentTimestampKey = "com.studytrace.consent-timestamp"
+
+    static func hasConsent() -> Bool {
+        UserDefaults.standard.bool(forKey: consentKey)
+    }
+
+    static func recordConsentGranted() {
+        UserDefaults.standard.set(true, forKey: consentKey)
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: consentTimestampKey)
+    }
+
+    static func revokeParticipation(clearStudySettings: Bool) {
+        UserDefaults.standard.set(false, forKey: consentKey)
+        UserDefaults.standard.removeObject(forKey: consentTimestampKey)
+
+        let manager = AWARESensorManager.shared()
+        manager.stopAutoSyncTimer()
+        manager.stopAndRemoveAllSensors()
+        AWARECore.shared().deactivate()
+
+        SpecificAppUsageManager.shared.resetMonitoringAndSelection()
+        ScreenTimeUsageStore.shared.clear()
+
+        manager.removeAllFilesFromDocumentRoot()
+        if clearStudySettings {
+            AWAREStudy.shared().clearSettings()
+        }
+    }
+
+    static func refreshCollectionState(fitbitPresenter: UIViewController?, createRemoteTables: Bool) {
+        let manager = AWARESensorManager.shared()
+        let study = AWAREStudy.shared()
+        let core = AWARECore.shared()
+
+        manager.stopAutoSyncTimer()
+        manager.stopAndRemoveAllSensors()
+        core.deactivate()
+
+        guard hasConsent() else { return }
+
+        AWARESlimConfiguration.apply()
+        manager.addSensors(with: study)
+        guard manager.getAllSensors().count > 0 else { return }
+
+        core.setAnchor()
+        if let fitbit = manager.getSensor(SENSOR_PLUGIN_FITBIT) as? Fitbit {
+            fitbit.viewController = fitbitPresenter
+        }
+        manager.add(AWAREEventLogger.shared())
+        core.activate()
+        manager.startAllSensors()
+
+        if createRemoteTables, let studyURL = study.getURL(), !studyURL.isEmpty {
+            manager.createDBTablesOnAwareServer()
+        }
+    }
 }
 
 extension AppDelegate : UNUserNotificationCenterDelegate {

@@ -19,16 +19,29 @@ class StudyTraceTests: XCTestCase {
         // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
-    func testExample() {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+    func testNormalizedSecureStudyURLAcceptsSecureSchemes() {
+        let viewController = UIViewController()
+
+        XCTAssertEqual(
+            viewController.normalizedSecureStudyURL("https://example.com/study"),
+            "https://example.com/study"
+        )
+        XCTAssertEqual(
+            viewController.normalizedSecureStudyURL("aware-ssl://example.com/study"),
+            "https://example.com/study"
+        )
+        XCTAssertEqual(
+            viewController.normalizedSecureStudyURL("aware://example.com/study"),
+            "https://example.com/study"
+        )
     }
 
-    func testPerformanceExample() {
-        // This is an example of a performance test case.
-        self.measure {
-            // Put the code you want to measure the time of here.
-        }
+    func testNormalizedSecureStudyURLRejectsInsecureOrInvalidSchemes() {
+        let viewController = UIViewController()
+
+        XCTAssertNil(viewController.normalizedSecureStudyURL("http://example.com/study"))
+        XCTAssertNil(viewController.normalizedSecureStudyURL("ftp://example.com/study"))
+        XCTAssertNil(viewController.normalizedSecureStudyURL("not a url"))
     }
 
 }

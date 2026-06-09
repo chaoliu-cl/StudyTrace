@@ -59,8 +59,7 @@ class OnboardingManager: NSObject {
                 body: NSLocalizedString("onboarding_consent_body", comment: ""),
                 buttonTitle: NSLocalizedString("onboarding_consent_agree", comment: ""),
                 action: {
-                    UserDefaults.standard.set(true, forKey: "com.studytrace.user-consented")
-                    UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "com.studytrace.consent-timestamp")
+                    StudyParticipationController.recordConsentGranted()
                 },
                 isConsent: true,
                 declineTitle: NSLocalizedString("onboarding_consent_decline", comment: "")
@@ -253,7 +252,14 @@ class OnboardingPageViewController: UIViewController {
 
         if page.isFinal {
             dismiss(animated: true) {
-                _ = LocationPermissionManager().isAuthorizedAlways(with: self.presentingViewController ?? self)
+                let presenter = self.presentingViewController ?? self
+                if StudyParticipationController.hasConsent() {
+                    StudyParticipationController.refreshCollectionState(
+                        fitbitPresenter: presenter,
+                        createRemoteTables: !(AWAREStudy.shared().getURL() ?? "").isEmpty
+                    )
+                    _ = LocationPermissionManager().isAuthorizedAlways(with: presenter)
+                }
             }
             return
         }
@@ -282,7 +288,7 @@ class OnboardingPageViewController: UIViewController {
         )
         alert.addAction(UIAlertAction(title: "Go Back", style: .cancel))
         alert.addAction(UIAlertAction(title: "Decline", style: .destructive) { _ in
-            UserDefaults.standard.set(false, forKey: "com.studytrace.user-consented")
+            StudyParticipationController.revokeParticipation(clearStudySettings: false)
             AWAREEventLogger.shared().logEvent(["class": "OnboardingManager", "event": "consent_declined"])
             self.dismiss(animated: true)
         })
@@ -306,4 +312,3 @@ extension UIImage {
         return UIGraphicsGetImageFromCurrentImageContext()
     }
 }
-

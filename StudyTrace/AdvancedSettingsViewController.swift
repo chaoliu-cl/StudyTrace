@@ -136,14 +136,18 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
             let alert = UIAlertController(title: "Turn On or Off automatic data upload to a remote server?", message: "The current status is \(AWAREStudy.shared().isAutoDBSync() ? "On" :"Off" )", preferredStyle: .actionSheet)
             alert.addAction(UIAlertAction(title: "On", style: .default, handler: { (action) in
                 AWAREStudy.shared().setAutoDBSync(true)
-                AWARECore.shared().deactivate()
-                AWARECore.shared().activate()
+                StudyParticipationController.refreshCollectionState(
+                    fitbitPresenter: self,
+                    createRemoteTables: !(AWAREStudy.shared().getURL() ?? "").isEmpty
+                )
                 self.refresh()
             }))
             alert.addAction(UIAlertAction(title: "Off", style: .default, handler: { (action) in
                 AWAREStudy.shared().setAutoDBSync(false)
-                AWARECore.shared().deactivate()
-                AWARECore.shared().activate()
+                StudyParticipationController.refreshCollectionState(
+                    fitbitPresenter: self,
+                    createRemoteTables: !(AWAREStudy.shared().getURL() ?? "").isEmpty
+                )
                 self.refresh()
             }))
             alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel, handler: nil))
@@ -255,7 +259,7 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
         case AdvancedSettingsIdentifiers.quit.rawValue:
             let alert = UIAlertController(title: row.title, message: "Are you sure to quit this study? If you quit this study, all of the study settings will be removed.", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Quit", style: .destructive, handler: { (action) in
-                AWAREStudy.shared().clearSettings()
+                StudyParticipationController.revokeParticipation(clearStudySettings: true)
                 self.refresh()
             }))
             alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel, handler: nil))

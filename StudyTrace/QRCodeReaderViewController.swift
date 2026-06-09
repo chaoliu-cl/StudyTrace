@@ -175,8 +175,6 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
     @IBAction func didPushJoinButton(_ sender: UIButton) {
         if let qr = qrcode {
             let study   = AWAREStudy.shared()
-            let manager = AWARESensorManager.shared()
-            let core    = AWARECore.shared()
             
             switch scannedContent {
             case .url:
@@ -199,22 +197,23 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                         default:
                             break
                         }
-                        
-                        core.requestPermissionForPushNotification { (notifState, error) in
-                            core.requestPermissionForBackgroundSensing{ (locStatus) in
-                                core.activate()
-                                manager.stopAndRemoveAllSensors()
-                                AWARESlimConfiguration.apply()
-                                manager.addSensors(with: study)
-                                if let fitbit = manager.getSensor(SENSOR_PLUGIN_FITBIT) as? Fitbit {
-                                    fitbit.viewController = self
+
+                        if StudyParticipationController.hasConsent() {
+                            let core = AWARECore.shared()
+                            core.requestPermissionForPushNotification { (_, _) in
+                                core.requestPermissionForBackgroundSensing { _ in
+                                    StudyParticipationController.refreshCollectionState(
+                                        fitbitPresenter: self,
+                                        createRemoteTables: true
+                                    )
+                                    self.dismiss(animated: true) {
+                                        self.dismissIndicator()
+                                    }
                                 }
-                                manager.add(AWAREEventLogger.shared())
-                                manager.startAllSensors()
-                                manager.createDBTablesOnAwareServer()
-                                self.dismiss(animated: true) {
-                                    self.dismissIndicator()
-                                }
+                            }
+                        } else {
+                            self.dismiss(animated: true) {
+                                self.dismissIndicator()
                             }
                         }
                     }
@@ -241,18 +240,10 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                                                               handler: { (action) in
                                     self.dismiss(animated: true) {}
                                     AWAREStudy.shared().setSetting(AWARE_PREFERENCES_STATUS_PLUGIN_IOS_ESM, value: true as NSObject)
-                                    
-                                    AWARECore.shared().activate()
-                                    let manager = AWARESensorManager.shared()
-                                    manager.stopAndRemoveAllSensors()
-                                    AWARESlimConfiguration.apply()
-                                    manager.addSensors(with: AWAREStudy.shared())
-                                    manager.add(AWAREEventLogger.shared())
-                                    manager.createDBTablesOnAwareServer()
-                                    if let fitbit = manager.getSensor(SENSOR_PLUGIN_FITBIT) as? Fitbit {
-                                        fitbit.viewController = self
-                                    }
-                                    manager.startAllSensors()
+                                    StudyParticipationController.refreshCollectionState(
+                                        fitbitPresenter: self,
+                                        createRemoteTables: !(AWAREStudy.shared().getURL() ?? "").isEmpty
+                                    )
                                 }))
                                 self.present(alert, animated: true) { }
                             }else{

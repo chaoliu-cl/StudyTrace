@@ -112,7 +112,9 @@ class ESMViewController: UIViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(willEnterForegroundNotification(notification:)), name: UIApplication.willEnterForegroundNotification, object: nil)
         self.checkESMSchedules()
         self.hideContextViewIfNeeded()
-        _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        if StudyParticipationController.hasConsent() {
+            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        }
     }
     
     override func viewDidDisappear(_ animated: Bool) {
@@ -121,7 +123,9 @@ class ESMViewController: UIViewController {
     
     @objc func willEnterForegroundNotification(notification: NSNotification) {
         self.checkESMSchedules()
-        _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        if StudyParticipationController.hasConsent() {
+            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        }
     }
     
     func checkESMSchedules(){

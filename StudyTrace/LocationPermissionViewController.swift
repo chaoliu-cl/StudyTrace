@@ -60,6 +60,9 @@ public class LocationPermissionManager{
     private let locationManager = CLLocationManager()
 
     func isAuthorizedAlways(with vc: UIViewController) -> Bool {
+        guard StudyParticipationController.hasConsent() else {
+            return false
+        }
         let status = locationManager.authorizationStatus
         if status == .authorizedAlways {
             return true
