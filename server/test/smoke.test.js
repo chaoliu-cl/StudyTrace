@@ -196,6 +196,35 @@ try {
   assert.strictEqual(awareView.json[0].timestamp, 555, 'shared storage across front-ends');
   console.log('✓ AWARE and generic front-ends share the same storage');
 
+  // ---- Admin data export ----------------------------------------------------
+  const adminHdr = { 'x-admin-token': 'test-admin-token' };
+
+  // 18. export requires admin token.
+  const expNoAuth = await request('GET', `/admin/export/steps`);
+  assert.strictEqual(expNoAuth.status, 403, 'export requires admin token');
+  console.log('✓ export rejects without admin token');
+
+  // 19. list sensors includes tables we wrote to.
+  const sensorsList = await request('GET', `/admin/sensors`, { headers: adminHdr });
+  assert.strictEqual(sensorsList.status, 200, 'list sensors ok');
+  const names = sensorsList.json.sensors.map((s) => s.sensor);
+  assert.ok(names.includes('steps'), 'steps listed');
+  console.log('✓ admin lists sensors:', names.join(', '));
+
+  // 20. JSON export returns the stored rows.
+  const expJson = await request('GET', `/admin/export/steps?format=json`, { headers: adminHdr });
+  assert.strictEqual(expJson.status, 200, 'json export ok');
+  assert.ok(expJson.json.rows.length >= 1, 'json export has rows');
+  assert.strictEqual(expJson.json.rows[0].data.count, 1200, 'json export row payload');
+  console.log('✓ admin JSON export rows:', expJson.json.count);
+
+  // 21. CSV export flattens data keys into columns.
+  const expCsv = await request('GET', `/admin/export/steps?format=csv`, { headers: adminHdr });
+  assert.strictEqual(expCsv.status, 200, 'csv export ok');
+  assert.ok(/^id,device_id,timestamp,.*created_at/m.test(expCsv.json), 'csv header present');
+  assert.ok(/\b1200\b/.test(expCsv.json), 'csv contains the value');
+  console.log('✓ admin CSV export header + values present');
+
   console.log('\nALL SMOKE TESTS PASSED');
   server.close();
   process.exit(0);

@@ -176,3 +176,43 @@ export async function tableExists(table) {
   const { rows } = await getPool().query(`SELECT to_regclass($1) AS reg`, [table]);
   return rows[0].reg !== null;
 }
+
+// List the sensor data tables (aware_*) with row counts, for data export/admin.
+export async function listSensorTables() {
+  const { rows } = await getPool().query(
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = current_schema()
+     ORDER BY table_name`
+  );
+  // Filter to our sensor tables and attach counts.
+  const sensors = [];
+  for (const r of rows) {
+    const t = r.table_name;
+    if (!t.startsWith('aware_')) continue;
+    const { rows: c } = await getPool().query(`SELECT count(*)::int AS n FROM ${t}`);
+    sensors.push({ sensor: t.replace(/^aware_/, ''), table: t, rows: c[0].n });
+  }
+  return sensors;
+}
+
+// Page through rows of a sensor table for export. Returns the stored JSON rows
+// plus their device_id/timestamp, ordered for stable pagination.
+export async function exportRows(table, { deviceId, limit, offset } = {}) {
+  const params = [];
+  let where = '';
+  if (deviceId) {
+    params.push(deviceId);
+    where = `WHERE device_id = $${params.length}`;
+  }
+  params.push(Math.min(Math.max(Number(limit) || 1000, 1), 10000));
+  const limitClause = `LIMIT $${params.length}`;
+  params.push(Math.max(Number(offset) || 0, 0));
+  const offsetClause = `OFFSET $${params.length}`;
+  const { rows } = await getPool().query(
+    `SELECT id, device_id, timestamp, data, created_at
+     FROM ${table} ${where}
+     ORDER BY id ASC ${limitClause} ${offsetClause}`,
+    params
+  );
+  return rows;
+}

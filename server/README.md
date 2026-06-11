@@ -179,6 +179,36 @@ SELECT * FROM devices;          -- enrolled devices + participant ids
 SELECT study_id, name FROM studies;
 ```
 
+## Export data (admin API)
+
+For analysis without direct SQL access, two admin endpoints (guarded by
+`x-admin-token: $ADMIN_TOKEN`) list and export collected data.
+
+List sensors with row counts:
+
+```bash
+curl https://YOUR-APP.up.railway.app/admin/sensors \
+  -H "x-admin-token: $ADMIN_TOKEN"
+# { "ok": true, "sensors": [ { "sensor": "locations", "table": "aware_locations", "rows": 1234 }, ... ] }
+```
+
+Export one sensor's rows. `format=json` (default) or `format=csv`; optional
+`device_id`, `limit` (max 10000), and `offset` for paging:
+
+```bash
+# JSON
+curl "https://YOUR-APP.up.railway.app/admin/export/locations?limit=5000&offset=0" \
+  -H "x-admin-token: $ADMIN_TOKEN"
+
+# CSV (flattens the JSON payload into columns; downloads as locations.csv)
+curl "https://YOUR-APP.up.railway.app/admin/export/locations?format=csv&device_id=dev-1" \
+  -H "x-admin-token: $ADMIN_TOKEN" -o locations.csv
+```
+
+CSV columns are `id, device_id, timestamp, <union of payload keys>, created_at`.
+Page with `limit`/`offset` for large datasets.
+
+
 ## Local development
 
 ```bash
