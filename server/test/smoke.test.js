@@ -60,6 +60,15 @@ const form = (obj) =>
   Object.entries(obj).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 const formHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };
 
+// Generic request helper for the JSON API (any method).
+async function request(method, path, { body, headers } = {}) {
+  const res = await fetch(base + path, { method, headers, body });
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch { json = text; }
+  return { status: res.status, json };
+}
+
 try {
   // 1. Provision a study via admin.
   const admin = await post('/admin/studies',
@@ -118,6 +127,74 @@ try {
   const afterClear = await post(`${studyPath}/locations/latest`, form({ device_id: 'dev-1' }), formHeaders);
   assert.deepStrictEqual(afterClear.json, [], 'empty after clear');
   console.log('✓ clear_table empties rows');
+
+  // ---- Generic JSON API (protocol-neutral front-end) ------------------------
+  const apiBase = `/api/v1/studies/demo`;
+  const jsonAuth = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer secret',
+  };
+
+  // 9. Missing credentials -> 401.
+  const noAuth = await request('POST', `${apiBase}/sensors/heartrate/data`,
+    { body: JSON.stringify({ device_id: 'dev-1', rows: [{ timestamp: 1, bpm: 60 }] }),
+      headers: { 'Content-Type': 'application/json' } });
+  assert.strictEqual(noAuth.status, 401, 'generic api requires credentials');
+  console.log('✓ generic API rejects missing credentials');
+
+  // 10. Wrong password -> 403.
+  const wrongPw = await request('POST', `${apiBase}/sensors/heartrate/data`,
+    { body: JSON.stringify({ device_id: 'dev-1', rows: [{ timestamp: 1, bpm: 60 }] }),
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer nope' } });
+  assert.strictEqual(wrongPw.status, 403, 'generic api rejects wrong password');
+  console.log('✓ generic API rejects wrong password');
+
+  // 11. Insert via {device_id, rows:[...]}.
+  const gIns = await request('POST', `${apiBase}/sensors/heartrate/data`,
+    { body: JSON.stringify({ device_id: 'dev-1', rows: [
+      { timestamp: 100, bpm: 60 }, { timestamp: 200, bpm: 72 }, { timestamp: 300, bpm: 68 },
+    ] }), headers: jsonAuth });
+  assert.strictEqual(gIns.status, 201, 'generic insert ok');
+  assert.strictEqual(gIns.json.inserted, 3, 'generic inserted 3');
+  console.log('✓ generic API insert:', gIns.json.inserted);
+
+  // 12. Bearer auth also works as x-study-password header + bare array body.
+  const gIns2 = await request('POST', `${apiBase}/sensors/heartrate/data`,
+    { body: JSON.stringify([{ timestamp: 400, bpm: 80, device_id: 'dev-1' }]),
+      headers: { 'Content-Type': 'application/json', 'x-study-password': 'secret', 'x-device-id': 'dev-1' } });
+  assert.strictEqual(gIns2.status, 201, 'generic insert (array + header auth) ok');
+  console.log('✓ generic API accepts bare array + x-study-password');
+
+  // 13. count.
+  const gCount = await request('GET', `${apiBase}/sensors/heartrate/count?device_id=dev-1`, { headers: jsonAuth });
+  assert.strictEqual(gCount.json.count, 4, 'generic count = 4');
+  console.log('✓ generic API count =', gCount.json.count);
+
+  // 14. latest.
+  const gLatest = await request('GET', `${apiBase}/sensors/heartrate/latest?device_id=dev-1`, { headers: jsonAuth });
+  assert.strictEqual(gLatest.json.latest.timestamp, 400, 'generic latest newest');
+  console.log('✓ generic API latest ts =', gLatest.json.latest.timestamp);
+
+  // 15. invalid sensor name -> 400.
+  const gBad = await request('POST', `${apiBase}/sensors/bad-name!/data`,
+    { body: JSON.stringify({ device_id: 'dev-1', rows: [{ timestamp: 1 }] }), headers: jsonAuth });
+  assert.strictEqual(gBad.status, 400, 'generic invalid sensor rejected');
+  console.log('✓ generic API rejects invalid sensor name');
+
+  // 16. delete clears device rows.
+  const gDel = await request('DELETE', `${apiBase}/sensors/heartrate/data?device_id=dev-1`, { headers: jsonAuth });
+  assert.strictEqual(gDel.status, 200, 'generic delete ok');
+  const gCount2 = await request('GET', `${apiBase}/sensors/heartrate/count?device_id=dev-1`, { headers: jsonAuth });
+  assert.strictEqual(gCount2.json.count, 0, 'empty after delete');
+  console.log('✓ generic API delete clears rows');
+
+  // 17. AWARE and generic share storage: data inserted via generic API is
+  //     readable through the AWARE latest endpoint (same table).
+  await request('POST', `${apiBase}/sensors/steps/data`,
+    { body: JSON.stringify({ device_id: 'dev-2', rows: [{ timestamp: 555, count: 1200 }] }), headers: jsonAuth });
+  const awareView = await post(`${studyPath}/steps/latest`, form({ device_id: 'dev-2' }), formHeaders);
+  assert.strictEqual(awareView.json[0].timestamp, 555, 'shared storage across front-ends');
+  console.log('✓ AWARE and generic front-ends share the same storage');
 
   console.log('\nALL SMOKE TESTS PASSED');
   server.close();

@@ -1,12 +1,40 @@
-# StudyTrace AWARE Server
+# StudyTrace Server
 
-A minimal, AWARE-compatible data collection server for the StudyTrace iOS
-client, designed to deploy on [Railway](https://railway.app) with a managed
-PostgreSQL database.
+A small, self-hostable data collection server for study/sensor data, designed
+to deploy on [Railway](https://railway.app) with a managed PostgreSQL database.
 
-The StudyTrace app embeds `AWAREFramework` 1.14.x, which uploads sensor data
-using the classic AWARE REST protocol. This server implements the subset that
-the client actually calls:
+It stores time-series data in PostgreSQL and exposes it through two
+interchangeable ingestion front-ends over the **same** storage:
+
+- **AWARE protocol** — what the StudyTrace iOS client speaks out of the box
+  (the app embeds `AWAREFramework` 1.14.x). Mounted at `/index.php/webservice/…`.
+- **Generic JSON API** — a protocol-neutral REST interface for any other data
+  source (a custom app, a logging script, another framework). Mounted at
+  `/api/v1`.
+
+This server is **one reference option, not a requirement.** Researchers are
+free to:
+
+- use this server with the StudyTrace app over the AWARE protocol,
+- send data from any other client via the generic JSON API,
+- or point the StudyTrace app at a completely different AWARE-compatible
+  server (e.g. the official AWARE server, or their own). The app's Study URL
+  field accepts any HTTPS host.
+
+Both front-ends are equivalent doors into the same per-sensor tables, so you
+can mix them (e.g. collect from the app via AWARE and from a wearable bridge
+via the generic API into the same study).
+
+## Storage model
+
+Each sensor gets its own Postgres table (`aware_<sensor>`), storing the
+`device_id`, `timestamp`, and the full original JSON row as `JSONB`. This
+preserves every field a client sends without per-sensor schemas. Study and
+device metadata live in the `studies` and `devices` tables.
+
+## AWARE protocol front-end
+
+The subset the StudyTrace client calls:
 
 | Client action        | Request                                                                 |
 |----------------------|-------------------------------------------------------------------------|
@@ -16,15 +44,40 @@ the client actually calls:
 | Latest row (sync)    | `POST …/{table}/latest` body `device_id=…`                              |
 | Clear table          | `POST …/{table}/clear_table` body `device_id=…`                         |
 
-Each sensor gets its own Postgres table (`aware_<sensor>`), storing the
-`device_id`, `timestamp`, and the full original JSON row as `JSONB`. This
-preserves every field the client sends without per-sensor schemas.
+## Generic JSON API front-end
+
+Protocol-neutral REST over the same storage. Authenticate with the study
+password as a Bearer token (`Authorization: Bearer <password>`) or an
+`x-study-password` header. Base: `/api/v1/studies/{STUDY_ID}`.
+
+| Action        | Request                                                                              |
+|---------------|--------------------------------------------------------------------------------------|
+| Insert data   | `POST   /api/v1/studies/{id}/sensors/{sensor}/data` body `{ "device_id": "...", "rows": [ {...} ] }` |
+| Latest row    | `GET    /api/v1/studies/{id}/sensors/{sensor}/latest?device_id=...`                  |
+| Row count     | `GET    /api/v1/studies/{id}/sensors/{sensor}/count?device_id=...`                   |
+| Clear data    | `DELETE /api/v1/studies/{id}/sensors/{sensor}/data?device_id=...`                    |
+
+The insert body also accepts a bare JSON array of rows, or a single row object.
+`device_id` may be given in the body, the `device_id` query param, or an
+`x-device-id` header.
+
+Example:
+
+```bash
+curl -X POST https://YOUR-APP.up.railway.app/api/v1/studies/pilot1/sensors/heartrate/data \
+  -H "Authorization: Bearer choose-a-strong-password" \
+  -H "Content-Type: application/json" \
+  -d '{"device_id":"watch-1","rows":[{"timestamp":1719000000000,"bpm":62}]}'
+```
 
 ## Architecture
 
-- **Node.js + Express** — the REST API (`src/appFactory.js`, booted by `src/index.js`).
-- **PostgreSQL** — persistence (`src/db.js`), tables created on demand.
-- **Study config** — returned on join (`src/studyConfig.js`).
+- **Node.js + Express** — `src/appFactory.js` composes shared infra (health,
+  admin) with the two front-end routers; `src/index.js` boots it.
+- **`src/awareApi.js`** — AWARE protocol router.
+- **`src/genericApi.js`** — generic JSON API router.
+- **`src/db.js`** — PostgreSQL storage shared by both; tables created on demand.
+- **`src/studyConfig.js`** — config returned to AWARE clients on join.
 
 ## Deploy on Railway
 
@@ -89,9 +142,15 @@ Response:
 ```json
 {
   "status": true,
-  "study_url": "https://YOUR-APP.up.railway.app/index.php/webservice/index/pilot1/choose-a-strong-password"
+  "study_id": "pilot1",
+  "study_url": "https://YOUR-APP.up.railway.app/index.php/webservice/index/pilot1/choose-a-strong-password",
+  "api_base": "https://YOUR-APP.up.railway.app/api/v1/studies/pilot1"
 }
 ```
+
+- `study_url` — paste/QR into the StudyTrace app (AWARE protocol).
+- `api_base` — base path for the generic JSON API (use the study password as a
+  Bearer token).
 
 ## Connect the app
 

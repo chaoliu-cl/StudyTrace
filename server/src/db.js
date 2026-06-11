@@ -135,6 +135,24 @@ export async function clearTable(table, deviceId) {
   await getPool().query(`DELETE FROM ${table} WHERE device_id = $1`, [deviceId]);
 }
 
+// Row count for a table, optionally scoped to a device. Returns 0 if the table
+// does not exist yet.
+export async function countRows(table, deviceId) {
+  try {
+    if (deviceId) {
+      const { rows } = await getPool().query(
+        `SELECT count(*)::int AS n FROM ${table} WHERE device_id = $1`,
+        [deviceId]
+      );
+      return rows[0].n;
+    }
+    const { rows } = await getPool().query(`SELECT count(*)::int AS n FROM ${table}`);
+    return rows[0].n;
+  } catch {
+    return 0;
+  }
+}
+
 export async function upsertDevice(deviceId, studyId, participant) {
   await getPool().query(
     `INSERT INTO devices (device_id, study_id, participant)
