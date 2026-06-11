@@ -108,28 +108,6 @@ class SensorSettingViewController: UIViewController {
                                                key: AWARE_PREFERENCES_FREQUENCY_HZ_LINEAR_ACCELEROMETER,
                                                defaultValue: "5"))
                 break
-            case SENSOR_IOS_ACTIVITY_RECOGNITION:
-                settings.append(SettingContent(type: .bool,
-                                               key: AWARE_PREFERENCES_STATUS_IOS_ACTIVITY_RECOGNITION,
-                                               defaultValue: "false"))
-                settings.append(SettingContent(type: .int,
-                                               key: AWARE_PREFERENCES_FREQUENCY_IOS_ACTIVITY_RECOGNITION,
-                                               defaultValue: "300"))
-                settings.append(SettingContent(type: .int,
-                                               key: AWARE_PREFERENCES_PREPERIOD_DAYS_IOS_ACTIVITY_RECOGNITION,
-                                               defaultValue: "0"))
-                break
-            case SENSOR_PLUGIN_PEDOMETER:
-                settings.append(SettingContent(type: .bool,
-                                               key: AWARE_PREFERENCES_STATUS_PEDOMETER,
-                                               defaultValue: "false"))
-                settings.append(SettingContent(type: .int,
-                                               key: AWARE_PREFERENCES_FREQUENCY_PEDOMETER,
-                                               defaultValue: "180"))
-                settings.append(SettingContent(type: .int,
-                                               key: AWARE_PREFERENCES_PREPERIOD_DAYS_PEDOMETER,
-                                               defaultValue: "0"))
-                break
             case SENSOR_LOCATIONS:
                 settings.append(SettingContent(type: .bool,
                                                key: AWARE_PREFERENCES_STATUS_LOCATION_GPS,
@@ -164,14 +142,6 @@ class SensorSettingViewController: UIViewController {
                                                key: AWARE_PREFERENCES_STATUS_CALLS,
                                                defaultValue: "false"))
                 break
-            case SENSOR_BLUETOOTH:
-                settings.append(SettingContent(type: .bool,
-                                               key: AWARE_PREFERENCES_STATUS_BLUETOOTH,
-                                               defaultValue: "false"))
-                settings.append(SettingContent(type: .int,
-                                               key: AWARE_PREFERENCES_FREQUENCY_BLUETOOTH,
-                                               defaultValue: "300"))
-                break
             case SENSOR_PROCESSOR:
                 settings.append(SettingContent(type: .bool,
                                                key: AWARE_PREFERENCES_STATUS_PROCESSOR,
@@ -200,30 +170,6 @@ class SensorSettingViewController: UIViewController {
                 settings.append(SettingContent(type: .bool,
                                                key: AWARE_PREFERENCES_STATUS_SCREEN,
                                                defaultValue: "false"))
-                break
-            case SENSOR_PLUGIN_BLE_HR:
-                settings.append(SettingContent(type: .bool,
-                                               key: AWARE_PREFERENCES_STATUS_BLE_HR,
-                                               defaultValue: "false"))
-                settings.append(SettingContent(type: .int,
-                                               key: AWARE_PREFERENCES_PLUGIN_BLE_HR_INTERVAL_TIME_MIN,
-                                               defaultValue: "5"))
-                settings.append(SettingContent(type: .int,
-                                               key: AWARE_PREFERENCES_PLUGIN_BLE_HR_ACTIVE_TIME_SEC,
-                                               defaultValue: "30"))
-                break
-            case SENSOR_PLUGIN_CALENDAR:
-                settings.append(SettingContent(type: .bool,
-                                               key: "status_plugin_calendar",
-                                               defaultValue: "false"))
-                break
-            case SENSOR_PLUGIN_CONTACTS:
-                settings.append(SettingContent(type: .bool,
-                                               key: AWARE_PREFERENCES_STATUS_CONTACTS,
-                                               defaultValue: "false"))
-                settings.append(SettingContent(type: .int,
-                                               key: KEY_PLUGIN_SETTING_CONTACTS_UPDATE_FREQUENCY_DAY,
-                                               defaultValue: "1"))
                 break
             case SENSOR_PLUGIN_FITBIT:
                 settings.append(SettingContent(type: .bool,
@@ -271,22 +217,6 @@ class SensorSettingViewController: UIViewController {
                                                key: AWARE_PREFERENCES_FREQUENCY_GOOGLE_FUSED_LOCATION,
                                                defaultValue: "180"))
                 break
-            case SENSOR_HEALTH_KIT:
-                settings.append(SettingContent(type: .bool,
-                                               key: STATUS_SENSOR_HEALTH_KIT,
-                                               defaultValue: "false"))
-                settings.append(SettingContent(type: .int,
-                                               key: AWARE_PREFERENCES_PLUGIN_HEALTHKIT_FREQUENCY,
-                                               defaultValue: "1800"))
-                settings.append(SettingContent(type: .int,
-                                               key: AWARE_PREFERENCES_PLUGIN_HEALTHKIT_PREPERIOD_DAYS,
-                                               defaultValue: "0"))
-                break
-            case SENSOR_PLUGIN_CALENDAR_ESM_SCHEDULER:
-                settings.append(SettingContent(type: .bool,
-                                               key: AWARE_PREFERENCES_STATUS_CALENDAR_ESM,
-                                               defaultValue: "false"))
-                break
             case SENSOR_PLUGIN_DEVICE_USAGE:
                 settings.append(SettingContent(type: .bool,
                                                key: AWARE_PREFERENCES_STATUS_DEVICE_USAGE,
@@ -303,10 +233,6 @@ class SensorSettingViewController: UIViewController {
                 settings.append(SettingContent(type: .string,
                                                key: AWARE_PREFERENCES_SERVER_PUSH_NOTIFICATION,
                                                defaultValue: ""))
-            case SENSOR_PLUGIN_HEADPHONE_MOTION:
-                settings.append(SettingContent(type: .bool,
-                                               key: AWARE_PREFERENCES_STATUS_PLUGIN_HEADPHONE_MOTION,
-                                               defaultValue: "false"))
             default:
                 break
             }

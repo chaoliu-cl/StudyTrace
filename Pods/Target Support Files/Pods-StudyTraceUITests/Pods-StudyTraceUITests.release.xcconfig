@@ -2,7 +2,7 @@ CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = NO
 FRAMEWORK_SEARCH_PATHS = $(inherited) "${PODS_CONFIGURATION_BUILD_DIR}/AWAREFramework" "${PODS_CONFIGURATION_BUILD_DIR}/DGCharts" "${PODS_CONFIGURATION_BUILD_DIR}/DynamicColor"
 GCC_PREPROCESSOR_DEFINITIONS = $(inherited) COCOAPODS=1
 HEADER_SEARCH_PATHS = $(inherited) "${PODS_CONFIGURATION_BUILD_DIR}/AWAREFramework/AWAREFramework.framework/Headers" "${PODS_CONFIGURATION_BUILD_DIR}/DGCharts/DGCharts.framework/Headers" "${PODS_CONFIGURATION_BUILD_DIR}/DynamicColor/DynamicColor.framework/Headers"
-OTHER_LDFLAGS = $(inherited) -framework "AVFoundation" -framework "Accelerate" -framework "AudioToolbox" -framework "CoreBluetooth" -framework "CoreData" -framework "CoreLocation" -framework "CoreMotion" -framework "CoreTelephony" -framework "DGCharts" -framework "DynamicColor" -framework "EventKit" -framework "EventKitUI" -framework "GLKit" -framework "HealthKit" -framework "MapKit" -framework "UIKit" -framework "UserNotifications"
+OTHER_LDFLAGS = $(inherited) -framework "AVFoundation" -framework "Accelerate" -framework "AudioToolbox" -framework "CoreData" -framework "CoreLocation" -framework "CoreMotion" -framework "CoreTelephony" -framework "DGCharts" -framework "DynamicColor" -framework "GLKit" -framework "MapKit" -framework "UIKit" -framework "UserNotifications"
 PODS_BUILD_DIR = ${BUILD_DIR}
 PODS_CONFIGURATION_BUILD_DIR = ${PODS_BUILD_DIR}/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)
 PODS_PODFILE_DIR_PATH = ${SRCROOT}/.

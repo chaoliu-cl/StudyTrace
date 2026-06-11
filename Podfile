@@ -7,12 +7,18 @@ target 'StudyTrace' do
 
   # Pods for StudyTrace
   pod 'AWAREFramework', '~> 1.14.5'
+  # The following subspecs are intentionally NOT included: StudyTrace does not
+  # collect Motion/Activity, Bluetooth, Calendar, Contacts, or HealthKit data.
+  # Linking them would pull in CoreMotion/CoreBluetooth/EventKit/Contacts/
+  # HealthKit and require matching Info.plist usage strings (and invite App
+  # Review questions about unused permissions). Re-enable a line only if you
+  # start collecting that data and add the corresponding NS*UsageDescription.
   # pod 'AWAREFramework/Microphone' , '~> 1.14.5'  # Disabled: StudentLifeAudio lacks arm64-simulator slice
-  pod 'AWAREFramework/MotionActivity', '~> 1.14.5'
-  pod 'AWAREFramework/Bluetooth', '~> 1.14.5'
-  pod 'AWAREFramework/Calendar', '~> 1.14.5'
-  pod 'AWAREFramework/Contact', '~> 1.14.5'
-  pod 'AWAREFramework/HealthKit', '~> 1.14.5'
+  # pod 'AWAREFramework/MotionActivity', '~> 1.14.5'
+  # pod 'AWAREFramework/Bluetooth', '~> 1.14.5'
+  # pod 'AWAREFramework/Calendar', '~> 1.14.5'
+  # pod 'AWAREFramework/Contact', '~> 1.14.5'
+  # pod 'AWAREFramework/HealthKit', '~> 1.14.5'
   
 #  pod 'AWAREFramework'               , :path => '../AWAREFramework-iOS'
 #  pod 'AWAREFramework/Microphone'    , :path => '../AWAREFramework-iOS'

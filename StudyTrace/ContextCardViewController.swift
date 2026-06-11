@@ -401,30 +401,8 @@ class ContextCardViewController: UIViewController {
         }
     }
     
-    func addHealthKitCard(){
-        if let sensor = AWARESensorManager.shared().getSensor(SENSOR_HEALTH_KIT) as? AWAREHealthKit{
-            // HKQuantityTypeIdentifierHeartRate
-            let quantity = sensor.awareHKHeartRate
-            let contextCard = ScatterChartCard(frame: CGRect(x:0, y:0,
-                                                             width: self.view.frame.width,
-                                                             height:300))
-            contextCard.xAxisLabels = ["0","6","12","18","24"];
-            contextCard.setTodaysChart(sensor: quantity, xKey:"timestamp_start", yKeys: ["value"])
-            contextCard.titleLabel.text = NSLocalizedString("Heart Rate", comment: "")
-            
-            self.contextCards.append(contextCard)
-            self.mainStackView.addArrangedSubview(contextCard)
-            
-//          HKQuantityTypeIdentifierActiveEnergyBurned
-//          HKQuantityTypeIdentifierStepCount
-//          HKQuantityTypeIdentifierDistanceWalkingRunning
-//          HKQuantityTypeIdentifierBasalEnergyBurned
-            
-        }
-    }
-    
     func addLocationCard(){
-        
+
         if let fusedLocationSensor = AWARESensorManager.shared().getSensor(SENSOR_GOOGLE_FUSED_LOCATION) as? FusedLocations{
             let contextCard = MapCard(frame: CGRect(x:0,y:0, width: self.view.frame.width, height:400))
             contextCard.setMap(locationSensor: fusedLocationSensor.locationSensor)

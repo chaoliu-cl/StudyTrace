@@ -29,7 +29,6 @@
 		4FDB55F4233C49B50095E7D7 /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */; };
 		4FEA0298237B8D1700CFDC2F /* OnboardingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FEA0297237B8D1700CFDC2F /* OnboardingManager.swift */; };
 		4FFAC5EF2231089D00FE40B0 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FFAC5EE2231089D00FE40B0 /* QuartzCore.framework */; };
-		4FFAC5F122356FA500FE40B0 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FFAC5F022356FA500FE40B0 /* HealthKit.framework */; };
 		4FFE19772226A10B00C4715E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19762226A10B00C4715E /* AppDelegate.swift */; };
 		4FFE19792226A10B00C4715E /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19782226A10B00C4715E /* ViewController.swift */; };
 		4FFE197C2226A10B00C4715E /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 4FFE197A2226A10B00C4715E /* Main.storyboard */; };
@@ -121,7 +120,6 @@
 		4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExternalAccessory.framework; path = System/Library/Frameworks/ExternalAccessory.framework; sourceTree = SDKROOT; };
 		4FEA0297237B8D1700CFDC2F /* OnboardingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingManager.swift; sourceTree = "<group>"; };
 		4FFAC5EE2231089D00FE40B0 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
-		4FFAC5F022356FA500FE40B0 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
 		4FFE19732226A10B00C4715E /* StudyTrace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StudyTrace.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4FFE19762226A10B00C4715E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		4FFE19782226A10B00C4715E /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -160,7 +158,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4FFAC5F122356FA500FE40B0 /* HealthKit.framework in Frameworks */,
 				4FFAC5EF2231089D00FE40B0 /* QuartzCore.framework in Frameworks */,
 				4FC60F4C2395E37D007740E4 /* MapKit.framework in Frameworks */,
 				4FDB55F4233C49B50095E7D7 /* ExternalAccessory.framework in Frameworks */,
@@ -211,7 +208,6 @@
 			children = (
 				4FC60F4B2395E37D007740E4 /* MapKit.framework */,
 				4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */,
-				4FFAC5F022356FA500FE40B0 /* HealthKit.framework */,
 				4FFAC5EE2231089D00FE40B0 /* QuartzCore.framework */,
 				D83C1A3254FCB129D5EBD903 /* Pods_StudyTrace.framework */,
 				5CC70354397A1A5E6C53574B /* Pods_StudyTraceTests.framework */,
@@ -578,13 +574,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-StudyTrace/Pods-StudyTrace-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-StudyTrace/Pods-StudyTrace-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -621,13 +613,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-StudyTrace/Pods-StudyTrace-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-StudyTrace/Pods-StudyTrace-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -897,11 +885,12 @@
 				CODE_SIGN_ENTITLEMENTS = StudyTrace/StudyTrace.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 2F9Z668JPM;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
 				INFOPLIST_FILE = StudyTrace/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -929,11 +918,12 @@
 				CODE_SIGN_ENTITLEMENTS = StudyTrace/StudyTrace.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 2F9Z668JPM;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
 				INFOPLIST_FILE = StudyTrace/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
