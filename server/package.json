@@ -1,0 +1,22 @@
+{
+  "name": "studytrace-aware-server",
+  "version": "1.0.0",
+  "description": "AWARE-compatible data collection server for the StudyTrace iOS client, deployable on Railway.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node test/smoke.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.14"
+  }
+}
