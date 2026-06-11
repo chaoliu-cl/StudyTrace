@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StudyTrace Participant App</title>
+  <link rel="stylesheet" href="/assets/dashboard.css">
+</head>
+<body data-page="participant">
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/">StudyTrace Cloud</a>
+      <nav class="nav">
+        <a href="/researcher/">Researcher</a>
+        <a href="/admin/">Admin</a>
+      </nav>
+    </header>
+
+    <section class="hero compact">
+      <p class="eyebrow">Participant App</p>
+      <h1>iPhone enrollment workflow</h1>
+      <p class="lede">
+        StudyTrace on iPhone collects only the streams enabled by your research study after consent.
+        Join with a secure study URL or QR code from your research team.
+      </p>
+    </section>
+
+    <section class="panel-grid">
+      <article class="panel">
+        <h2>1. Install</h2>
+        <p>Open the TestFlight invite from your research team and install the StudyTrace iPhone app.</p>
+      </article>
+      <article class="panel">
+        <h2>2. Consent</h2>
+        <p>Read the consent flow in the app. Data collection stays off until you explicitly agree.</p>
+      </article>
+      <article class="panel">
+        <h2>3. Join</h2>
+        <p>Paste the secure study URL or scan the QR code your team provides. The app accepts HTTPS links.</p>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>What participants should expect</h2>
+      <ul class="flat-list">
+        <li>Location collection only if your study enables it and you grant permission.</li>
+        <li>Survey prompts and optional photo attachments when your protocol uses them.</li>
+        <li>Optional Screen Time based app-usage monitoring if your study requests it.</li>
+        <li>The in-app quit action stops participation locally.</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>Study URL format</h2>
+      <p>Researchers distribute URLs like the example below. The app should receive this inside StudyTrace, not in Safari.</p>
+      <pre><code>https://your-study.up.railway.app/index.php/webservice/index/pilot1/strong-password?participant=P001</code></pre>
+    </section>
+  </main>
+</body>
+</html>

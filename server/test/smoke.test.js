@@ -41,7 +41,9 @@ await db.initSchema();
 const { createApp } = await import('../src/appFactory.js');
 const app = createApp();
 
-const server = app.listen(0);
+const server = await new Promise((resolve) => {
+  const s = app.listen(0, '127.0.0.1', () => resolve(s));
+});
 const base = `http://127.0.0.1:${server.address().port}`;
 
 async function post(path, body, headers = {}) {
@@ -211,17 +213,31 @@ try {
   assert.ok(names.includes('steps'), 'steps listed');
   console.log('✓ admin lists sensors:', names.join(', '));
 
-  // 20. JSON export returns the stored rows.
+  // 20.5. studies list shows the provisioned study and device counts.
+  const studiesList = await request('GET', `/admin/studies`, { headers: adminHdr });
+  assert.strictEqual(studiesList.status, 200, 'list studies ok');
+  assert.strictEqual(studiesList.json.studies[0].study_id, 'demo', 'study appears in admin list');
+  console.log('✓ admin lists studies');
+
+  // 20.6. researcher dashboard summary is study-scoped and authenticated.
+  const dashboard = await request('GET', `/api/v1/studies/demo/dashboard/summary`, { headers: jsonAuth });
+  assert.strictEqual(dashboard.status, 200, 'researcher dashboard ok');
+  assert.strictEqual(dashboard.json.study.study_id, 'demo', 'dashboard study id');
+  assert.ok(Array.isArray(dashboard.json.devices), 'dashboard devices array');
+  console.log('✓ researcher dashboard summary');
+
+  // 21. JSON export returns the stored rows.
   const expJson = await request('GET', `/admin/export/steps?format=json`, { headers: adminHdr });
   assert.strictEqual(expJson.status, 200, 'json export ok');
   assert.ok(expJson.json.rows.length >= 1, 'json export has rows');
   assert.strictEqual(expJson.json.rows[0].data.count, 1200, 'json export row payload');
+  assert.strictEqual(expJson.json.rows[0].study_id, 'demo', 'json export row scoped to study');
   console.log('✓ admin JSON export rows:', expJson.json.count);
 
-  // 21. CSV export flattens data keys into columns.
+  // 22. CSV export flattens data keys into columns.
   const expCsv = await request('GET', `/admin/export/steps?format=csv`, { headers: adminHdr });
   assert.strictEqual(expCsv.status, 200, 'csv export ok');
-  assert.ok(/^id,device_id,timestamp,.*created_at/m.test(expCsv.json), 'csv header present');
+  assert.ok(/^id,study_id,device_id,timestamp,.*created_at/m.test(expCsv.json), 'csv header present');
   assert.ok(/\b1200\b/.test(expCsv.json), 'csv contains the value');
   console.log('✓ admin CSV export header + values present');
 

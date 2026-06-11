@@ -96,7 +96,7 @@ export function createGenericApiRouter() {
     }
     try {
       await createSensorTable(table);
-      const n = await insertRows(table, deviceId, rows);
+      const n = await insertRows(table, req.params.studyId, deviceId, rows);
       if (deviceId) await upsertDevice(deviceId, req.params.studyId, req.query.participant);
       return res.status(201).json({ ok: true, inserted: n });
     } catch (err) {
@@ -111,7 +111,7 @@ export function createGenericApiRouter() {
     if (!table) return res.status(400).json({ error: 'invalid sensor name' });
     const deviceId = deviceIdFrom(req);
     try {
-      const row = await latestRow(table, deviceId);
+      const row = await latestRow(table, req.params.studyId, deviceId);
       return res.json({ ok: true, latest: row });
     } catch (err) {
       console.error(`[api latest ${req.params.sensor}]`, err);
@@ -125,7 +125,7 @@ export function createGenericApiRouter() {
     if (!table) return res.status(400).json({ error: 'invalid sensor name' });
     const deviceId = deviceIdFrom(req);
     try {
-      const count = await countRows(table, deviceId);
+      const count = await countRows(table, { studyId: req.params.studyId, deviceId });
       return res.json({ ok: true, count });
     } catch (err) {
       console.error(`[api count ${req.params.sensor}]`, err);
@@ -142,7 +142,7 @@ export function createGenericApiRouter() {
       return res.status(400).json({ error: 'device_id is required to clear data' });
     }
     try {
-      await clearTable(table, deviceId);
+      await clearTable(table, req.params.studyId, deviceId);
       return res.json({ ok: true });
     } catch (err) {
       console.error(`[api clear ${req.params.sensor}]`, err);

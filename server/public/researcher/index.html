@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StudyTrace Researcher Dashboard</title>
+  <link rel="stylesheet" href="/assets/dashboard.css">
+</head>
+<body data-page="researcher">
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/">StudyTrace Cloud</a>
+      <nav class="nav">
+        <a href="/participant/">Participant</a>
+        <a href="/admin/">Admin</a>
+      </nav>
+    </header>
+
+    <section class="hero compact">
+      <p class="eyebrow">Researcher Dashboard</p>
+      <h1>Study-scoped monitoring and export</h1>
+      <p class="lede">
+        Authenticate with a study ID and study password. This interface only exposes the selected study.
+      </p>
+    </section>
+
+    <section class="panel auth-panel">
+      <h2>Connect to a study</h2>
+      <form id="researcher-auth" class="stack">
+        <label>
+          <span>Study ID</span>
+          <input name="studyId" placeholder="pilot1" required>
+        </label>
+        <label>
+          <span>Study password</span>
+          <input name="password" type="password" placeholder="Study password" required>
+        </label>
+        <button class="button button-primary" type="submit">Load dashboard</button>
+      </form>
+      <p id="researcher-auth-message" class="status-line"></p>
+    </section>
+
+    <section id="researcher-dashboard" class="dashboard hidden">
+      <div class="metric-grid" id="researcher-metrics"></div>
+      <section class="panel">
+        <div class="section-head">
+          <h2>Enrolled devices</h2>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-devices"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Sensor coverage</h2>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-sensors"></table>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script type="module" src="/assets/dashboard.js"></script>
+</body>
+</html>

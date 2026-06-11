@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StudyTrace Admin Dashboard</title>
+  <link rel="stylesheet" href="/assets/dashboard.css">
+</head>
+<body data-page="admin">
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/">StudyTrace Cloud</a>
+      <nav class="nav">
+        <a href="/participant/">Participant</a>
+        <a href="/researcher/">Researcher</a>
+      </nav>
+    </header>
+
+    <section class="hero compact">
+      <p class="eyebrow">Admin Dashboard</p>
+      <h1>Provision studies and inspect the deployment</h1>
+      <p class="lede">
+        Authenticate with the Railway `ADMIN_TOKEN`. This console exposes global operations across all studies.
+      </p>
+    </section>
+
+    <section class="panel auth-panel">
+      <h2>Admin access</h2>
+      <form id="admin-auth" class="stack">
+        <label>
+          <span>Admin token</span>
+          <input name="token" type="password" placeholder="ADMIN_TOKEN" required>
+        </label>
+        <button class="button button-primary" type="submit">Load admin console</button>
+      </form>
+      <p id="admin-auth-message" class="status-line"></p>
+    </section>
+
+    <section id="admin-dashboard" class="dashboard hidden">
+      <section class="panel">
+        <div class="section-head">
+          <h2>Create or update a study</h2>
+        </div>
+        <form id="admin-create-study" class="stack">
+          <label><span>Study ID</span><input name="study_id" placeholder="pilot1" required></label>
+          <label><span>Study name</span><input name="name" placeholder="StudyTrace Pilot"></label>
+          <label><span>Study password</span><input name="password" type="password" placeholder="Strong password" required></label>
+          <button class="button button-primary" type="submit">Create study</button>
+        </form>
+        <pre id="admin-create-result" class="result-box"></pre>
+      </section>
+
+      <div class="metric-grid" id="admin-metrics"></div>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Studies</h2>
+        </div>
+        <div class="table-wrap">
+          <table id="admin-studies"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Sensor inventory</h2>
+        </div>
+        <div class="table-wrap">
+          <table id="admin-sensors"></table>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script type="module" src="/assets/dashboard.js"></script>
+</body>
+</html>

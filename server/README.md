@@ -1,7 +1,8 @@
 # StudyTrace Server
 
 A small, self-hostable data collection server for study/sensor data, designed
-to deploy on [Railway](https://railway.app) with a managed PostgreSQL database.
+to deploy on [Railway](https://railway.app) with a managed PostgreSQL database
+and hosted dashboards.
 
 It stores time-series data in PostgreSQL and exposes it through two
 interchangeable ingestion front-ends over the **same** storage:
@@ -25,12 +26,27 @@ Both front-ends are equivalent doors into the same per-sensor tables, so you
 can mix them (e.g. collect from the app via AWARE and from a wearable bridge
 via the generic API into the same study).
 
+## Hosted interfaces
+
+The Railway deployment now exposes three browser-facing interfaces in the same
+service:
+
+- `/participant/` — participant-facing onboarding page for the iPhone app
+- `/researcher/` — study-scoped dashboard authenticated by study id + password
+- `/admin/` — global admin dashboard authenticated by `ADMIN_TOKEN`
+
+Operational endpoints remain available too:
+
+- `/health` — Railway health check
+- `/status` — machine-readable service descriptor
+
 ## Storage model
 
 Each sensor gets its own Postgres table (`aware_<sensor>`), storing the
-`device_id`, `timestamp`, and the full original JSON row as `JSONB`. This
-preserves every field a client sends without per-sensor schemas. Study and
-device metadata live in the `studies` and `devices` tables.
+`study_id`, `device_id`, `timestamp`, and the full original JSON row as
+`JSONB`. This preserves every field a client sends without per-sensor schemas
+while keeping rows scoped to a study. Study and device metadata live in the
+`studies` and `devices` tables.
 
 ## AWARE protocol front-end
 
@@ -73,11 +89,13 @@ curl -X POST https://YOUR-APP.up.railway.app/api/v1/studies/pilot1/sensors/heart
 ## Architecture
 
 - **Node.js + Express** — `src/appFactory.js` composes shared infra (health,
-  admin) with the two front-end routers; `src/index.js` boots it.
+  admin, hosted dashboards) with the two front-end routers; `src/index.js`
+  boots it.
 - **`src/awareApi.js`** — AWARE protocol router.
 - **`src/genericApi.js`** — generic JSON API router.
 - **`src/db.js`** — PostgreSQL storage shared by both; tables created on demand.
 - **`src/studyConfig.js`** — config returned to AWARE clients on join.
+- **`public/`** — participant, researcher, and admin web interfaces.
 
 ## Deploy on Railway
 
@@ -124,6 +142,12 @@ Use that HTTPS URL as `PUBLIC_BASE_URL`.
 curl https://YOUR-APP.up.railway.app/health
 # {"ok":true}
 ```
+
+Open these pages after deploy:
+
+- `https://YOUR-APP.up.railway.app/participant/`
+- `https://YOUR-APP.up.railway.app/researcher/`
+- `https://YOUR-APP.up.railway.app/admin/`
 
 ## Provision a study
 
@@ -207,6 +231,14 @@ curl "https://YOUR-APP.up.railway.app/admin/export/locations?format=csv&device_i
 
 CSV columns are `id, device_id, timestamp, <union of payload keys>, created_at`.
 Page with `limit`/`offset` for large datasets.
+
+Researchers can also use the hosted dashboard at `/researcher/`, or export one
+study-scoped sensor with the study password:
+
+```bash
+curl "https://YOUR-APP.up.railway.app/api/v1/studies/pilot1/export/locations?format=csv" \
+  -H "x-study-password: choose-a-strong-password" -o pilot1-locations.csv
+```
 
 
 ## Local development

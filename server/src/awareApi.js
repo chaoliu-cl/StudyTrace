@@ -91,16 +91,16 @@ export function createAwareRouter(getPublicBaseUrl) {
               return res.status(400).json({ error: 'data is not valid JSON' });
             }
           }
-          const n = await insertRows(table, deviceId, rows);
+          const n = await insertRows(table, req.params.studyId, deviceId, rows);
           if (deviceId) await upsertDevice(deviceId, req.params.studyId, req.query.participant);
           return res.json({ status: true, inserted: n });
         }
         case 'latest': {
-          const row = await latestRow(table, deviceId);
+          const row = await latestRow(table, req.params.studyId, deviceId);
           return res.json(row ? [row] : []);
         }
         case 'clear_table': {
-          if (deviceId) await clearTable(table, deviceId);
+          if (deviceId) await clearTable(table, req.params.studyId, deviceId);
           return res.json({ status: true });
         }
         default:

@@ -72,26 +72,23 @@ export async function initSchema() {
 
 // Create a sensor data table on demand. Idempotent.
 export async function createSensorTable(table) {
-  // Skip re-creating when it already exists. Besides avoiding redundant DDL,
-  // this keeps the hot insert path (which calls this defensively) from issuing
-  // a CREATE on every batch.
-  if (await tableExists(table)) {
-    return;
-  }
   await getPool().query(`
     CREATE TABLE IF NOT EXISTS ${table} (
-      id         BIGSERIAL PRIMARY KEY,
+      id         BIGSERIAL,
+      study_id   TEXT,
       device_id  TEXT,
       timestamp  DOUBLE PRECISION,
-      data       JSONB NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      data       JSONB,
+      created_at TIMESTAMPTZ
     );
   `);
+  // Migrate older installs that created sensor tables before study_id existed.
+  await getPool().query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS study_id TEXT`);
   // Index creation is a non-essential optimization; ignore failures so a
   // re-create on an existing table never blocks an insert.
   try {
     await getPool().query(
-      `CREATE INDEX IF NOT EXISTS ${table}_device_ts_idx ON ${table} (device_id, timestamp);`
+      `CREATE INDEX IF NOT EXISTS ${table}_study_device_ts_idx ON ${table} (study_id, device_id, timestamp);`
     );
   } catch {
     // Index already present (or backend rejected a redundant IF NOT EXISTS).
@@ -99,30 +96,34 @@ export async function createSensorTable(table) {
 }
 
 // Bulk-insert an array of JSON rows into a sensor table.
-export async function insertRows(table, deviceId, rows) {
+export async function insertRows(table, studyId, deviceId, rows) {
   if (!Array.isArray(rows) || rows.length === 0) return 0;
   const values = [];
   const placeholders = rows.map((row, i) => {
     const ts = typeof row.timestamp === 'number'
       ? row.timestamp
       : Number(row.timestamp) || null;
-    const base = i * 3;
-    values.push(deviceId, ts, JSON.stringify(row));
-    return `($${base + 1}, $${base + 2}, $${base + 3})`;
+    const base = i * 5;
+    values.push(studyId, deviceId, ts, JSON.stringify(row), new Date().toISOString());
+    return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`;
   });
   await getPool().query(
-    `INSERT INTO ${table} (device_id, timestamp, data) VALUES ${placeholders.join(',')}`,
+    `INSERT INTO ${table} (study_id, device_id, timestamp, data, created_at) VALUES ${placeholders.join(',')}`,
     values
   );
   return rows.length;
 }
 
 // Latest row for a device/table, used by the client for incremental sync.
-export async function latestRow(table, deviceId) {
+export async function latestRow(table, studyId, deviceId) {
   try {
     const { rows } = await getPool().query(
-      `SELECT data FROM ${table} WHERE device_id = $1 ORDER BY timestamp DESC NULLS LAST LIMIT 1`,
-      [deviceId]
+      `SELECT data
+       FROM ${table}
+       WHERE study_id = $1 AND device_id = $2
+       ORDER BY timestamp DESC NULLS LAST
+       LIMIT 1`,
+      [studyId, deviceId]
     );
     return rows.length ? rows[0].data : null;
   } catch {
@@ -131,22 +132,26 @@ export async function latestRow(table, deviceId) {
   }
 }
 
-export async function clearTable(table, deviceId) {
-  await getPool().query(`DELETE FROM ${table} WHERE device_id = $1`, [deviceId]);
+export async function clearTable(table, studyId, deviceId) {
+  await getPool().query(`DELETE FROM ${table} WHERE study_id = $1 AND device_id = $2`, [studyId, deviceId]);
 }
 
 // Row count for a table, optionally scoped to a device. Returns 0 if the table
 // does not exist yet.
-export async function countRows(table, deviceId) {
+export async function countRows(table, { studyId, deviceId } = {}) {
   try {
-    if (deviceId) {
-      const { rows } = await getPool().query(
-        `SELECT count(*)::int AS n FROM ${table} WHERE device_id = $1`,
-        [deviceId]
-      );
-      return rows[0].n;
+    const params = [];
+    const where = [];
+    if (studyId) {
+      params.push(studyId);
+      where.push(`study_id = $${params.length}`);
     }
-    const { rows } = await getPool().query(`SELECT count(*)::int AS n FROM ${table}`);
+    if (deviceId) {
+      params.push(deviceId);
+      where.push(`device_id = $${params.length}`);
+    }
+    const clause = where.length ? ` WHERE ${where.join(' AND ')}` : '';
+    const { rows } = await getPool().query(`SELECT count(*)::int AS n FROM ${table}${clause}`, params);
     return rows[0].n;
   } catch {
     return 0;
@@ -166,7 +171,7 @@ export async function upsertDevice(deviceId, studyId, participant) {
 
 export async function getStudy(studyId) {
   const { rows } = await getPool().query(
-    `SELECT study_id, password, name, config FROM studies WHERE study_id = $1`,
+    `SELECT study_id, password, name, config, created_at FROM studies WHERE study_id = $1`,
     [studyId]
   );
   return rows.length ? rows[0] : null;
@@ -195,22 +200,92 @@ export async function listSensorTables() {
   return sensors;
 }
 
+export async function listStudySensorTables(studyId) {
+  const sensors = await listSensorTables();
+  const filtered = [];
+  for (const sensor of sensors) {
+    const rows = await countRows(sensor.table, { studyId });
+    if (rows > 0) {
+      filtered.push({ ...sensor, rows });
+    }
+  }
+  return filtered.sort((a, b) => b.rows - a.rows || a.sensor.localeCompare(b.sensor));
+}
+
+export async function listStudies() {
+  const { rows } = await getPool().query(`
+    SELECT
+      s.study_id,
+      s.name,
+      s.created_at,
+      count(d.device_id)::int AS device_count,
+      max(d.last_seen) AS last_seen
+    FROM studies s
+    LEFT JOIN devices d ON d.study_id = s.study_id
+    GROUP BY s.study_id, s.name, s.created_at
+    ORDER BY s.created_at DESC
+  `);
+  return rows;
+}
+
+export async function listStudyDevices(studyId) {
+  const { rows } = await getPool().query(
+    `SELECT device_id, participant, first_seen, last_seen
+     FROM devices
+     WHERE study_id = $1
+     ORDER BY last_seen DESC, device_id ASC`,
+    [studyId]
+  );
+  return rows;
+}
+
+export async function getStudyOverview(studyId) {
+  const study = await getStudy(studyId);
+  if (!study) return null;
+
+  const devices = await listStudyDevices(studyId);
+  const sensors = await listStudySensorTables(studyId);
+  const totalRows = sensors.reduce((sum, sensor) => sum + sensor.rows, 0);
+
+  return {
+    study: {
+      study_id: study.study_id,
+      name: study.name,
+      created_at: study.created_at || null,
+      config: study.config || {},
+    },
+    summary: {
+      device_count: devices.length,
+      sensor_count: sensors.length,
+      total_rows: totalRows,
+      last_seen: devices[0]?.last_seen || null,
+    },
+    devices,
+    sensors,
+  };
+}
+
 // Page through rows of a sensor table for export. Returns the stored JSON rows
 // plus their device_id/timestamp, ordered for stable pagination.
-export async function exportRows(table, { deviceId, limit, offset } = {}) {
+export async function exportRows(table, { studyId, deviceId, limit, offset } = {}) {
   const params = [];
-  let where = '';
+  const where = [];
+  if (studyId) {
+    params.push(studyId);
+    where.push(`study_id = $${params.length}`);
+  }
   if (deviceId) {
     params.push(deviceId);
-    where = `WHERE device_id = $${params.length}`;
+    where.push(`device_id = $${params.length}`);
   }
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   params.push(Math.min(Math.max(Number(limit) || 1000, 1), 10000));
   const limitClause = `LIMIT $${params.length}`;
   params.push(Math.max(Number(offset) || 0, 0));
   const offsetClause = `OFFSET $${params.length}`;
   const { rows } = await getPool().query(
-    `SELECT id, device_id, timestamp, data, created_at
-     FROM ${table} ${where}
+    `SELECT id, study_id, device_id, timestamp, data, created_at
+     FROM ${table} ${whereClause}
      ORDER BY id ASC ${limitClause} ${offsetClause}`,
     params
   );
