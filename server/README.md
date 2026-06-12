@@ -136,7 +136,34 @@ Use that HTTPS URL as `PUBLIC_BASE_URL`.
 > The StudyTrace app enforces HTTPS (App Transport Security). Railway-generated
 > domains are HTTPS, so they satisfy this out of the box.
 
-### 5. Verify it's up
+### 5. Optional: add a custom domain
+
+You can use your personal domain with Railway. A subdomain is the cleanest
+choice because the root domain `liu-chao.site` already hosts your personal
+site. Recommended production URL:
+
+```
+https://studytrace.liu-chao.site
+```
+
+In Railway:
+
+1. Open the StudyTrace web service.
+2. Go to **Settings → Networking → Public Networking**.
+3. Click **+ Custom Domain**.
+4. Enter `studytrace.liu-chao.site`.
+5. Railway will show a `CNAME` record and a verification `TXT` record.
+6. In your DNS provider for `liu-chao.site`, add both records exactly as shown.
+7. Wait for Railway to verify the domain and issue SSL.
+8. Set `PUBLIC_BASE_URL` to `https://studytrace.liu-chao.site`.
+9. Redeploy or restart the service so generated study URLs use the custom domain.
+
+Keep `https://studytrace-production.up.railway.app` active as a fallback until
+the custom domain verifies. If you meant `liu-cha.site` instead of
+`liu-chao.site`, confirm that domain is registered first and use
+`studytrace.liu-cha.site` in the same workflow.
+
+### 6. Verify it's up
 
 ```
 curl https://YOUR-APP.up.railway.app/health
@@ -148,6 +175,13 @@ Open these pages after deploy:
 - `https://YOUR-APP.up.railway.app/participant/`
 - `https://YOUR-APP.up.railway.app/researcher/`
 - `https://YOUR-APP.up.railway.app/admin/`
+
+After custom-domain verification, also check:
+
+- `https://studytrace.liu-chao.site/health`
+- `https://studytrace.liu-chao.site/participant/`
+- `https://studytrace.liu-chao.site/researcher/`
+- `https://studytrace.liu-chao.site/admin/`
 
 ## Provision a study
 
