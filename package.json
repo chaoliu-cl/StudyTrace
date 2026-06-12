@@ -1,0 +1,16 @@
+{
+  "name": "studytrace-railway-root",
+  "private": true,
+  "description": "Root Railway entrypoint for the StudyTrace server workspace.",
+  "workspaces": [
+    "server"
+  ],
+  "scripts": {
+    "start": "npm --workspace server start",
+    "dev": "npm --workspace server run dev",
+    "test": "npm --workspace server test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
