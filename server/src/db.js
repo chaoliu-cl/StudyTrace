@@ -18,12 +18,23 @@ export function setPool(injectedPool) {
   pool = injectedPool;
 }
 
+export class DatabaseNotConfiguredError extends Error {
+  constructor() {
+    super('DATABASE_URL is not set. Add a PostgreSQL database service in Railway and link DATABASE_URL to this service.');
+    this.name = 'DatabaseNotConfiguredError';
+    this.code = 'DATABASE_NOT_CONFIGURED';
+  }
+}
+
+export function isDatabaseConfigured() {
+  return Boolean(pool || process.env.DATABASE_URL);
+}
+
 export function getPool() {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) {
-      console.error('FATAL: DATABASE_URL is not set. Add a PostgreSQL plugin in Railway.');
-      process.exit(1);
+      throw new DatabaseNotConfiguredError();
     }
     // Railway-managed Postgres requires TLS but uses a self-signed chain.
     pool = new Pool({
@@ -49,6 +60,10 @@ export function safeTableName(raw) {
 
 // Metadata tables for studies/participants. Created once at boot.
 export async function initSchema() {
+  if (!isDatabaseConfigured()) {
+    console.warn('DATABASE_URL is not set. Starting in setup mode; data APIs will return 503 until PostgreSQL is configured.');
+    return false;
+  }
   await getPool().query(`
     CREATE TABLE IF NOT EXISTS studies (
       study_id   TEXT PRIMARY KEY,
@@ -68,6 +83,7 @@ export async function initSchema() {
       PRIMARY KEY (device_id, study_id)
     );
   `);
+  return true;
 }
 
 // Create a sensor data table on demand. Idempotent.

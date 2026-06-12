@@ -8,9 +8,10 @@ const app = createApp();
 const PORT = process.env.PORT || 3000;
 
 initSchema()
-  .then(() => {
+  .then((databaseReady) => {
     app.listen(PORT, () => {
-      console.log(`StudyTrace AWARE server listening on :${PORT}`);
+      const mode = databaseReady ? 'database ready' : 'setup mode: DATABASE_URL missing';
+      console.log(`StudyTrace AWARE server listening on :${PORT} (${mode})`);
     });
   })
   .catch((err) => {

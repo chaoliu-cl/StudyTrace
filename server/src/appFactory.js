@@ -25,6 +25,7 @@ import {
   listStudies,
   getStudyOverview,
   getStudy,
+  isDatabaseConfigured,
 } from './db.js';
 import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
@@ -48,10 +49,26 @@ export function createApp() {
     res.json({
       ok: true,
       service: 'studytrace-server',
+      database: isDatabaseConfigured() ? 'configured' : 'missing',
       ingestion: ['aware', 'generic-json'],
     })
   );
   app.get('/health', (_req, res) => res.json({ ok: true }));
+
+  app.use((req, res, next) => {
+    const needsDatabase =
+      req.path.startsWith('/admin') ||
+      req.path.startsWith('/api/v1') ||
+      req.path.startsWith('/index.php/webservice');
+    if (needsDatabase && !isDatabaseConfigured()) {
+      return res.status(503).json({
+        ok: false,
+        error: 'database_not_configured',
+        message: 'Add a PostgreSQL database service in Railway, then link its DATABASE_URL variable to this service.',
+      });
+    }
+    next();
+  });
 
   // ---- Admin: provision a study ---------------------------------------------
   // Shared admin auth guard (header: x-admin-token: $ADMIN_TOKEN).
