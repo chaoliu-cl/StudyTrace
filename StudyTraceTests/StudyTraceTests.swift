@@ -67,6 +67,31 @@ class StudyTraceTests: XCTestCase {
         XCTAssertEqual(QRCodeReaderViewController.classifyScannedContent(scheduleJSON), .json)
     }
 
+    func testQRCodeScannerAcceptsPhotoAsESMQuestionType() {
+        let scheduleJSON = """
+        [
+          {
+            "schedule_id": "pilot_context_photo",
+            "hours": [-1],
+            "esms": [
+              {
+                "esm": {
+                  "esm_type": 14,
+                  "esm_title": "Context photo",
+                  "esm_instructions": "Please take a photo of your current context.",
+                  "esm_submit": "Next",
+                  "esm_na": true,
+                  "esm_trigger": "pilot_context_photo"
+                }
+              }
+            ]
+          }
+        ]
+        """
+
+        XCTAssertEqual(QRCodeReaderViewController.classifyScannedContent(scheduleJSON), .json)
+    }
+
     func testQRCodeScannerClassifiesStudyURLs() {
         XCTAssertEqual(
             QRCodeReaderViewController.classifyScannedContent("https://studytrace-production.up.railway.app/index.php/webservice/index/pilot/secret"),

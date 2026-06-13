@@ -25,6 +25,7 @@ import {
   listStudies,
   getStudyOverview,
   getStudy,
+  tableExists,
   isDatabaseConfigured,
 } from './db.js';
 import { createAwareRouter } from './awareApi.js';
@@ -218,6 +219,19 @@ export function createApp() {
     }
   });
 
+  app.get('/api/v1/studies/:studyId/media/esms/:rowId/image', requireStudyPassword, async (req, res) => {
+    try {
+      const image = await imageFromEsmRow(req.params.studyId, req.params.rowId);
+      if (!image) return res.status(404).json({ error: 'image not found' });
+      res.setHeader('Content-Type', image.contentType);
+      res.setHeader('Content-Disposition', `inline; filename="studytrace-esm-${req.params.rowId}.${image.extension}"`);
+      return res.send(image.buffer);
+    } catch (err) {
+      console.error(`[dashboard esm image ${req.params.studyId}/${req.params.rowId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
   // ---- Ingestion front-ends (shared storage) --------------------------------
   app.use('/', createAwareRouter(getPublicBaseUrl));
   app.use('/api/v1', createGenericApiRouter());
@@ -256,4 +270,53 @@ function rowsToCsv(rows) {
     lines.push(line.join(','));
   }
   return lines.join('\r\n');
+}
+
+async function imageFromEsmRow(studyId, rowId) {
+  const id = Number(rowId);
+  if (!Number.isSafeInteger(id) || id < 1) return null;
+  if (!(await tableExists('aware_esms'))) return null;
+
+  const { rows } = await getPool().query(
+    `SELECT data
+     FROM aware_esms
+     WHERE study_id = $1 AND id = $2
+     LIMIT 1`,
+    [studyId, id]
+  );
+  if (!rows.length) return null;
+
+  const data = rows[0].data || {};
+  if (!isPictureEsmRow(data)) return null;
+  return decodeImageAnswer(data.esm_user_answer);
+}
+
+function isPictureEsmRow(data) {
+  const esmJson = data?.esm_json;
+  if (!esmJson) return false;
+  try {
+    const parsed = typeof esmJson === 'string' ? JSON.parse(esmJson) : esmJson;
+    return Number(parsed?.esm_type) === 14;
+  } catch {
+    return false;
+  }
+}
+
+function decodeImageAnswer(answer) {
+  if (typeof answer !== 'string' || !answer.trim()) return null;
+  const trimmed = answer.trim();
+  const match = trimmed.match(/^data:(image\/(?:png|jpeg));base64,(.+)$/i);
+  const contentType = match?.[1]?.toLowerCase() || 'image/png';
+  const base64 = match?.[2] || trimmed;
+  if (!/^[A-Za-z0-9+/=\r\n]+$/.test(base64)) return null;
+  const buffer = Buffer.from(base64, 'base64');
+  if (!buffer.length) return null;
+
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return { buffer, contentType: 'image/png', extension: 'png' };
+  }
+  if (buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
+    return { buffer, contentType: 'image/jpeg', extension: 'jpg' };
+  }
+  return { buffer, contentType, extension: contentType === 'image/jpeg' ? 'jpg' : 'png' };
 }

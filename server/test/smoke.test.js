@@ -198,6 +198,35 @@ try {
   assert.strictEqual(awareView.json[0].timestamp, 555, 'shared storage across front-ends');
   console.log('✓ AWARE and generic front-ends share the same storage');
 
+  // 17.5. Picture ESM answers stay stored as raw base64, but the dashboard can
+  //       serve them back as image bytes for preview/download.
+  const tinyPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+  const esmRows = [{
+    timestamp: 777,
+    device_id: 'dev-1',
+    esm_trigger: 'pilot_context_photo',
+    esm_json: JSON.stringify({ esm_type: 14, esm_title: 'Context photo' }),
+    esm_user_answer: tinyPngBase64,
+  }];
+  const esmIns = await post(`${studyPath}/esms/insert`,
+    form({ device_id: 'dev-1', data: JSON.stringify(esmRows) }), formHeaders);
+  assert.strictEqual(esmIns.status, 200, 'picture ESM insert ok');
+
+  const esmExport = await request('GET', `${apiBase}/export/esms?format=json`, { headers: jsonAuth });
+  assert.strictEqual(esmExport.status, 200, 'picture ESM export ok');
+  const photoRow = esmExport.json.rows.find((row) => row.data.esm_trigger === 'pilot_context_photo');
+  assert.ok(photoRow, 'picture ESM row found');
+  assert.strictEqual(photoRow.data.esm_user_answer, tinyPngBase64, 'raw picture base64 preserved');
+
+  const imageRes = await fetch(`${base}${apiBase}/media/esms/${photoRow.id}/image`, {
+    headers: { 'x-study-password': 'secret' },
+  });
+  assert.strictEqual(imageRes.status, 200, 'picture ESM image endpoint ok');
+  assert.strictEqual(imageRes.headers.get('content-type'), 'image/png', 'picture ESM served as PNG');
+  const imageBytes = Buffer.from(await imageRes.arrayBuffer());
+  assert.ok(imageBytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), 'PNG signature');
+  console.log('✓ picture ESM answer previews as image/png');
+
   // ---- Admin data export ----------------------------------------------------
   const adminHdr = { 'x-admin-token': 'test-admin-token' };
 

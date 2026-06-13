@@ -1,5 +1,14 @@
 const page = document.body.dataset.page;
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 function fmtDate(value) {
   if (!value) return '—';
   const date = new Date(value);
@@ -51,6 +60,76 @@ function downloadUrl(path, headers) {
     .then((blob) => URL.createObjectURL(blob));
 }
 
+function parseEsmJson(row) {
+  const raw = row?.data?.esm_json;
+  if (!raw) return {};
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function isPictureEsmRow(row) {
+  return Number(parseEsmJson(row).esm_type) === 14;
+}
+
+function renderEsmAnswer(row, studyId, password) {
+  const answer = row?.data?.esm_user_answer;
+  if (isPictureEsmRow(row) && typeof answer === 'string' && answer.trim()) {
+    const imageUrl = `/api/v1/studies/${encodeURIComponent(studyId)}/media/esms/${encodeURIComponent(row.id)}/image`;
+    return `
+      <div class="photo-answer">
+        <img data-src="${imageUrl}" alt="Photo response" loading="lazy" data-auth-image data-password="${escapeHtml(password)}">
+        <a href="${imageUrl}" data-download-image data-password="${escapeHtml(password)}" data-filename="studytrace-esm-${escapeHtml(row.id)}.png">Download image</a>
+      </div>
+    `;
+  }
+  if (answer === null || answer === undefined || answer === '') return '—';
+  const text = typeof answer === 'object' ? JSON.stringify(answer) : String(answer);
+  return `<span class="answer-text">${escapeHtml(text)}</span>`;
+}
+
+async function loadEsmResponses({ studyId, password, sensors, table, message }) {
+  if (!sensors.some((sensor) => sensor.sensor === 'esms')) {
+    renderTable(table, [
+      { label: 'Time', render: () => '—' },
+      { label: 'Question', render: () => '—' },
+      { label: 'Answer', render: () => 'No ESM responses have been uploaded yet.' },
+    ], []);
+    return;
+  }
+
+  const headers = { 'x-study-password': password };
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/export/esms?format=json&limit=50`, { headers });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load survey responses.', true);
+  }
+
+  renderTable(table, [
+    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
+    { label: 'Question', render: (row) => escapeHtml(parseEsmJson(row).esm_title || row.data?.esm_trigger || '—') },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Answer', render: (row) => renderEsmAnswer(row, studyId, password) },
+  ], payload.rows || []);
+
+  await hydrateAuthenticatedImages(table);
+}
+
+async function hydrateAuthenticatedImages(container) {
+  const images = [...container.querySelectorAll('[data-auth-image]')];
+  await Promise.all(images.map(async (img) => {
+    try {
+      const url = await downloadUrl(img.dataset.src, { 'x-study-password': img.dataset.password });
+      img.src = url;
+    } catch {
+      img.replaceWith(document.createTextNode('Image unavailable'));
+    }
+  }));
+}
+
 function initResearcher() {
   const form = document.querySelector('#researcher-auth');
   const message = document.querySelector('#researcher-auth-message');
@@ -58,6 +137,7 @@ function initResearcher() {
   const metrics = document.querySelector('#researcher-metrics');
   const devices = document.querySelector('#researcher-devices');
   const sensors = document.querySelector('#researcher-sensors');
+  const esmResponses = document.querySelector('#researcher-esm-responses');
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -93,11 +173,12 @@ function initResearcher() {
       { label: 'Rows', render: (row) => String(row.rows) },
       {
         label: 'Export',
-        render: (row) => `<a href="/api/v1/studies/${encodeURIComponent(studyId)}/export/${encodeURIComponent(row.sensor)}?format=csv" data-download="study" data-study="${studyId}" data-password="${password}" data-sensor="${row.sensor}">CSV</a>`,
+        render: (row) => `<a href="/api/v1/studies/${encodeURIComponent(studyId)}/export/${encodeURIComponent(row.sensor)}?format=csv" data-download="study" data-study="${escapeHtml(studyId)}" data-password="${escapeHtml(password)}" data-sensor="${escapeHtml(row.sensor)}">CSV</a>`,
       },
     ], payload.sensors);
 
     dashboard.classList.remove('hidden');
+    await loadEsmResponses({ studyId, password, sensors: payload.sensors, table: esmResponses, message });
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
   });
 
@@ -110,6 +191,22 @@ function initResearcher() {
       const a = document.createElement('a');
       a.href = url;
       a.download = `${link.dataset.study}-${link.dataset.sensor}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setMessage(message, error.message, true);
+    }
+  });
+
+  document.addEventListener('click', async (event) => {
+    const link = event.target.closest('[data-download-image]');
+    if (!link) return;
+    event.preventDefault();
+    try {
+      const url = await downloadUrl(link.getAttribute('href'), { 'x-study-password': link.dataset.password });
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = link.dataset.filename || 'studytrace-photo-response.png';
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {

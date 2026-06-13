@@ -14,8 +14,6 @@ class ESMViewController: UIViewController {
     @IBOutlet weak var surveyButton: UIButton!
 
     private let emptyStateStack = UIStackView()
-    private let photoButton = UIButton(type: .system)
-    private var capturedPhotoData: String?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -35,47 +33,10 @@ class ESMViewController: UIViewController {
         surveyButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         navigationController?.navigationBar.prefersLargeTitles = true
 
-        setupPhotoButton()
         setupEmptyState()
 
         if OnboardingManager.isFirstTime() {
             OnboardingManager().startOnboarding(with: self)
-        }
-    }
-
-    private func setupPhotoButton() {
-        photoButton.setTitle(" Attach Photo", for: .normal)
-        photoButton.setImage(UIImage(systemName: "camera.fill"), for: .normal)
-        photoButton.tintColor = AWARETheme.accent
-        photoButton.backgroundColor = AWARETheme.accent.withAlphaComponent(0.1)
-        photoButton.titleLabel?.font = UIFont.preferredFont(forTextStyle: .subheadline)
-        photoButton.layer.cornerRadius = 12
-        photoButton.translatesAutoresizingMaskIntoConstraints = false
-        photoButton.addTarget(self, action: #selector(didTapPhotoButton), for: .touchUpInside)
-        photoButton.isHidden = true
-        view.addSubview(photoButton)
-
-        NSLayoutConstraint.activate([
-            photoButton.topAnchor.constraint(equalTo: surveyButton.bottomAnchor, constant: 16),
-            photoButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            photoButton.widthAnchor.constraint(equalTo: surveyButton.widthAnchor),
-            photoButton.heightAnchor.constraint(equalToConstant: 44)
-        ])
-    }
-
-    @objc private func didTapPhotoButton() {
-        AWARETheme.lightImpact()
-        PhotoQuestionHelper.shared.presentPhotoPicker(from: self) { [weak self] image in
-            guard let self = self, let image = image else { return }
-            self.capturedPhotoData = PhotoQuestionHelper.encodeImageAsBase64(image)
-            AWAREEventLogger.shared().logEvent([
-                "class": "ESMViewController",
-                "event": "photo_attached",
-                "has_data": "true"
-            ])
-            self.photoButton.setTitle(" Photo attached", for: .normal)
-            self.photoButton.setImage(UIImage(systemName: "checkmark.circle.fill"), for: .normal)
-            self.photoButton.tintColor = AWARETheme.success
         }
     }
 
@@ -142,22 +103,16 @@ class ESMViewController: UIViewController {
             self.surveyButton.layer.borderWidth = 0
             self.surveyButton.isEnabled = true
             self.surveyButton.isHidden = false
-            self.photoButton.isHidden = false
             self.emptyStateStack.isHidden = true
             self.tabBarController?.tabBar.items?[2].badgeValue = "\(schedules.count)"
             self.tabBarController?.tabBar.items?[2].badgeColor = AWARETheme.warmAccent
         } else {
             self.surveyButton.isEnabled = false
             self.surveyButton.isHidden = true
-            self.photoButton.isHidden = true
             self.emptyStateStack.isHidden = false
             self.tabBarController?.tabBar.items?[2].badgeValue = nil
         }
 
-        capturedPhotoData = nil
-        photoButton.setTitle(" Attach Photo", for: .normal)
-        photoButton.setImage(UIImage(systemName: "camera.fill"), for: .normal)
-        photoButton.tintColor = AWARETheme.accent
         IOSESM.setESMAppearedState(true)
     }
     

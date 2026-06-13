@@ -43,7 +43,6 @@
 		4FFE19B22226D2C100C4715E /* StudyTraceTableViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19B12226D2C100C4715E /* StudyTraceTableViewCell.swift */; };
 		6751B417299E72271CA99EAA /* Pods_StudyTraceTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5CC70354397A1A5E6C53574B /* Pods_StudyTraceTests.framework */; };
 		987836DD9DF3528B88188F5E /* ScreenTimeUsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F54330EC699252C38CA9593 /* ScreenTimeUsageStore.swift */; };
-		AA00000100000001AABBCC01 /* PhotoQuestionHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000001AABBCC02 /* PhotoQuestionHelper.swift */; };
 		AA00000100000001AABBCC10 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA00000100000001AABBCC11 /* PrivacyInfo.xcprivacy */; };
 		C815C75056583A7E78599A04 /* StudyTraceMonitor.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 922FF0344E49ABED66172385 /* StudyTraceMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E8498A01D2CC4CC3BCB6B07C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 19AC1B97FA292B90BA20F7A5 /* Foundation.framework */; };
@@ -144,7 +143,6 @@
 		8F053FEBEEB8141AAF6B81D0 /* Pods-StudyTraceUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTraceUITests.debug.xcconfig"; path = "Target Support Files/Pods-StudyTraceUITests/Pods-StudyTraceUITests.debug.xcconfig"; sourceTree = "<group>"; };
 		922FF0344E49ABED66172385 /* StudyTraceMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StudyTraceMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A888A09D2227DB2536C76952 /* StudyTraceMonitor.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = StudyTraceMonitor.entitlements; path = StudyTraceMonitor/StudyTraceMonitor.entitlements; sourceTree = "<group>"; };
-		AA00000100000001AABBCC02 /* PhotoQuestionHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoQuestionHelper.swift; sourceTree = "<group>"; };
 		AA00000100000001AABBCC11 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		C2A52DF7C3B2DCDC02A2CFA0 /* Pods-StudyTraceTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTraceTests.release.xcconfig"; path = "Target Support Files/Pods-StudyTraceTests/Pods-StudyTraceTests.release.xcconfig"; sourceTree = "<group>"; };
 		D83C1A3254FCB129D5EBD903 /* Pods_StudyTrace.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_StudyTrace.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -284,7 +282,6 @@
 				4F0BC9A0222D4952006348E4 /* AdvancedSettingsViewController.swift */,
 				4F0BC9A2222D6BE3006348E4 /* SensorSettingViewController.swift */,
 				4FEA0297237B8D1700CFDC2F /* OnboardingManager.swift */,
-				AA00000100000001AABBCC02 /* PhotoQuestionHelper.swift */,
 				4F70E8AC241DA28000A8AAA8 /* LocationPermissionViewController.swift */,
 				4F387DC629EBC59A002D5300 /* Onboard */,
 				4FFE197A2226A10B00C4715E /* Main.storyboard */,
@@ -654,7 +651,6 @@
 				4F1B11B022286E75006F3176 /* MapCard.swift in Sources */,
 				4F1B11B122286E75006F3176 /* DeviceUsageCard.swift in Sources */,
 				4FEA0298237B8D1700CFDC2F /* OnboardingManager.swift in Sources */,
-				AA00000100000001AABBCC01 /* PhotoQuestionHelper.swift in Sources */,
 				4FFE19B02226C7DC00C4715E /* ESMViewController.swift in Sources */,
 				4FFE19772226A10B00C4715E /* AppDelegate.swift in Sources */,
 				149AE2DCF883B2A7D6BE735B /* ScreenTimeUsageStore.swift in Sources */,
