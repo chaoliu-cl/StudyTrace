@@ -75,10 +75,17 @@ function isPictureEsmRow(row) {
   return Number(parseEsmJson(row).esm_type) === 14;
 }
 
+function looksLikeImageAnswer(answer) {
+  if (typeof answer !== 'string') return false;
+  const value = answer.trim();
+  return value.startsWith('iVBORw0KGgo') || value.startsWith('/9j/') || /^data:image\/(?:png|jpeg);base64,/i.test(value);
+}
+
 function renderEsmAnswer(row, studyId, password) {
   const answer = row?.data?.esm_user_answer;
-  if (isPictureEsmRow(row) && typeof answer === 'string' && answer.trim()) {
-    const imageUrl = `/api/v1/studies/${encodeURIComponent(studyId)}/media/esms/${encodeURIComponent(row.id)}/image`;
+  if ((isPictureEsmRow(row) || looksLikeImageAnswer(answer)) && typeof answer === 'string' && answer.trim()) {
+    const sensor = row.sensor || 'esms';
+    const imageUrl = `/api/v1/studies/${encodeURIComponent(studyId)}/media/${encodeURIComponent(sensor)}/${encodeURIComponent(row.id)}/image`;
     return `
       <div class="photo-answer">
         <img data-src="${imageUrl}" alt="Photo response" loading="lazy" data-auth-image data-password="${escapeHtml(password)}">
@@ -92,17 +99,8 @@ function renderEsmAnswer(row, studyId, password) {
 }
 
 async function loadEsmResponses({ studyId, password, sensors, table, message }) {
-  if (!sensors.some((sensor) => sensor.sensor === 'esms')) {
-    renderTable(table, [
-      { label: 'Time', render: () => '—' },
-      { label: 'Question', render: () => '—' },
-      { label: 'Answer', render: () => 'No ESM responses have been uploaded yet.' },
-    ], []);
-    return;
-  }
-
   const headers = { 'x-study-password': password };
-  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/export/esms?format=json&limit=50`, { headers });
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/esm-responses?limit=50`, { headers });
   const payload = await readJson(res);
   if (!res.ok) {
     return setMessage(message, payload.error || 'Could not load survey responses.', true);
@@ -112,6 +110,7 @@ async function loadEsmResponses({ studyId, password, sensors, table, message }) 
     { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
     { label: 'Question', render: (row) => escapeHtml(parseEsmJson(row).esm_title || row.data?.esm_trigger || '—') },
     { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Sensor', render: (row) => escapeHtml(row.sensor || '—') },
     { label: 'Answer', render: (row) => renderEsmAnswer(row, studyId, password) },
   ], payload.rows || []);
 

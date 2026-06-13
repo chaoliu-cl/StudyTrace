@@ -227,6 +227,30 @@ try {
   assert.ok(imageBytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), 'PNG signature');
   console.log('✓ picture ESM answer previews as image/png');
 
+  const pluginEsmRows = [{
+    timestamp: 888,
+    device_id: 'dev-1',
+    esm_trigger: 'pilot_plugin_context_photo',
+    esm_json: JSON.stringify({ esm_type: 14, esm_title: 'Plugin ESM photo' }),
+    esm_user_answer: tinyPngBase64,
+  }];
+  const pluginEsmIns = await post(`${studyPath}/plugin_ios_esm/insert`,
+    form({ device_id: 'dev-1', data: JSON.stringify(pluginEsmRows) }), formHeaders);
+  assert.strictEqual(pluginEsmIns.status, 200, 'plugin_ios_esm picture insert ok');
+
+  const esmDashboard = await request('GET', `${apiBase}/dashboard/esm-responses`, { headers: jsonAuth });
+  assert.strictEqual(esmDashboard.status, 200, 'dashboard ESM response list ok');
+  const pluginPhotoRow = esmDashboard.json.rows.find((row) => row.sensor === 'plugin_ios_esm');
+  assert.ok(pluginPhotoRow, 'dashboard finds plugin_ios_esm ESM rows');
+  assert.strictEqual(pluginPhotoRow.data.esm_trigger, 'pilot_plugin_context_photo', 'dashboard preserves plugin ESM row data');
+
+  const pluginImageRes = await fetch(`${base}${apiBase}/media/plugin_ios_esm/${pluginPhotoRow.id}/image`, {
+    headers: { 'x-study-password': 'secret' },
+  });
+  assert.strictEqual(pluginImageRes.status, 200, 'plugin_ios_esm image endpoint ok');
+  assert.strictEqual(pluginImageRes.headers.get('content-type'), 'image/png', 'plugin_ios_esm served as PNG');
+  console.log('✓ dashboard discovers plugin_ios_esm photo responses');
+
   // ---- Admin data export ----------------------------------------------------
   const adminHdr = { 'x-admin-token': 'test-admin-token' };
 

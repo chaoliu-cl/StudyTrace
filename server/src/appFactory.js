@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import {
   getPool,
   listSensorTables,
+  listStudySensorTables,
   exportRows,
   safeTableName,
   listStudies,
@@ -219,9 +220,32 @@ export function createApp() {
     }
   });
 
+  app.get('/api/v1/studies/:studyId/dashboard/esm-responses', requireStudyPassword, async (req, res) => {
+    try {
+      const rows = await findEsmResponseRows(req.params.studyId, req.query.limit);
+      return res.json({ ok: true, count: rows.length, rows });
+    } catch (err) {
+      console.error(`[dashboard esm responses ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  app.get('/api/v1/studies/:studyId/media/:sensor/:rowId/image', requireStudyPassword, async (req, res) => {
+    try {
+      const image = await imageFromEsmRow(req.params.studyId, req.params.sensor, req.params.rowId);
+      if (!image) return res.status(404).json({ error: 'image not found' });
+      res.setHeader('Content-Type', image.contentType);
+      res.setHeader('Content-Disposition', `inline; filename="studytrace-esm-${req.params.rowId}.${image.extension}"`);
+      return res.send(image.buffer);
+    } catch (err) {
+      console.error(`[dashboard esm image ${req.params.studyId}/${req.params.rowId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
   app.get('/api/v1/studies/:studyId/media/esms/:rowId/image', requireStudyPassword, async (req, res) => {
     try {
-      const image = await imageFromEsmRow(req.params.studyId, req.params.rowId);
+      const image = await imageFromEsmRow(req.params.studyId, 'esms', req.params.rowId);
       if (!image) return res.status(404).json({ error: 'image not found' });
       res.setHeader('Content-Type', image.contentType);
       res.setHeader('Content-Disposition', `inline; filename="studytrace-esm-${req.params.rowId}.${image.extension}"`);
@@ -272,14 +296,60 @@ function rowsToCsv(rows) {
   return lines.join('\r\n');
 }
 
-async function imageFromEsmRow(studyId, rowId) {
+async function findEsmResponseRows(studyId, rawLimit) {
+  const limit = Math.min(Math.max(Number(rawLimit) || 50, 1), 200);
+  const sensors = await listStudySensorTables(studyId);
+  const esmSensors = [];
+
+  for (const sensor of sensors) {
+    if (isKnownEsmSensor(sensor.sensor)) {
+      esmSensors.push(sensor.sensor);
+      continue;
+    }
+
+    const sample = await exportRows(sensor.table, { studyId, limit: 5 });
+    if (sample.some((row) => isEsmDataRow(row.data))) {
+      esmSensors.push(sensor.sensor);
+    }
+  }
+
+  const rows = [];
+  for (const sensor of [...new Set(esmSensors)]) {
+    const table = safeTableName(sensor);
+    if (!table) continue;
+    const sensorRows = await exportRows(table, { studyId, limit });
+    for (const row of sensorRows) {
+      if (isEsmDataRow(row.data)) rows.push({ ...row, sensor });
+    }
+  }
+
+  return rows
+    .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0))
+    .slice(0, limit);
+}
+
+function isKnownEsmSensor(sensor) {
+  return ['esms', 'plugin_ios_esm', 'ios_esm'].includes(String(sensor || '').toLowerCase());
+}
+
+function isEsmDataRow(data) {
+  return Boolean(data && typeof data === 'object' && (
+    'esm_user_answer' in data ||
+    'esm_json' in data ||
+    'esm_trigger' in data ||
+    'double_esm_user_answer_timestamp' in data
+  ));
+}
+
+async function imageFromEsmRow(studyId, sensor, rowId) {
   const id = Number(rowId);
   if (!Number.isSafeInteger(id) || id < 1) return null;
-  if (!(await tableExists('aware_esms'))) return null;
+  const table = safeTableName(sensor);
+  if (!table || !(await tableExists(table))) return null;
 
   const { rows } = await getPool().query(
     `SELECT data
-     FROM aware_esms
+     FROM ${table}
      WHERE study_id = $1 AND id = $2
      LIMIT 1`,
     [studyId, id]
@@ -287,7 +357,7 @@ async function imageFromEsmRow(studyId, rowId) {
   if (!rows.length) return null;
 
   const data = rows[0].data || {};
-  if (!isPictureEsmRow(data)) return null;
+  if (!isPictureEsmRow(data) && !decodeImageAnswer(data.esm_user_answer)) return null;
   return decodeImageAnswer(data.esm_user_answer);
 }
 
