@@ -24,7 +24,16 @@ export function buildStudyConfig({ studyId, studyName, webserviceUrl }) {
         { setting: 'webservice_server', value: webserviceUrl },
         { setting: 'study_id', value: studyId },
       ],
-      plugins: [],
+      plugins: [
+        {
+          plugin: 'plugin_ios_esm',
+          settings: [
+            { setting: 'status_plugin_ios_esm', value: 'true' },
+            { setting: 'plugin_ios_esm_config_url', value: `${webserviceUrl}/esm/config` },
+            { setting: 'plugin_ios_esm_table_name', value: 'plugin_ios_esm' },
+          ],
+        },
+      ],
     },
   ];
 }

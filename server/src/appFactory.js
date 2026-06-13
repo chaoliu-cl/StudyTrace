@@ -26,6 +26,7 @@ import {
   listStudies,
   getStudyOverview,
   getStudy,
+  updateStudyConfig,
   tableExists,
   isDatabaseConfigured,
 } from './db.js';
@@ -157,6 +158,23 @@ export function createApp() {
       res.json({ ok: true, ...overview });
     } catch (err) {
       console.error(`[admin study ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  app.put('/admin/studies/:studyId/esm-schedule', requireAdmin, async (req, res) => {
+    try {
+      const study = await getStudy(req.params.studyId);
+      if (!study) return res.status(404).json({ error: 'study not found' });
+
+      const esmSchedule = buildEsmScheduleFromRequest(req.body || {});
+      const updated = await updateStudyConfig(req.params.studyId, { esm_schedule: esmSchedule });
+      res.json({ ok: true, study_id: updated.study_id, esm_schedule: esmSchedule });
+    } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+      console.error(`[admin esm schedule ${req.params.studyId}]`, err);
       res.status(500).json({ error: 'server error' });
     }
   });
@@ -294,6 +312,125 @@ function rowsToCsv(rows) {
     lines.push(line.join(','));
   }
   return lines.join('\r\n');
+}
+
+function buildEsmScheduleFromRequest(body) {
+  const mode = body.mode === 'random' ? 'random' : 'fixed';
+  const hours = parseHours(body.hours);
+  const randomMinutes = mode === 'random'
+    ? clampInteger(body.randomize_minutes, 1, 180, 30)
+    : 0;
+  const scheduleId = sanitizeScheduleId(body.schedule_id || `studytrace_${mode}_survey`);
+  const esms = parseEsmQuestions(body);
+
+  return [
+    {
+      schedule_id: scheduleId,
+      hours,
+      randomize: randomMinutes,
+      expiration: clampInteger(body.expiration_minutes, 0, 1440, mode === 'random' ? randomMinutes * 2 : 120),
+      start_date: normalizeDateString(body.start_date),
+      end_date: normalizeDateString(body.end_date),
+      notification_title: String(body.notification_title || 'StudyTrace survey available'),
+      notification_body: String(body.notification_body || 'Please complete your scheduled study survey.'),
+      interface: 0,
+      esms,
+    },
+  ];
+}
+
+function parseHours(value) {
+  const values = Array.isArray(value)
+    ? value
+    : String(value || '').split(/[,\s]+/);
+  const hours = [...new Set(values
+    .map((item) => Number(item))
+    .filter((item) => Number.isInteger(item) && item >= 0 && item <= 23))];
+  if (!hours.length) throw httpError(400, 'hours must include at least one integer from 0 to 23');
+  return hours.sort((a, b) => a - b);
+}
+
+function parseEsmQuestions(body) {
+  if (Array.isArray(body.esms)) return normalizeEsmArray(body.esms);
+  if (body.esms_json) {
+    try {
+      const parsed = JSON.parse(body.esms_json);
+      return normalizeEsmArray(parsed);
+    } catch {
+      throw httpError(400, 'esms_json must be valid JSON');
+    }
+  }
+  return normalizeEsmArray(defaultEsmQuestions());
+}
+
+function normalizeEsmArray(value) {
+  if (!Array.isArray(value) || !value.length) {
+    throw httpError(400, 'survey must include at least one ESM question');
+  }
+  return value.map((item, index) => {
+    const esm = item?.esm || item;
+    if (!esm || typeof esm !== 'object') {
+      throw httpError(400, `ESM question ${index + 1} must be an object`);
+    }
+    if (!Number.isInteger(Number(esm.esm_type))) {
+      throw httpError(400, `ESM question ${index + 1} must include numeric esm_type`);
+    }
+    return {
+      esm: {
+        esm_submit: index === value.length - 1 ? 'Submit' : 'Next',
+        esm_na: true,
+        esm_expiration_threshold: 0,
+        esm_trigger: `studytrace_q${index + 1}`,
+        ...esm,
+        esm_type: Number(esm.esm_type),
+      },
+    };
+  });
+}
+
+function defaultEsmQuestions() {
+  return [
+    {
+      esm_type: 2,
+      esm_title: 'Current activity',
+      esm_instructions: 'What are you doing right now?',
+      esm_radios: ['Working or studying', 'Resting', 'Commuting', 'Socializing', 'Other'],
+      esm_trigger: 'current_activity',
+      esm_submit: 'Next',
+      esm_na: true,
+    },
+    {
+      esm_type: 14,
+      esm_title: 'Context photo',
+      esm_instructions: 'Please take a photo of your current context.',
+      esm_trigger: 'context_photo',
+      esm_submit: 'Submit',
+      esm_na: true,
+    },
+  ];
+}
+
+function sanitizeScheduleId(value) {
+  const cleaned = String(value || '').trim().replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
+  return cleaned || 'studytrace_survey';
+}
+
+function normalizeDateString(value) {
+  const text = String(value || '').trim();
+  if (/^\d{2}-\d{2}-\d{4}$/.test(text)) return text;
+  return '';
+}
+
+function clampInteger(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isInteger(number)) return fallback;
+  return Math.min(Math.max(number, min), max);
+}
+
+function httpError(statusCode, message) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
 }
 
 async function findEsmResponseRows(studyId, rawLimit) {

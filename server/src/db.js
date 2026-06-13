@@ -193,6 +193,20 @@ export async function getStudy(studyId) {
   return rows.length ? rows[0] : null;
 }
 
+export async function updateStudyConfig(studyId, configPatch) {
+  const current = await getStudy(studyId);
+  if (!current) return null;
+  const nextConfig = { ...(current.config || {}), ...(configPatch || {}) };
+  const { rows } = await getPool().query(
+    `UPDATE studies
+     SET config = $2
+     WHERE study_id = $1
+     RETURNING study_id, password, name, config, created_at`,
+    [studyId, JSON.stringify(nextConfig)]
+  );
+  return rows.length ? rows[0] : null;
+}
+
 export async function tableExists(table) {
   const { rows } = await getPool().query(`SELECT to_regclass($1) AS reg`, [table]);
   return rows[0].reg !== null;

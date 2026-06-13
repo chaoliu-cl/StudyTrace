@@ -64,6 +64,12 @@ export function createAwareRouter(getPublicBaseUrl) {
     res.json(config);
   });
 
+  router.get(`${STUDY_PREFIX}/esm/config`, requireStudy, async (req, res) => {
+    const config = req.study.config || {};
+    const schedule = Array.isArray(config.esm_schedule) ? config.esm_schedule : [];
+    res.json(schedule);
+  });
+
   // ---- Per-sensor actions ---------------------------------------------------
   const ACTION_PREFIX = `${STUDY_PREFIX}/:table/:action`;
 

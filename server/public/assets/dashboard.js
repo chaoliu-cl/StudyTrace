@@ -223,7 +223,31 @@ function initAdmin() {
   const sensors = document.querySelector('#admin-sensors');
   const createForm = document.querySelector('#admin-create-study');
   const createResult = document.querySelector('#admin-create-result');
+  const scheduleForm = document.querySelector('#admin-esm-schedule');
+  const scheduleResult = document.querySelector('#admin-esm-schedule-result');
   let token = '';
+
+  const defaultEsmQuestions = [
+    {
+      esm_type: 2,
+      esm_title: 'Current activity',
+      esm_instructions: 'What are you doing right now?',
+      esm_radios: ['Working or studying', 'Resting', 'Commuting', 'Socializing', 'Other'],
+      esm_trigger: 'current_activity',
+      esm_submit: 'Next',
+      esm_na: true,
+    },
+    {
+      esm_type: 14,
+      esm_title: 'Context photo',
+      esm_instructions: 'Please take a photo of your current context.',
+      esm_trigger: 'context_photo',
+      esm_submit: 'Submit',
+      esm_na: true,
+    },
+  ];
+
+  scheduleForm.elements.esms_json.value = JSON.stringify(defaultEsmQuestions, null, 2);
 
   async function refresh() {
     const headers = { 'x-admin-token': token };
@@ -303,6 +327,31 @@ function initAdmin() {
     }
     createResult.textContent = JSON.stringify(payload, null, 2);
     await refresh();
+  });
+
+  scheduleForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!token) {
+      return setMessage(authMessage, 'Load the admin console first.', true);
+    }
+    const formData = new FormData(scheduleForm);
+    const studyId = String(formData.get('study_id') || '').trim();
+    const body = Object.fromEntries(formData.entries());
+    const res = await fetch(`/admin/studies/${encodeURIComponent(studyId)}/esm-schedule`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': token,
+      },
+      body: JSON.stringify(body),
+    });
+    const payload = await readJson(res);
+    scheduleResult.textContent = JSON.stringify(payload, null, 2);
+    if (!res.ok) {
+      return setMessage(authMessage, payload.error || 'Could not save survey schedule.', true);
+    }
+    await refresh();
+    setMessage(authMessage, 'Survey delivery schedule saved.');
   });
 
   document.addEventListener('click', async (event) => {

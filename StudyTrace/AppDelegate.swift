@@ -99,6 +99,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func handleBackgroundRefresh(task: BGAppRefreshTask) {
+        refreshRemoteESMScheduleIfNeeded(force: false)
         scheduleBackgroundRefresh()
         task.setTaskCompleted(success: true)
     }
@@ -121,11 +122,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationWillEnterForeground(_ application: UIApplication) {
         SpecificAppUsageManager.shared.drainPendingUsage()
+        refreshRemoteESMScheduleIfNeeded(force: false)
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationWillEnterForeground:"]);
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
+        refreshRemoteESMScheduleIfNeeded(force: false)
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationDidBecomeActive:"]);
     }
@@ -138,6 +141,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationWillTerminate:"]);
         self.saveContext()
+    }
+
+    private func refreshRemoteESMScheduleIfNeeded(force: Bool) {
+        guard StudyParticipationController.hasConsent() else { return }
+        let key = "studytrace.lastRemoteESMScheduleRefresh"
+        let now = Date()
+        let lastRefresh = UserDefaults.standard.object(forKey: key) as? Date ?? .distantPast
+        guard force || now.timeIntervalSince(lastRefresh) > 10 * 60 else { return }
+
+        let url = AWAREStudy.shared().getSetting(AWARE_PREFERENCES_PLUGIN_IOS_ESM_CONFIG_URL)
+        guard !url.isEmpty,
+              let esm = AWARESensorManager.shared().getSensor(SENSOR_PLUGIN_IOS_ESM) as? IOSESM else {
+            return
+        }
+
+        UserDefaults.standard.set(now, forKey: key)
+        _ = esm.startSensor(withURL: url)
     }
     
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {

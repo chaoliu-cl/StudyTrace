@@ -40,6 +40,31 @@ Operational endpoints remain available too:
 - `/health` — Railway health check
 - `/status` — machine-readable service descriptor
 
+## Server-managed survey delivery
+
+Participants no longer need to scan a survey QR code for normal study use.
+After a participant joins the study URL once, the AWARE join configuration
+points the iPhone app to the study's hosted ESM schedule:
+
+```
+/index.php/webservice/index/{STUDY_ID}/{PASSWORD}/esm/config
+```
+
+Use `/admin/` to create or update the study's **Survey delivery schedule**:
+
+- `Fixed schedule` sends notifications at the listed hours, e.g. `9, 17`.
+- `Randomized around listed hours` sends each notification at a random offset
+  within the configured randomization window around each listed hour.
+- `Expiration window` controls how long a survey remains valid after the
+  scheduled time.
+- `Survey questions JSON` is an array of ESM question objects. Use
+  `esm_type: 14` for an in-survey photo question.
+
+Existing participants pick up the schedule when the app starts/restarts its
+collection state. For immediate testing after changing a schedule, ask the
+participant to open the app once after deployment. QR-based ESM import remains
+available as a fallback/debug workflow.
+
 ## Storage model
 
 Each sensor gets its own Postgres table (`aware_<sensor>`), storing the

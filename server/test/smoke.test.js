@@ -82,6 +82,36 @@ try {
 
   const studyPath = '/index.php/webservice/index/demo/secret';
 
+  const scheduleBody = {
+    mode: 'random',
+    hours: '9, 17',
+    randomize_minutes: '20',
+    expiration_minutes: '90',
+    notification_title: 'StudyTrace test survey',
+    notification_body: 'Please complete the test survey.',
+    esms_json: JSON.stringify([
+      {
+        esm_type: 2,
+        esm_title: 'Current activity',
+        esm_radios: ['Working', 'Resting'],
+        esm_trigger: 'pilot_activity',
+      },
+      {
+        esm_type: 14,
+        esm_title: 'Context photo',
+        esm_trigger: 'pilot_context_photo',
+      },
+    ]),
+  };
+  const scheduleSave = await request('PUT', '/admin/studies/demo/esm-schedule', {
+    body: JSON.stringify(scheduleBody),
+    headers: { 'Content-Type': 'application/json', 'x-admin-token': 'test-admin-token' },
+  });
+  assert.strictEqual(scheduleSave.status, 200, 'admin save ESM schedule');
+  assert.deepStrictEqual(scheduleSave.json.esm_schedule[0].hours, [9, 17], 'ESM schedule hours');
+  assert.strictEqual(scheduleSave.json.esm_schedule[0].randomize, 20, 'ESM randomization minutes');
+  console.log('✓ admin saves randomized ESM delivery schedule');
+
   // 2. Wrong password rejected.
   const bad = await post('/index.php/webservice/index/demo/wrong', form({ device_id: 'd1' }), formHeaders);
   assert.strictEqual(bad.status, 403, 'bad password rejected');
@@ -92,7 +122,22 @@ try {
   assert.strictEqual(join.status, 200, 'join ok');
   assert.ok(Array.isArray(join.json), 'config is array');
   assert.strictEqual(join.json[0].study_id, 'demo', 'config study_id');
+  const iosEsmPlugin = join.json[0].plugins.find((plugin) => plugin.plugin === 'plugin_ios_esm');
+  assert.ok(iosEsmPlugin, 'join config includes iOS ESM plugin');
+  assert.ok(
+    iosEsmPlugin.settings.some((setting) =>
+      setting.setting === 'plugin_ios_esm_config_url' &&
+      setting.value === 'https://example.up.railway.app/index.php/webservice/index/demo/secret/esm/config'
+    ),
+    'join config includes ESM config URL'
+  );
   console.log('✓ join returns config array');
+
+  const remoteEsmConfig = await request('GET', `${studyPath}/esm/config`);
+  assert.strictEqual(remoteEsmConfig.status, 200, 'remote ESM config ok');
+  assert.strictEqual(remoteEsmConfig.json[0].schedule_id, 'studytrace_random_survey', 'remote ESM schedule id');
+  assert.strictEqual(remoteEsmConfig.json[0].esms.length, 2, 'remote ESM question count');
+  console.log('✓ participant app can download ESM schedule config');
 
   // 4. create_table.
   const ct = await post(`${studyPath}/locations/create_table`, form({ device_id: 'dev-1' }), formHeaders);

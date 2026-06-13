@@ -215,6 +215,24 @@ input {
   font: inherit;
 }
 
+select,
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+  font: inherit;
+}
+
+textarea {
+  min-height: 220px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.88rem;
+  resize: vertical;
+}
+
 .status-line {
   min-height: 1.4em;
   margin: 12px 0 0;
