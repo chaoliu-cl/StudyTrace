@@ -28,14 +28,67 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
     var qrcode:String?
     
     var scannedContent:ScannedContent = .unknown
-    enum ScannedContent{
+    enum ScannedContent: Equatable {
         case unknown
         case url
         case json
     }
+
+    static func classifyScannedContent(_ rawValue: String) -> ScannedContent {
+        if isValidESMScheduleConfig(rawValue) {
+            return .json
+        }
+
+        guard let url = URL(string: normalizedURLCandidate(rawValue)),
+              let scheme = url.scheme?.lowercased() else {
+            return .unknown
+        }
+
+        switch scheme {
+        case "https", "aware", "aware-ssl":
+            return .url
+        default:
+            return .unknown
+        }
+    }
+
+    static func normalizedURLCandidate(_ rawValue: String) -> String {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains("://") {
+            return trimmed
+        }
+        // QR generators often omit the scheme. Treat bare host/path study URLs
+        // as HTTPS candidates; final join still passes through HTTPS validation.
+        if trimmed.contains(".") && !trimmed.contains(" ") {
+            return "https://\(trimmed)"
+        }
+        return trimmed
+    }
+
+    static func isValidESMScheduleConfig(_ rawValue: String) -> Bool {
+        guard let data = rawValue.data(using: .utf8),
+              let jsonObject = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed),
+              let jsonArray = jsonObject as? [[String: Any]] else {
+            return false
+        }
+
+        return jsonArray.contains { schedule in
+            guard schedule["schedule_id"] is String else {
+                return false
+            }
+            if let hours = schedule["hours"] as? [Int] {
+                return !hours.isEmpty
+            }
+            if let hours = schedule["hours"] as? [NSNumber] {
+                return !hours.isEmpty
+            }
+            return false
+        }
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        configureActionButton(title: "Please scan a QR Code", enabled: false)
         
         qrcodeFrameView = UIView(frame: CGRect.zero)
         if let qrcodeFrameView = qrcodeFrameView {
@@ -122,41 +175,19 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                     qrcodeViewHideTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { (timer) in
                         self.qrcodeFrameView?.isHidden = true
                     }
-                    qrcode = qrObject.stringValue
+                    qrcode = qrObject.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
                     
                     
                     /// Checking "URL" or "JSON for ESM"
                     if let str = qrcode {
-                        /// If the QR-code is URL
-                        if let _ = URL(string: str) {
-                            joinButton.layer.borderColor  = UIColor.white.cgColor
-                            joinButton.layer.borderWidth = 2
-                            joinButton.layer.cornerRadius = 5
-                            joinButton.setTitle("Join", for: .normal)
-                            joinButton.isEnabled = true
-                            scannedContent = .url
-                        }else{
-                            do {
-                                if let strData = str.data(using: .utf8){
-                                    if let jsonArray = try JSONSerialization.jsonObject(with: strData,
-                                                                                        options: .fragmentsAllowed) as? [[String:Any]] {
-                                        for jsonObj in jsonArray {
-                                            if let _  = jsonObj["schedule_id"] as? String,
-                                               let _  = jsonObj["hours"] as? [Int] {
-                                                scannedContent = .json
-                                                joinButton.layer.borderColor  = UIColor.white.cgColor
-                                                joinButton.layer.borderWidth = 2
-                                                joinButton.layer.cornerRadius = 5
-                                                joinButton.setTitle("Import ESM Settings", for: .normal)
-                                                joinButton.isEnabled = true
-                                                scannedContent = .json
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch {
-                                print(error)
-                            }
+                        scannedContent = QRCodeReaderViewController.classifyScannedContent(str)
+                        switch scannedContent {
+                        case .url:
+                            configureActionButton(title: "Join Study", enabled: true)
+                        case .json:
+                            configureActionButton(title: "Import ESM Settings", enabled: true)
+                        case .unknown:
+                            configureActionButton(title: "Unrecognized QR Code", enabled: false)
                         }
                     }
                 }
@@ -178,7 +209,7 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
             
             switch scannedContent {
             case .url:
-                guard let secureURL = normalizedSecureStudyURL(qr) else {
+                guard let secureURL = normalizedSecureStudyURL(QRCodeReaderViewController.normalizedURLCandidate(qr)) else {
                     showInsecureURLAlert()
                     return
                 }
@@ -267,6 +298,17 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                 break
             }
         }
+    }
+
+    private func configureActionButton(title: String, enabled: Bool) {
+        joinButton.layer.borderColor = UIColor.white.cgColor
+        joinButton.layer.borderWidth = 2
+        joinButton.layer.cornerRadius = 8
+        joinButton.backgroundColor = enabled ? UIColor.systemBlue : UIColor.black.withAlphaComponent(0.45)
+        joinButton.setTitle(title, for: .normal)
+        joinButton.setTitleColor(.white, for: .normal)
+        joinButton.isEnabled = enabled
+        joinButton.alpha = enabled ? 1.0 : 0.85
     }
 }
 
