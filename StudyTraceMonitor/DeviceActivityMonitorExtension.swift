@@ -31,11 +31,14 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         super.eventDidReachThreshold(event, activity: activity)
 
         let thresholdMinutes = Self.thresholdMinutes(from: event.rawValue)
+        let target = Self.target(from: event.rawValue)
         let record = ScreenTimeUsageEvent(
             event: event.rawValue,
             thresholdMinutes: thresholdMinutes,
             activity: activity.rawValue,
-            timestamp: Date().timeIntervalSince1970 * 1000.0
+            timestamp: Date().timeIntervalSince1970 * 1000.0,
+            targetKind: target.kind,
+            targetIndex: target.index
         )
         ScreenTimeUsageStore.shared.append(record)
     }
@@ -46,5 +49,31 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             return value
         }
         return 0
+    }
+
+    private static func target(from eventName: String) -> (kind: String, index: Int?) {
+        let parts = eventName.split(separator: ".").map(String.init)
+        guard parts.count >= 5 else {
+            return (ScreenTimeShared.targetAggregate, nil)
+        }
+
+        let kind = parts[parts.count - 2]
+        if kind == ScreenTimeShared.targetAggregate {
+            return (ScreenTimeShared.targetAggregate, nil)
+        }
+
+        guard parts.count >= 6 else {
+            return (ScreenTimeShared.targetAggregate, nil)
+        }
+        let indexedKind = parts[parts.count - 3]
+        let index = Int(parts[parts.count - 2])
+        switch indexedKind {
+        case ScreenTimeShared.targetApplication,
+             ScreenTimeShared.targetCategory,
+             ScreenTimeShared.targetWebDomain:
+            return (indexedKind, index)
+        default:
+            return (ScreenTimeShared.targetAggregate, nil)
+        }
     }
 }

@@ -58,6 +58,17 @@ async function post(path, body, headers = {}) {
   return { status: res.status, json };
 }
 
+async function postWithoutContentType(path, body) {
+  const res = await fetch(base + path, {
+    method: 'POST',
+    body,
+  });
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch { json = text; }
+  return { status: res.status, json };
+}
+
 const form = (obj) =>
   Object.entries(obj).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 const formHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };
@@ -283,9 +294,25 @@ try {
     form({ device_id: 'dev-1', data: JSON.stringify(pluginEsmRows) }), formHeaders);
   assert.strictEqual(pluginEsmIns.status, 200, 'plugin_ios_esm picture insert ok');
 
+  const quickSyncRows = [{
+    timestamp: 889,
+    device_id: 'dev-1',
+    esm_trigger: 'quick_sync_photo',
+    esm_json: JSON.stringify({ esm_type: 14, esm_title: 'Quick sync photo' }),
+    esm_user_answer: tinyPngBase64,
+  }];
+  const quickSyncIns = await postWithoutContentType(`${studyPath}/plugin_ios_esm/insert`,
+    form({ device_id: 'dev-1', data: JSON.stringify(quickSyncRows) }));
+  assert.strictEqual(quickSyncIns.status, 200, 'quick sync insert without content-type ok');
+  assert.strictEqual(quickSyncIns.json.inserted, 1, 'quick sync inserted row');
+  console.log('✓ AWARE quick sync form body works without content-type');
+
   const esmDashboard = await request('GET', `${apiBase}/dashboard/esm-responses`, { headers: jsonAuth });
   assert.strictEqual(esmDashboard.status, 200, 'dashboard ESM response list ok');
-  const pluginPhotoRow = esmDashboard.json.rows.find((row) => row.sensor === 'plugin_ios_esm');
+  const pluginPhotoRow = esmDashboard.json.rows.find((row) =>
+    row.sensor === 'plugin_ios_esm' &&
+    row.data.esm_trigger === 'pilot_plugin_context_photo'
+  );
   assert.ok(pluginPhotoRow, 'dashboard finds plugin_ios_esm ESM rows');
   assert.strictEqual(pluginPhotoRow.data.esm_trigger, 'pilot_plugin_context_photo', 'dashboard preserves plugin ESM row data');
 
@@ -295,6 +322,49 @@ try {
   assert.strictEqual(pluginImageRes.status, 200, 'plugin_ios_esm image endpoint ok');
   assert.strictEqual(pluginImageRes.headers.get('content-type'), 'image/png', 'plugin_ios_esm served as PNG');
   console.log('✓ dashboard discovers plugin_ios_esm photo responses');
+
+  // 17.6. Screen Time events are uploaded through ios_aware_log and rendered by
+  //       dedicated researcher/admin dashboard endpoints.
+  const screenTimeLogs = [
+    {
+      timestamp: 900,
+      device_id: 'dev-1',
+      log_message: JSON.stringify({
+        class: 'SpecificAppUsageManager',
+        event: 'screen_time_selection_updated',
+        selected_app_count: '2',
+        selected_category_count: '1',
+        selected_web_count: '0',
+      }),
+    },
+    {
+      timestamp: 901,
+      device_id: 'dev-1',
+      log_message: JSON.stringify({
+        class: 'SpecificAppUsageManager',
+        event: 'screen_time_threshold_reached',
+        screen_time_event: 'studytrace.selected.apps.usage.app.0.15',
+        threshold_minutes: '15',
+        target_kind: 'app',
+        target_index: '0',
+        target_label: 'App 1',
+        activity: 'studytrace.selected.apps.daily',
+        event_timestamp: '901',
+      }),
+    },
+  ];
+  const screenTimeIns = await post(`${studyPath}/ios_aware_log/insert`,
+    form({ device_id: 'dev-1', data: JSON.stringify(screenTimeLogs) }), formHeaders);
+  assert.strictEqual(screenTimeIns.status, 200, 'screen time event insert ok');
+
+  const researcherScreenTime = await request('GET', `${apiBase}/dashboard/screentime`, { headers: jsonAuth });
+  assert.strictEqual(researcherScreenTime.status, 200, 'researcher screentime dashboard ok');
+  const appMilestone = researcherScreenTime.json.rows.find((row) =>
+    row.type === 'usage_threshold' && row.target_kind === 'app' && row.target_index === 0
+  );
+  assert.ok(appMilestone, 'researcher dashboard finds per-app screen time milestone');
+  assert.strictEqual(appMilestone.threshold_minutes, 15, 'screen time milestone minutes parsed');
+  console.log('✓ researcher dashboard shows indexed app Screen Time milestones');
 
   // ---- Admin data export ----------------------------------------------------
   const adminHdr = { 'x-admin-token': 'test-admin-token' };
@@ -323,6 +393,14 @@ try {
   assert.strictEqual(dashboard.json.study.study_id, 'demo', 'dashboard study id');
   assert.ok(Array.isArray(dashboard.json.devices), 'dashboard devices array');
   console.log('✓ researcher dashboard summary');
+
+  const adminScreenTime = await request('GET', `/admin/screentime`, { headers: adminHdr });
+  assert.strictEqual(adminScreenTime.status, 200, 'admin screentime dashboard ok');
+  assert.ok(
+    adminScreenTime.json.rows.some((row) => row.study_id === 'demo' && row.target_label === 'App 1'),
+    'admin dashboard finds screen time milestone'
+  );
+  console.log('✓ admin dashboard shows Screen Time milestones');
 
   // 21. JSON export returns the stored rows.
   const expJson = await request('GET', `/admin/export/steps?format=json`, { headers: adminHdr });

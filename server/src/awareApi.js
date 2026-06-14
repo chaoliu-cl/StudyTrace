@@ -17,6 +17,7 @@
 //     POST {studyURL}/{table}/clear_table  body: device_id=<uuid>
 
 import express from 'express';
+import { parse as parseQueryString } from 'node:querystring';
 import {
   safeTableName,
   createSensorTable,
@@ -79,7 +80,8 @@ export function createAwareRouter(getPublicBaseUrl) {
     if (!table) {
       return res.status(400).json({ error: 'invalid table name' });
     }
-    const deviceId = req.body.device_id || null;
+    const body = normalizeAwareBody(req.body);
+    const deviceId = body.device_id || null;
 
     try {
       switch (action) {
@@ -90,9 +92,9 @@ export function createAwareRouter(getPublicBaseUrl) {
         case 'insert': {
           await createSensorTable(table); // ensure exists; client may skip create
           let rows = [];
-          if (req.body.data) {
+          if (body.data) {
             try {
-              rows = JSON.parse(req.body.data);
+              rows = JSON.parse(body.data);
             } catch {
               return res.status(400).json({ error: 'data is not valid JSON' });
             }
@@ -119,4 +121,15 @@ export function createAwareRouter(getPublicBaseUrl) {
   });
 
   return router;
+}
+
+function normalizeAwareBody(body) {
+  if (!body) return {};
+  if (typeof body === 'string') {
+    return parseQueryString(body);
+  }
+  if (Buffer.isBuffer(body)) {
+    return parseQueryString(body.toString('utf8'));
+  }
+  return body;
 }

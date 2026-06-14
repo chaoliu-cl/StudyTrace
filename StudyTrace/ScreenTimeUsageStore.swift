@@ -22,6 +22,10 @@ public enum ScreenTimeShared {
     /// DeviceActivity names used when scheduling/monitoring.
     public static let activityName = "studytrace.selected.apps.daily"
     public static let eventNamePrefix = "studytrace.selected.apps.usage"
+    public static let targetAggregate = "aggregate"
+    public static let targetApplication = "app"
+    public static let targetCategory = "category"
+    public static let targetWebDomain = "web"
 
     /// Escalating cumulative-usage thresholds (in minutes). Each DeviceActivity
     /// event fires once when cumulative usage of the selected apps crosses the
@@ -35,12 +39,38 @@ public struct ScreenTimeUsageEvent: Codable {
     public let thresholdMinutes: Int  // cumulative threshold that was reached
     public let activity: String       // DeviceActivity activity name
     public let timestamp: Double       // ms since 1970 (AWARE convention)
+    public let targetKind: String      // aggregate/app/category/web
+    public let targetIndex: Int?       // stable index within the participant's selected tokens
 
-    public init(event: String, thresholdMinutes: Int, activity: String, timestamp: Double) {
+    public init(event: String,
+                thresholdMinutes: Int,
+                activity: String,
+                timestamp: Double,
+                targetKind: String = ScreenTimeShared.targetAggregate,
+                targetIndex: Int? = nil) {
         self.event = event
         self.thresholdMinutes = thresholdMinutes
         self.activity = activity
         self.timestamp = timestamp
+        self.targetKind = targetKind
+        self.targetIndex = targetIndex
+    }
+
+    public var targetLabel: String {
+        guard targetKind != ScreenTimeShared.targetAggregate else {
+            return "Selected apps total"
+        }
+        let number = (targetIndex ?? 0) + 1
+        switch targetKind {
+        case ScreenTimeShared.targetApplication:
+            return "App \(number)"
+        case ScreenTimeShared.targetCategory:
+            return "Category \(number)"
+        case ScreenTimeShared.targetWebDomain:
+            return "Website \(number)"
+        default:
+            return "Selection \(number)"
+        }
     }
 }
 

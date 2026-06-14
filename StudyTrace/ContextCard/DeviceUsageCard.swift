@@ -9,10 +9,11 @@
 import UIKit
 import AWAREFramework
 
-#if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity)
+#if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
 import SwiftUI
 import FamilyControls
 import DeviceActivity
+import ManagedSettings
 #endif
 
 class DeviceUsageCard: ContextCard {
@@ -233,7 +234,7 @@ final class SpecificAppUsageManager {
     }
 
     var explanationText: String {
-        #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity)
+        #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
         if #available(iOS 16.0, *) {
             return "StudyTrace logs overall phone active time locally. Selected-app tracking uses Apple's Screen Time controls; usage milestones for the apps you choose are recorded on device and uploaded to the research server."
         }
@@ -243,7 +244,7 @@ final class SpecificAppUsageManager {
 
     func presentConfiguration(from viewController: UIViewController, completion: (() -> Void)? = nil) {
         self.completion = completion
-        #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity)
+        #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
         if #available(iOS 16.0, *) {
             requestScreenTimeAuthorization(from: viewController)
             return
@@ -276,7 +277,7 @@ final class SpecificAppUsageManager {
         ])
     }
 
-    #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity)
+    #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
     @available(iOS 16.0, *)
     private func requestScreenTimeAuthorization(from viewController: UIViewController) {
         Task {
@@ -339,12 +340,44 @@ final class SpecificAppUsageManager {
                                               intervalEnd: DateComponents(hour: 23, minute: 59),
                                               repeats: true)
 
-        // Register one event per escalating cumulative-usage threshold. Each
-        // event fires once when usage of the selected apps crosses that many
-        // minutes within the day, so the monitor extension records coarse usage
-        // buckets (5m, 15m, 30m, ...). iOS never hands the app raw per-app
-        // durations, so thresholds are how usage magnitude is captured.
+        // Register coarse usage milestones. Apple does not expose raw per-app
+        // durations or app names to the app, so each selected token is tracked
+        // as an indexed app/category/site milestone stream.
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
+        func addThresholds(nameParts: [String],
+                           applications: Set<ApplicationToken> = [],
+                           categories: Set<ActivityCategoryToken> = [],
+                           webDomains: Set<WebDomainToken> = []) {
+            for minutes in ScreenTimeShared.thresholdsMinutes {
+                let name = DeviceActivityEvent.Name(([
+                    ScreenTimeShared.eventNamePrefix
+                ] + nameParts + [String(minutes)]).joined(separator: "."))
+                events[name] = DeviceActivityEvent(applications: applications,
+                                                   categories: categories,
+                                                   webDomains: webDomains,
+                                                   threshold: DateComponents(minute: minutes))
+            }
+        }
+
+        addThresholds(nameParts: [ScreenTimeShared.targetAggregate],
+                      applications: selection.applicationTokens,
+                      categories: selection.categoryTokens,
+                      webDomains: selection.webDomainTokens)
+
+        for (index, token) in Array(selection.applicationTokens).enumerated() {
+            addThresholds(nameParts: [ScreenTimeShared.targetApplication, String(index)],
+                          applications: Set([token]))
+        }
+        for (index, token) in Array(selection.categoryTokens).enumerated() {
+            addThresholds(nameParts: [ScreenTimeShared.targetCategory, String(index)],
+                          categories: Set([token]))
+        }
+        for (index, token) in Array(selection.webDomainTokens).enumerated() {
+            addThresholds(nameParts: [ScreenTimeShared.targetWebDomain, String(index)],
+                          webDomains: Set([token]))
+        }
+
+        // Backward-compatible aggregate event names used by earlier builds.
         for minutes in ScreenTimeShared.thresholdsMinutes {
             let name = DeviceActivityEvent.Name("\(ScreenTimeShared.eventNamePrefix).\(minutes)")
             events[name] = DeviceActivityEvent(applications: selection.applicationTokens,
@@ -385,6 +418,9 @@ final class SpecificAppUsageManager {
                 "event": "screen_time_threshold_reached",
                 "screen_time_event": record.event,
                 "threshold_minutes": "\(record.thresholdMinutes)",
+                "target_kind": record.targetKind,
+                "target_index": record.targetIndex.map(String.init) ?? "",
+                "target_label": record.targetLabel,
                 "activity": record.activity,
                 "event_timestamp": "\(record.timestamp)"
             ])
@@ -396,7 +432,7 @@ final class SpecificAppUsageManager {
         UserDefaults.standard.removeObject(forKey: authorizationKey)
         UserDefaults.standard.removeObject(forKey: selectionDataKey)
 
-        #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity)
+        #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
         if #available(iOS 16.0, *) {
             let center = DeviceActivityCenter()
             center.stopMonitoring([DeviceActivityName(ScreenTimeShared.activityName)])

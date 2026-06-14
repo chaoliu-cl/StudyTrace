@@ -117,6 +117,55 @@ async function loadEsmResponses({ studyId, password, sensors, table, message }) 
   await hydrateAuthenticatedImages(table);
 }
 
+function renderScreenTimeValue(row) {
+  if (row.type === 'selection_updated') {
+    return `${row.selected_app_count || 0} apps, ${row.selected_category_count || 0} categories, ${row.selected_web_count || 0} sites selected`;
+  }
+  if (row.threshold_minutes) {
+    return `${row.threshold_minutes} min reached`;
+  }
+  return '—';
+}
+
+function renderTargetKind(row) {
+  const kind = row.target_kind || 'aggregate';
+  return `<span class="pill">${escapeHtml(kind)}</span>`;
+}
+
+async function loadResearcherScreenTime({ studyId, password, table, message }) {
+  const headers = { 'x-study-password': password };
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/screentime?limit=100`, { headers });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load Screen Time data.', true);
+  }
+
+  renderTable(table, [
+    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Target', render: (row) => escapeHtml(row.target_label || '—') },
+    { label: 'Kind', render: renderTargetKind },
+    { label: 'Milestone', render: renderScreenTimeValue },
+  ], payload.rows || []);
+}
+
+async function loadAdminScreenTime({ token, table, message }) {
+  const res = await fetch('/admin/screentime?limit=100', { headers: { 'x-admin-token': token } });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load Screen Time data.', true);
+  }
+
+  renderTable(table, [
+    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
+    { label: 'Study', render: (row) => escapeHtml(row.study_id || '—') },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Target', render: (row) => escapeHtml(row.target_label || '—') },
+    { label: 'Kind', render: renderTargetKind },
+    { label: 'Milestone', render: renderScreenTimeValue },
+  ], payload.rows || []);
+}
+
 async function hydrateAuthenticatedImages(container) {
   const images = [...container.querySelectorAll('[data-auth-image]')];
   await Promise.all(images.map(async (img) => {
@@ -137,6 +186,7 @@ function initResearcher() {
   const devices = document.querySelector('#researcher-devices');
   const sensors = document.querySelector('#researcher-sensors');
   const esmResponses = document.querySelector('#researcher-esm-responses');
+  const screenTime = document.querySelector('#researcher-screentime');
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -177,6 +227,7 @@ function initResearcher() {
     ], payload.sensors);
 
     dashboard.classList.remove('hidden');
+    await loadResearcherScreenTime({ studyId, password, table: screenTime, message });
     await loadEsmResponses({ studyId, password, sensors: payload.sensors, table: esmResponses, message });
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
   });
@@ -221,6 +272,7 @@ function initAdmin() {
   const metrics = document.querySelector('#admin-metrics');
   const studies = document.querySelector('#admin-studies');
   const sensors = document.querySelector('#admin-sensors');
+  const screenTime = document.querySelector('#admin-screentime');
   const createForm = document.querySelector('#admin-create-study');
   const createResult = document.querySelector('#admin-create-result');
   const scheduleForm = document.querySelector('#admin-esm-schedule');
@@ -292,6 +344,7 @@ function initAdmin() {
     ], sensorsPayload.sensors);
 
     dashboard.classList.remove('hidden');
+    await loadAdminScreenTime({ token, table: screenTime, message: authMessage });
   }
 
   authForm.addEventListener('submit', async (event) => {

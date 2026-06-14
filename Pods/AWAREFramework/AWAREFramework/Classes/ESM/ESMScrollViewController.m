@@ -576,7 +576,9 @@
                                 blockSelf->uploadCompletionHandler(YES);
                             }
                             
-                        }else{
+                        }else if (syncState == AwareStorageSyncProgressError ||
+                                  syncState == AwareStorageSyncProgressCancel ||
+                                  syncState == AwareStorageSyncProgressLocked){
 
                             // send alert and close
                             if (blockSelf->_sendCompletionAlert) {

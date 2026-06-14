@@ -42,6 +42,7 @@ export function createApp() {
   // the generic API uses JSON. Accept both. Payloads can be large.
   app.use(express.urlencoded({ extended: false, limit: '25mb' }));
   app.use(express.json({ limit: '25mb' }));
+  app.use(express.text({ type: '*/*', limit: '25mb' }));
   app.use(express.static(publicDir));
 
   let publicBaseUrl = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
@@ -162,6 +163,16 @@ export function createApp() {
     }
   });
 
+  app.get('/admin/screentime', requireAdmin, async (req, res) => {
+    try {
+      const rows = await findScreenTimeRows({ limit: req.query.limit });
+      res.json({ ok: true, count: rows.length, rows });
+    } catch (err) {
+      console.error('[admin screentime]', err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
   app.put('/admin/studies/:studyId/esm-schedule', requireAdmin, async (req, res) => {
     try {
       const study = await getStudy(req.params.studyId);
@@ -244,6 +255,19 @@ export function createApp() {
       return res.json({ ok: true, count: rows.length, rows });
     } catch (err) {
       console.error(`[dashboard esm responses ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  app.get('/api/v1/studies/:studyId/dashboard/screentime', requireStudyPassword, async (req, res) => {
+    try {
+      const rows = await findScreenTimeRows({
+        studyId: req.params.studyId,
+        limit: req.query.limit,
+      });
+      return res.json({ ok: true, count: rows.length, rows });
+    } catch (err) {
+      console.error(`[dashboard screentime ${req.params.studyId}]`, err);
       res.status(500).json({ error: 'server error' });
     }
   });
@@ -476,6 +500,95 @@ function isEsmDataRow(data) {
     'esm_trigger' in data ||
     'double_esm_user_answer_timestamp' in data
   ));
+}
+
+async function findScreenTimeRows({ studyId, limit: rawLimit } = {}) {
+  const limit = Math.min(Math.max(Number(rawLimit) || 100, 1), 500);
+  const table = safeTableName('ios_aware_log');
+  if (!table || !(await tableExists(table))) return [];
+
+  const rows = await exportRows(table, { studyId, limit: Math.min(limit * 5, 10000) });
+  return rows
+    .map((row) => screenTimeRowFromLog(row))
+    .filter(Boolean)
+    .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0))
+    .slice(0, limit);
+}
+
+function screenTimeRowFromLog(row) {
+  const message = parseLogMessage(row.data?.log_message);
+  if (!message || message.class !== 'SpecificAppUsageManager') return null;
+
+  if (message.event === 'screen_time_threshold_reached') {
+    const targetKind = normalizeScreenTimeTargetKind(message.target_kind);
+    const targetIndex = parseOptionalInteger(message.target_index);
+    return {
+      id: row.id,
+      study_id: row.study_id,
+      device_id: row.device_id,
+      timestamp: Number(message.event_timestamp) || row.timestamp,
+      created_at: row.created_at,
+      type: 'usage_threshold',
+      target_kind: targetKind,
+      target_index: targetIndex,
+      target_label: message.target_label || screenTimeTargetLabel(targetKind, targetIndex),
+      threshold_minutes: Number(message.threshold_minutes) || 0,
+      event_name: message.screen_time_event || '',
+      activity: message.activity || '',
+      raw: message,
+    };
+  }
+
+  if (message.event === 'screen_time_selection_updated') {
+    return {
+      id: row.id,
+      study_id: row.study_id,
+      device_id: row.device_id,
+      timestamp: row.timestamp,
+      created_at: row.created_at,
+      type: 'selection_updated',
+      target_kind: 'selection',
+      target_index: null,
+      target_label: 'Tracked selection changed',
+      selected_app_count: Number(message.selected_app_count) || 0,
+      selected_category_count: Number(message.selected_category_count) || 0,
+      selected_web_count: Number(message.selected_web_count) || 0,
+      raw: message,
+    };
+  }
+
+  return null;
+}
+
+function parseLogMessage(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(String(value));
+  } catch {
+    return null;
+  }
+}
+
+function normalizeScreenTimeTargetKind(value) {
+  const kind = String(value || '').toLowerCase();
+  if (['app', 'category', 'web', 'aggregate', 'selection'].includes(kind)) return kind;
+  return 'aggregate';
+}
+
+function parseOptionalInteger(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isInteger(number) ? number : null;
+}
+
+function screenTimeTargetLabel(kind, index) {
+  if (kind === 'aggregate') return 'Selected apps total';
+  const number = Number.isInteger(index) ? index + 1 : '';
+  if (kind === 'app') return `App ${number}`.trim();
+  if (kind === 'category') return `Category ${number}`.trim();
+  if (kind === 'web') return `Website ${number}`.trim();
+  return 'Selection';
 }
 
 async function imageFromEsmRow(studyId, sensor, rowId) {

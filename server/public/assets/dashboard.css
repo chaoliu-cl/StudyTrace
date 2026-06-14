@@ -282,6 +282,18 @@ th {
   overflow-wrap: anywhere;
 }
 
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(47, 107, 95, 0.12);
+  color: var(--accent-2);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .photo-answer {
   display: grid;
   gap: 8px;
