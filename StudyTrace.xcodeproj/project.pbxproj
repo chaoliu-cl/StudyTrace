@@ -43,6 +43,9 @@
 		4FFE19B22226D2C100C4715E /* StudyTraceTableViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19B12226D2C100C4715E /* StudyTraceTableViewCell.swift */; };
 		6751B417299E72271CA99EAA /* Pods_StudyTraceTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5CC70354397A1A5E6C53574B /* Pods_StudyTraceTests.framework */; };
 		987836DD9DF3528B88188F5E /* ScreenTimeUsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F54330EC699252C38CA9593 /* ScreenTimeUsageStore.swift */; };
+		AA1000010000000000000001 /* StudyTraceReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000010000000000000004 /* StudyTraceReport.swift */; };
+		AA1000010000000000000002 /* ScreenTimeUsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F54330EC699252C38CA9593 /* ScreenTimeUsageStore.swift */; };
+		AA1000010000000000000003 /* StudyTraceReport.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = AA1000010000000000000007 /* StudyTraceReport.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AA00000100000001AABBCC10 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA00000100000001AABBCC11 /* PrivacyInfo.xcprivacy */; };
 		C815C75056583A7E78599A04 /* StudyTraceMonitor.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 922FF0344E49ABED66172385 /* StudyTraceMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E8498A01D2CC4CC3BCB6B07C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 19AC1B97FA292B90BA20F7A5 /* Foundation.framework */; };
@@ -71,6 +74,13 @@
 			remoteGlobalIDString = B7CE658CA3CCC65564AB7B87;
 			remoteInfo = StudyTraceMonitor;
 		};
+		AA1000010000000000000008 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4FFE196B2226A10B00C4715E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA1000010000000000000010;
+			remoteInfo = StudyTraceReport;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -81,6 +91,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				C815C75056583A7E78599A04 /* StudyTraceMonitor.appex in Embed App Extensions */,
+				AA1000010000000000000003 /* StudyTraceReport.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -142,6 +153,10 @@
 		7F54330EC699252C38CA9593 /* ScreenTimeUsageStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ScreenTimeUsageStore.swift; sourceTree = "<group>"; };
 		8F053FEBEEB8141AAF6B81D0 /* Pods-StudyTraceUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTraceUITests.debug.xcconfig"; path = "Target Support Files/Pods-StudyTraceUITests/Pods-StudyTraceUITests.debug.xcconfig"; sourceTree = "<group>"; };
 		922FF0344E49ABED66172385 /* StudyTraceMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StudyTraceMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA1000010000000000000004 /* StudyTraceReport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StudyTraceReport.swift; path = StudyTraceReport/StudyTraceReport.swift; sourceTree = "<group>"; };
+		AA1000010000000000000005 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = Info.plist; path = StudyTraceReport/Info.plist; sourceTree = "<group>"; };
+		AA1000010000000000000006 /* StudyTraceReport.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = StudyTraceReport.entitlements; path = StudyTraceReport/StudyTraceReport.entitlements; sourceTree = "<group>"; };
+		AA1000010000000000000007 /* StudyTraceReport.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StudyTraceReport.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A888A09D2227DB2536C76952 /* StudyTraceMonitor.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = StudyTraceMonitor.entitlements; path = StudyTraceMonitor/StudyTraceMonitor.entitlements; sourceTree = "<group>"; };
 		AA00000100000001AABBCC11 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		C2A52DF7C3B2DCDC02A2CFA0 /* Pods-StudyTraceTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTraceTests.release.xcconfig"; path = "Target Support Files/Pods-StudyTraceTests/Pods-StudyTraceTests.release.xcconfig"; sourceTree = "<group>"; };
@@ -185,6 +200,13 @@
 			files = (
 				E8498A01D2CC4CC3BCB6B07C /* Foundation.framework in Frameworks */,
 				16A7F3E0B9CE0A2A37F9923F /* DeviceActivity.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA1000010000000000000012 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -254,6 +276,7 @@
 				AFB7007A2C4835F2172F535E /* Pods */,
 				1BD07D752FCF16516FA57EDA /* Frameworks */,
 				12933034AA14D92350C1424A /* StudyTraceMonitor */,
+				AA1000010000000000000009 /* StudyTraceReport */,
 			);
 			sourceTree = "<group>";
 		};
@@ -264,6 +287,7 @@
 				4FFE198A2226A10D00C4715E /* StudyTraceTests.xctest */,
 				4FFE19952226A10D00C4715E /* StudyTraceUITests.xctest */,
 				922FF0344E49ABED66172385 /* StudyTraceMonitor.appex */,
+				AA1000010000000000000007 /* StudyTraceReport.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -314,6 +338,16 @@
 			path = StudyTraceUITests;
 			sourceTree = "<group>";
 		};
+		AA1000010000000000000009 /* StudyTraceReport */ = {
+			isa = PBXGroup;
+			children = (
+				AA1000010000000000000004 /* StudyTraceReport.swift */,
+				AA1000010000000000000006 /* StudyTraceReport.entitlements */,
+				AA1000010000000000000005 /* Info.plist */,
+			);
+			name = StudyTraceReport;
+			sourceTree = "<group>";
+		};
 		AFB7007A2C4835F2172F535E /* Pods */ = {
 			isa = PBXGroup;
 			children = (
@@ -354,6 +388,7 @@
 			);
 			dependencies = (
 				3DFA69A69FEDF3DBA56A63F1 /* PBXTargetDependency */,
+				AA1000010000000000000015 /* PBXTargetDependency */,
 			);
 			name = StudyTrace;
 			productName = StudyTrace;
@@ -415,6 +450,23 @@
 			productReference = 922FF0344E49ABED66172385 /* StudyTraceMonitor.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		AA1000010000000000000010 /* StudyTraceReport */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA1000010000000000000014 /* Build configuration list for PBXNativeTarget "StudyTraceReport" */;
+			buildPhases = (
+				AA1000010000000000000011 /* Sources */,
+				AA1000010000000000000012 /* Frameworks */,
+				AA1000010000000000000013 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StudyTraceReport;
+			productName = StudyTraceReport;
+			productReference = AA1000010000000000000007 /* StudyTraceReport.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -456,6 +508,11 @@
 						ProvisioningStyle = Automatic;
 						TestTargetID = 4FFE19722226A10B00C4715E;
 					};
+					AA1000010000000000000010 = {
+						CreatedOnToolsVersion = 16.0;
+						DevelopmentTeam = 2F9Z668JPM;
+						ProvisioningStyle = Automatic;
+					};
 				};
 			};
 			buildConfigurationList = 4FFE196E2226A10B00C4715E /* Build configuration list for PBXProject "StudyTrace" */;
@@ -476,6 +533,7 @@
 				4FFE19892226A10D00C4715E /* StudyTraceTests */,
 				4FFE19942226A10D00C4715E /* StudyTraceUITests */,
 				B7CE658CA3CCC65564AB7B87 /* StudyTraceMonitor */,
+				AA1000010000000000000010 /* StudyTraceReport */,
 			);
 		};
 /* End PBXProject section */
@@ -510,6 +568,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		ADCFDCBDF20B51CC157E94DA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA1000010000000000000013 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -682,6 +747,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA1000010000000000000011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA1000010000000000000001 /* StudyTraceReport.swift in Sources */,
+				AA1000010000000000000002 /* ScreenTimeUsageStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -690,6 +764,12 @@
 			name = StudyTraceMonitor;
 			target = B7CE658CA3CCC65564AB7B87 /* StudyTraceMonitor */;
 			targetProxy = B72A6051BBBC403531F90260 /* PBXContainerItemProxy */;
+		};
+		AA1000010000000000000015 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = StudyTraceReport;
+			target = AA1000010000000000000010 /* StudyTraceReport */;
+			targetProxy = AA1000010000000000000008 /* PBXContainerItemProxy */;
 		};
 		4FFE198C2226A10D00C4715E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -1059,6 +1139,63 @@
 			};
 			name = Release;
 		};
+		AA1000010000000000000016 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = StudyTraceReport/StudyTraceReport.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 7;
+				DEVELOPMENT_TEAM = 2F9Z668JPM;
+				ENABLE_BITCODE = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StudyTraceReport/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.liuchao.studytrace.report;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA1000010000000000000017 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = StudyTraceReport/StudyTraceReport.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 7;
+				DEVELOPMENT_TEAM = 2F9Z668JPM;
+				ENABLE_BITCODE = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StudyTraceReport/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.liuchao.studytrace.report;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1103,6 +1240,15 @@
 			buildConfigurations = (
 				E503F69830D7FC30C6E3685C /* Release */,
 				2DC05335686606D884B45D22 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA1000010000000000000014 /* Build configuration list for PBXNativeTarget "StudyTraceReport" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA1000010000000000000017 /* Release */,
+				AA1000010000000000000016 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

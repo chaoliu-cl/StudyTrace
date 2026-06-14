@@ -16,6 +16,13 @@ import DeviceActivity
 import ManagedSettings
 #endif
 
+#if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
+@available(iOS 16.0, *)
+extension DeviceActivityReport.Context {
+    static let studyTraceAppUsage = Self("StudyTrace App Usage")
+}
+#endif
+
 class DeviceUsageCard: ContextCard {
 
     private let totalUsageLabel = UILabel()
@@ -187,14 +194,14 @@ class DeviceUsageCard: ContextCard {
     }
 }
 
-final class SpecificAppUsageManager {
+final class SpecificAppUsageManager: NSObject {
     static let shared = SpecificAppUsageManager()
 
     private let selectionCountKey = "studytrace.selected-app-usage.count"
     private let selectionCategoryCountKey = "studytrace.selected-app-usage.category-count"
     private let selectionWebCountKey = "studytrace.selected-app-usage.web-count"
     private let authorizationKey = "studytrace.selected-app-usage.authorization"
-    private let selectionDataKey = "studytrace.selected-app-usage.selection"
+    private let selectionDataKey = ScreenTimeShared.selectionDataKey
     private var completion: (() -> Void)?
 
     var selectedAppCount: Int {
@@ -253,6 +260,35 @@ final class SpecificAppUsageManager {
         showUnsupportedAlert(from: viewController)
     }
 
+    func presentUsageReport(from viewController: UIViewController) {
+        #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
+        if #available(iOS 16.0, *) {
+            let selection = loadSelection()
+            guard !selection.applicationTokens.isEmpty ||
+                  !selection.categoryTokens.isEmpty ||
+                  !selection.webDomainTokens.isEmpty else { return }
+            let host = UIHostingController(rootView: SpecificAppUsageReportHost(selection: selection))
+            host.title = "Screen Time Report"
+            let nav = UINavigationController(rootViewController: host)
+            host.navigationItem.rightBarButtonItem = UIBarButtonItem(
+                barButtonSystemItem: .done,
+                target: self,
+                action: #selector(dismissPresentedReport)
+            )
+            viewController.present(nav, animated: true, completion: nil)
+        }
+        #endif
+    }
+
+    @objc private func dismissPresentedReport(_ sender: UIBarButtonItem) {
+        UIApplication.shared.windows.first(where: { $0.isKeyWindow })?
+            .rootViewController?
+            .presentedViewController?
+            .dismiss(animated: true) {
+                self.drainPendingUsage()
+            }
+    }
+
     private func showUnsupportedAlert(from viewController: UIViewController) {
         let alert = UIAlertController(title: "App usage tracking unavailable",
                                       message: "iOS only allows selected-app usage through Screen Time APIs on supported systems with Apple's Family Controls entitlement.",
@@ -305,7 +341,7 @@ final class SpecificAppUsageManager {
         let view = SpecificAppPickerView(selection: loadSelection()) { selection in
             self.persist(selection: selection)
             viewController.dismiss(animated: true) {
-                self.completion?()
+                self.presentLabelPromptIfNeeded(from: viewController, selection: selection)
             }
         }
         let host = UIHostingController(rootView: view)
@@ -325,11 +361,71 @@ final class SpecificAppUsageManager {
     private func persist(selection: FamilyActivitySelection) {
         if let data = try? PropertyListEncoder().encode(selection) {
             UserDefaults.standard.set(data, forKey: selectionDataKey)
+            UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.set(data, forKey: selectionDataKey)
         }
         saveSelectionCounts(apps: selection.applicationTokens.count,
                             categories: selection.categoryTokens.count,
                             webDomains: selection.webDomainTokens.count)
         startMonitoring(selection: selection)
+    }
+
+    @available(iOS 16.0, *)
+    private func presentLabelPromptIfNeeded(from viewController: UIViewController,
+                                            selection: FamilyActivitySelection) {
+        let appCount = selection.applicationTokens.count
+        guard appCount > 0 else {
+            self.completion?()
+            return
+        }
+
+        let editableCount = min(appCount, 10)
+        let alert = UIAlertController(
+            title: "Label selected apps",
+            message: "Apple may hide app names in exported Screen Time data. Add labels so the research dashboard can show meaningful app names.",
+            preferredStyle: .alert
+        )
+        let existing = ScreenTimeUsageStore.shared.loadAppLabels()
+        for index in 0..<editableCount {
+            alert.addTextField { textField in
+                let fallback = "App \(index + 1)"
+                textField.placeholder = fallback
+                textField.text = existing.first {
+                    $0.targetKind == ScreenTimeShared.targetApplication && $0.targetIndex == index
+                }?.label ?? fallback
+            }
+        }
+        alert.addAction(UIAlertAction(title: "Save labels", style: .default) { _ in
+            let now = Date().timeIntervalSince1970 * 1000.0
+            var labels = alert.textFields?.enumerated().map { index, field in
+                ScreenTimeAppLabel(
+                    targetKind: ScreenTimeShared.targetApplication,
+                    targetIndex: index,
+                    label: field.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                        ? field.text!.trimmingCharacters(in: .whitespacesAndNewlines)
+                        : "App \(index + 1)",
+                    timestamp: now
+                )
+            } ?? []
+            if appCount > editableCount {
+                labels.append(contentsOf: (editableCount..<appCount).map { index in
+                    ScreenTimeAppLabel(targetKind: ScreenTimeShared.targetApplication,
+                                       targetIndex: index,
+                                       label: "App \(index + 1)",
+                                       timestamp: now)
+                })
+            }
+            ScreenTimeUsageStore.shared.saveAppLabels(labels)
+            AWAREEventLogger.shared().logEvent([
+                "class": "SpecificAppUsageManager",
+                "event": "screen_time_labels_updated",
+                "labels_json": (String(data: (try? JSONEncoder().encode(labels)) ?? Data(), encoding: .utf8) ?? "[]")
+            ])
+            self.completion?()
+        })
+        alert.addAction(UIAlertAction(title: "Skip", style: .cancel) { _ in
+            self.completion?()
+        })
+        viewController.present(alert, animated: true, completion: nil)
     }
 
     @available(iOS 16.0, *)
@@ -410,7 +506,8 @@ final class SpecificAppUsageManager {
     /// every launch / foreground; it no-ops when there is nothing pending.
     func drainPendingUsage() {
         let pending = ScreenTimeUsageStore.shared.drain()
-        guard !pending.isEmpty else { return }
+        let summaries = ScreenTimeUsageStore.shared.drainReportSummaries()
+        guard !pending.isEmpty || !summaries.isEmpty else { return }
         let logger = AWAREEventLogger.shared()
         for record in pending {
             logger.logEvent([
@@ -425,12 +522,30 @@ final class SpecificAppUsageManager {
                 "event_timestamp": "\(record.timestamp)"
             ])
         }
+        for summary in summaries {
+            logger.logEvent([
+                "class": "SpecificAppUsageManager",
+                "event": "screen_time_report_app_usage",
+                "target_kind": summary.targetKind,
+                "target_index": "\(summary.targetIndex)",
+                "target_label": summary.targetLabel,
+                "app_name": summary.appName ?? "",
+                "bundle_identifier": summary.bundleIdentifier ?? "",
+                "duration_seconds": "\(summary.durationSeconds)",
+                "pickups": "\(summary.pickups)",
+                "notifications": "\(summary.notifications)",
+                "interval_start": "\(summary.intervalStart)",
+                "interval_end": "\(summary.intervalEnd)",
+                "event_timestamp": "\(summary.timestamp)"
+            ])
+        }
     }
 
     func resetMonitoringAndSelection() {
         UserDefaults.standard.removeObject(forKey: selectionCountKey)
         UserDefaults.standard.removeObject(forKey: authorizationKey)
         UserDefaults.standard.removeObject(forKey: selectionDataKey)
+        UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.removeObject(forKey: selectionDataKey)
 
         #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
         if #available(iOS 16.0, *) {
@@ -459,6 +574,32 @@ private struct SpecificAppPickerView: View {
                     }
                 }
         }
+    }
+}
+#endif
+
+#if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
+@available(iOS 16.0, *)
+private struct SpecificAppUsageReportHost: View {
+    let selection: FamilyActivitySelection
+
+    var body: some View {
+        DeviceActivityReport(.studyTraceAppUsage, filter: filter)
+            .navigationTitle("App Screen Time")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var filter: DeviceActivityFilter {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: Date())
+        let interval = DateInterval(start: start, end: Date())
+        return DeviceActivityFilter(
+            segment: .daily(during: interval),
+            devices: .all,
+            applications: selection.applicationTokens,
+            categories: selection.categoryTokens,
+            webDomains: selection.webDomainTokens
+        )
     }
 }
 #endif

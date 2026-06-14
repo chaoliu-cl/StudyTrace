@@ -369,6 +369,7 @@ class ContextCardViewController: UIViewController {
         let contextCard = DeviceUsageCard(frame: CGRect(x:0,y:0, width: self.view.frame.width, height:280))
         contextCard.configure(sensor: AWARESensorManager.shared().getSensor(SENSOR_PLUGIN_DEVICE_USAGE)) {
             SpecificAppUsageManager.shared.presentConfiguration(from: self) {
+                SpecificAppUsageManager.shared.presentUsageReport(from: self)
                 contextCard.refresh()
             }
         }

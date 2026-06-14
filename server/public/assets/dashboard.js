@@ -118,13 +118,26 @@ async function loadEsmResponses({ studyId, password, sensors, table, message }) 
 }
 
 function renderScreenTimeValue(row) {
+  if (row.type === 'app_usage_summary') {
+    return `${formatDuration(row.duration_seconds || 0)}${row.pickups ? `, ${row.pickups} pickups` : ''}`;
+  }
   if (row.type === 'selection_updated') {
     return `${row.selected_app_count || 0} apps, ${row.selected_category_count || 0} categories, ${row.selected_web_count || 0} sites selected`;
+  }
+  if (row.type === 'labels_updated') {
+    return `${(row.labels || []).length} labels saved`;
   }
   if (row.threshold_minutes) {
     return `${row.threshold_minutes} min reached`;
   }
   return '—';
+}
+
+function formatDuration(seconds) {
+  const minutes = Math.round(Number(seconds || 0) / 60);
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return hours > 0 ? `${hours}h ${remainder}m` : `${minutes}m`;
 }
 
 function renderTargetKind(row) {
@@ -145,6 +158,7 @@ async function loadResearcherScreenTime({ studyId, password, table, message }) {
     { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
     { label: 'Target', render: (row) => escapeHtml(row.target_label || '—') },
     { label: 'Kind', render: renderTargetKind },
+    { label: 'Type', render: (row) => escapeHtml(row.type || '—') },
     { label: 'Milestone', render: renderScreenTimeValue },
   ], payload.rows || []);
 }
@@ -162,6 +176,7 @@ async function loadAdminScreenTime({ token, table, message }) {
     { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
     { label: 'Target', render: (row) => escapeHtml(row.target_label || '—') },
     { label: 'Kind', render: renderTargetKind },
+    { label: 'Type', render: (row) => escapeHtml(row.type || '—') },
     { label: 'Milestone', render: renderScreenTimeValue },
   ], payload.rows || []);
 }

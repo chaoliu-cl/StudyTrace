@@ -557,6 +557,46 @@ function screenTimeRowFromLog(row) {
     };
   }
 
+  if (message.event === 'screen_time_labels_updated') {
+    return {
+      id: row.id,
+      study_id: row.study_id,
+      device_id: row.device_id,
+      timestamp: row.timestamp,
+      created_at: row.created_at,
+      type: 'labels_updated',
+      target_kind: 'selection',
+      target_index: null,
+      target_label: 'Participant app labels updated',
+      labels: parseJsonArray(message.labels_json),
+      raw: message,
+    };
+  }
+
+  if (message.event === 'screen_time_report_app_usage') {
+    const targetKind = normalizeScreenTimeTargetKind(message.target_kind);
+    const targetIndex = parseOptionalInteger(message.target_index);
+    return {
+      id: row.id,
+      study_id: row.study_id,
+      device_id: row.device_id,
+      timestamp: Number(message.event_timestamp) || row.timestamp,
+      created_at: row.created_at,
+      type: 'app_usage_summary',
+      target_kind: targetKind,
+      target_index: targetIndex,
+      target_label: message.target_label || message.app_name || screenTimeTargetLabel(targetKind, targetIndex),
+      app_name: message.app_name || '',
+      bundle_identifier: message.bundle_identifier || '',
+      duration_seconds: Number(message.duration_seconds) || 0,
+      pickups: Number(message.pickups) || 0,
+      notifications: Number(message.notifications) || 0,
+      interval_start: Number(message.interval_start) || null,
+      interval_end: Number(message.interval_end) || null,
+      raw: message,
+    };
+  }
+
   return null;
 }
 
@@ -567,6 +607,16 @@ function parseLogMessage(value) {
     return JSON.parse(String(value));
   } catch {
     return null;
+  }
+}
+
+function parseJsonArray(value) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
 }
 

@@ -352,6 +352,25 @@ try {
         event_timestamp: '901',
       }),
     },
+    {
+      timestamp: 902,
+      device_id: 'dev-1',
+      log_message: JSON.stringify({
+        class: 'SpecificAppUsageManager',
+        event: 'screen_time_report_app_usage',
+        target_kind: 'app',
+        target_index: '0',
+        target_label: 'Instagram',
+        app_name: 'Instagram',
+        bundle_identifier: 'com.burbn.instagram',
+        duration_seconds: '1860',
+        pickups: '4',
+        notifications: '9',
+        interval_start: '100',
+        interval_end: '902',
+        event_timestamp: '902',
+      }),
+    },
   ];
   const screenTimeIns = await post(`${studyPath}/ios_aware_log/insert`,
     form({ device_id: 'dev-1', data: JSON.stringify(screenTimeLogs) }), formHeaders);
@@ -364,7 +383,13 @@ try {
   );
   assert.ok(appMilestone, 'researcher dashboard finds per-app screen time milestone');
   assert.strictEqual(appMilestone.threshold_minutes, 15, 'screen time milestone minutes parsed');
-  console.log('✓ researcher dashboard shows indexed app Screen Time milestones');
+  const exactAppUsage = researcherScreenTime.json.rows.find((row) =>
+    row.type === 'app_usage_summary' &&
+    row.app_name === 'Instagram' &&
+    row.duration_seconds === 1860
+  );
+  assert.ok(exactAppUsage, 'researcher dashboard finds exact per-app report summary');
+  console.log('✓ researcher dashboard shows exact per-app Screen Time summaries');
 
   // ---- Admin data export ----------------------------------------------------
   const adminHdr = { 'x-admin-token': 'test-admin-token' };

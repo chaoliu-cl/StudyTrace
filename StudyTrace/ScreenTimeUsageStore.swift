@@ -26,6 +26,7 @@ public enum ScreenTimeShared {
     public static let targetApplication = "app"
     public static let targetCategory = "category"
     public static let targetWebDomain = "web"
+    public static let selectionDataKey = "studytrace.selected-app-usage.selection"
 
     /// Escalating cumulative-usage thresholds (in minutes). Each DeviceActivity
     /// event fires once when cumulative usage of the selected apps crosses the
@@ -74,12 +75,66 @@ public struct ScreenTimeUsageEvent: Codable {
     }
 }
 
+public struct ScreenTimeAppLabel: Codable {
+    public let targetKind: String
+    public let targetIndex: Int
+    public let label: String
+    public let timestamp: Double
+
+    public init(targetKind: String, targetIndex: Int, label: String, timestamp: Double) {
+        self.targetKind = targetKind
+        self.targetIndex = targetIndex
+        self.label = label
+        self.timestamp = timestamp
+    }
+}
+
+public struct ScreenTimeAppUsageSummary: Codable {
+    public let targetKind: String
+    public let targetIndex: Int
+    public let targetLabel: String
+    public let appName: String?
+    public let bundleIdentifier: String?
+    public let durationSeconds: Double
+    public let pickups: Int
+    public let notifications: Int
+    public let intervalStart: Double
+    public let intervalEnd: Double
+    public let timestamp: Double
+
+    public init(targetKind: String,
+                targetIndex: Int,
+                targetLabel: String,
+                appName: String?,
+                bundleIdentifier: String?,
+                durationSeconds: Double,
+                pickups: Int,
+                notifications: Int,
+                intervalStart: Double,
+                intervalEnd: Double,
+                timestamp: Double) {
+        self.targetKind = targetKind
+        self.targetIndex = targetIndex
+        self.targetLabel = targetLabel
+        self.appName = appName
+        self.bundleIdentifier = bundleIdentifier
+        self.durationSeconds = durationSeconds
+        self.pickups = pickups
+        self.notifications = notifications
+        self.intervalStart = intervalStart
+        self.intervalEnd = intervalEnd
+        self.timestamp = timestamp
+    }
+}
+
 /// Append-only queue of usage events persisted in the shared App Group.
 /// The extension only appends; the app drains (reads + clears).
 public final class ScreenTimeUsageStore {
     public static let shared = ScreenTimeUsageStore()
 
     private let pendingKey = "studytrace.screentime.pending-events"
+    private let appLabelsKey = "studytrace.screentime.app-labels"
+    private let reportSummariesKey = "studytrace.screentime.report-summaries"
     private let defaults: UserDefaults?
 
     public init() {
@@ -117,5 +172,50 @@ public final class ScreenTimeUsageStore {
     /// Clears any queued events without draining them into app storage.
     public func clear() {
         defaults?.removeObject(forKey: pendingKey)
+    }
+
+    public func saveAppLabels(_ labels: [ScreenTimeAppLabel]) {
+        guard let defaults = defaults,
+              let data = try? JSONEncoder().encode(labels) else { return }
+        defaults.set(data, forKey: appLabelsKey)
+    }
+
+    public func loadAppLabels() -> [ScreenTimeAppLabel] {
+        guard let defaults = defaults,
+              let data = defaults.data(forKey: appLabelsKey),
+              let labels = try? JSONDecoder().decode([ScreenTimeAppLabel].self, from: data) else {
+            return []
+        }
+        return labels
+    }
+
+    public func label(for targetKind: String, index: Int, fallback: String) -> String {
+        return loadAppLabels().first {
+            $0.targetKind == targetKind && $0.targetIndex == index
+        }?.label ?? fallback
+    }
+
+    public func appendReportSummaries(_ summaries: [ScreenTimeAppUsageSummary]) {
+        guard let defaults = defaults, !summaries.isEmpty else { return }
+        let existing = loadRawReportSummaries()
+        let trimmed = Array((existing + summaries).suffix(500))
+        if let data = try? JSONEncoder().encode(trimmed) {
+            defaults.set(data, forKey: reportSummariesKey)
+        }
+    }
+
+    public func loadRawReportSummaries() -> [ScreenTimeAppUsageSummary] {
+        guard let defaults = defaults,
+              let data = defaults.data(forKey: reportSummariesKey),
+              let summaries = try? JSONDecoder().decode([ScreenTimeAppUsageSummary].self, from: data) else {
+            return []
+        }
+        return summaries
+    }
+
+    public func drainReportSummaries() -> [ScreenTimeAppUsageSummary] {
+        let summaries = loadRawReportSummaries()
+        defaults?.removeObject(forKey: reportSummariesKey)
+        return summaries
     }
 }
