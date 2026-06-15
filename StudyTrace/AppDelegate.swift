@@ -34,7 +34,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         // Pull in any Screen Time usage events recorded by the
         // DeviceActivityMonitor extension while the app was not running.
-        SpecificAppUsageManager.shared.drainPendingUsage()
+        SpecificAppUsageManager.shared.drainPendingUsage(syncImmediately: true)
 
         let key = "studytrace.setting.key.is-not-first-time"
         if(!UserDefaults.standard.bool(forKey:key)){
@@ -87,6 +87,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         scheduleBackgroundSync()
 
         let manager = AWARESensorManager.shared()
+        SpecificAppUsageManager.shared.drainPendingUsage()
         manager.syncAllSensorsForcefully()
 
         task.expirationHandler = {
@@ -113,6 +114,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         IOSESM.setESMAppearedState(false)
         UIApplication.shared.applicationIconBadgeNumber = 0
         if StudyParticipationController.hasConsent() {
+            SpecificAppUsageManager.shared.drainPendingUsage(syncImmediately: true)
             scheduleBackgroundSync()
             scheduleBackgroundRefresh()
         }
@@ -121,13 +123,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
-        SpecificAppUsageManager.shared.drainPendingUsage()
+        SpecificAppUsageManager.shared.drainPendingUsage(syncImmediately: true)
         refreshRemoteESMScheduleIfNeeded(force: false)
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationWillEnterForeground:"]);
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
+        SpecificAppUsageManager.shared.scheduleScreenTimeDrainAndSync()
         refreshRemoteESMScheduleIfNeeded(force: false)
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationDidBecomeActive:"]);

@@ -267,7 +267,9 @@ final class SpecificAppUsageManager: NSObject {
             guard !selection.applicationTokens.isEmpty ||
                   !selection.categoryTokens.isEmpty ||
                   !selection.webDomainTokens.isEmpty else { return }
-            let host = UIHostingController(rootView: SpecificAppUsageReportHost(selection: selection))
+            let host = UIHostingController(rootView: SpecificAppUsageReportHost(selection: selection) {
+                self.scheduleScreenTimeDrainAndSync()
+            })
             host.title = "Screen Time Report"
             let nav = UINavigationController(rootViewController: host)
             host.navigationItem.rightBarButtonItem = UIBarButtonItem(
@@ -275,7 +277,9 @@ final class SpecificAppUsageManager: NSObject {
                 target: self,
                 action: #selector(dismissPresentedReport)
             )
-            viewController.present(nav, animated: true, completion: nil)
+            viewController.present(nav, animated: true) {
+                self.scheduleScreenTimeDrainAndSync()
+            }
         }
         #endif
     }
@@ -285,7 +289,7 @@ final class SpecificAppUsageManager: NSObject {
             .rootViewController?
             .presentedViewController?
             .dismiss(animated: true) {
-                self.drainPendingUsage()
+                self.scheduleScreenTimeDrainAndSync()
             }
     }
 
@@ -504,10 +508,11 @@ final class SpecificAppUsageManager: NSObject {
     /// Drains usage events recorded by the DeviceActivityMonitor extension into
     /// AWARE storage so they upload on the normal sync cycle. Safe to call on
     /// every launch / foreground; it no-ops when there is nothing pending.
-    func drainPendingUsage() {
+    @discardableResult
+    func drainPendingUsage(syncImmediately: Bool = false) -> Int {
         let pending = ScreenTimeUsageStore.shared.drain()
         let summaries = ScreenTimeUsageStore.shared.drainReportSummaries()
-        guard !pending.isEmpty || !summaries.isEmpty else { return }
+        guard !pending.isEmpty || !summaries.isEmpty else { return 0 }
         let logger = AWAREEventLogger.shared()
         for record in pending {
             logger.logEvent([
@@ -539,6 +544,25 @@ final class SpecificAppUsageManager: NSObject {
                 "event_timestamp": "\(summary.timestamp)"
             ])
         }
+        let loggedCount = pending.count + summaries.count
+        if syncImmediately {
+            syncScreenTimeLogsNow()
+        }
+        return loggedCount
+    }
+
+    func scheduleScreenTimeDrainAndSync() {
+        let delays: [TimeInterval] = [0.25, 1.5, 4.0]
+        for delay in delays {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                self.drainPendingUsage(syncImmediately: true)
+            }
+        }
+    }
+
+    private func syncScreenTimeLogsNow() {
+        guard StudyParticipationController.hasConsent() else { return }
+        AWARESensorManager.shared().syncAllSensorsForcefully()
     }
 
     func resetMonitoringAndSelection() {
@@ -582,11 +606,14 @@ private struct SpecificAppPickerView: View {
 @available(iOS 16.0, *)
 private struct SpecificAppUsageReportHost: View {
     let selection: FamilyActivitySelection
+    let onReportLifecycle: () -> Void
 
     var body: some View {
         DeviceActivityReport(.studyTraceAppUsage, filter: filter)
             .navigationTitle("App Screen Time")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear(perform: onReportLifecycle)
+            .onDisappear(perform: onReportLifecycle)
     }
 
     private var filter: DeviceActivityFilter {
