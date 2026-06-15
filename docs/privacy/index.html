@@ -34,7 +34,7 @@
             <div class="eyebrow">Privacy Policy</div>
             <h1>Privacy for <span>StudyTrace</span></h1>
             <p>
-              Effective date: June 10, 2026. This policy explains how the StudyTrace iPhone app handles participant data,
+              Effective date: June 14, 2026. This policy explains how the StudyTrace iPhone app handles participant data,
               permissions, and study-related information. Study-specific consent terms provided by the research team remain in effect.
             </p>
           </div>
@@ -82,13 +82,22 @@
                 <li>Study enrollment information such as the secure study URL or study configuration needed to join a study.</li>
                 <li>Location data, including background location, when a study enables mobility or context sensing.</li>
                 <li>Survey and experience sampling responses, including optional photo attachments that you choose to submit.</li>
-                <li>Device-usage data, including selected-app Screen Time milestones when you explicitly authorize that feature.</li>
+                <li>Device-usage data, including Screen Time summaries for participant-selected specific apps, websites, or app categories when you explicitly authorize that feature.</li>
                 <li>Technical and device identifiers needed for app operation, syncing, notifications, logging, and study delivery.</li>
                 <li>Push notification token information so the app can receive survey reminders or study updates.</li>
                 <li>Optional motion, health, calendar, contacts, or Bluetooth-related data if a study enables those features and you grant permission.</li>
               </ul>
               <p>
                 The exact set of collected data depends on the study you join. Not every study uses every available sensor or permission.
+              </p>
+              <p>
+                Screen Time data is optional and study-specific. When enabled, StudyTrace first asks you to grant Apple Screen Time / Family Controls permission,
+                then asks you to select the specific apps, websites, or categories that may be included. Many studies request selected-app summaries because broad
+                app categories may be too coarse to answer app-specific research questions. StudyTrace does not collect Screen Time for apps you do not select.
+              </p>
+              <p>
+                If selected-app summaries are enabled, StudyTrace may record app display names or bundle identifiers when Apple provides them through Screen Time reports,
+                participant-provided app labels, usage duration, pickups, notifications, and the reporting interval. These records are collected for research analysis only.
               </p>
             </article>
 
@@ -99,7 +108,7 @@
                 <li>Location services</li>
                 <li>Notifications</li>
                 <li>Photos or camera for survey attachments</li>
-                <li>Screen Time / Family Controls for selected-app usage monitoring</li>
+                <li>Screen Time / Family Controls for participant-selected app, website, or category usage summaries</li>
                 <li>Motion and fitness data</li>
                 <li>Health data</li>
                 <li>Calendar, contacts, or Bluetooth</li>
@@ -108,6 +117,9 @@
                 Denying a permission may limit some study features. StudyTrace is designed so collection starts only after consent,
                 and permission prompts are tied to the features your study needs.
               </p>
+              <p>
+                You can decline Screen Time permission or choose not to select certain apps, websites, or categories. You can also change Screen Time access later in iOS Settings.
+              </p>
             </article>
 
             <article class="panel" id="use">
@@ -115,12 +127,13 @@
               <p>StudyTrace uses data to:</p>
               <ul>
                 <li>Deliver study participation features such as enrollment, reminders, and surveys.</li>
-                <li>Collect research data approved by the study protocol.</li>
+                <li>Collect research data approved by the study protocol or consent materials.</li>
                 <li>Upload study data to the research server or backend configured for that study.</li>
                 <li>Maintain app reliability, debug syncing issues, and support participant operations.</li>
               </ul>
               <p>
-                StudyTrace is not intended to use participant data for third-party advertising or cross-app tracking.
+                StudyTrace is not intended to use participant data for third-party advertising, profiling, sale of data, or cross-app tracking.
+                Screen Time data is used only for the study purpose described by the research team.
               </p>
             </article>
 
@@ -187,7 +200,7 @@
       <div class="wrap footer-inner">
         <div class="footnote">
           StudyTrace Privacy Policy<br>
-          Effective June 10, 2026
+          Effective June 14, 2026
         </div>
         <div class="link-row">
           <a href="../marketing/">Marketing</a>

@@ -73,6 +73,21 @@ Each sensor gets its own Postgres table (`aware_<sensor>`), storing the
 while keeping rows scoped to a study. Study and device metadata live in the
 `studies` and `devices` tables.
 
+## Screen Time data semantics
+
+Screen Time data is optional and should be configured according to the approved
+study protocol. StudyTrace is designed to support selected-app summaries because
+many behavioral studies need app-specific context that broad Screen Time
+categories cannot provide. Website/domain and category summaries remain
+available when those targets match the protocol.
+
+Participants must consent to the study, grant Apple's Screen Time / Family
+Controls permission, and choose the apps, websites, or categories to include.
+StudyTrace does not collect Screen Time data for unselected apps. Uploaded
+Screen Time rows are stored through `ios_aware_log` and surfaced in the
+researcher/admin dashboards as summary rows. They are intended for research
+analysis only, not advertising, profiling, sale of data, or cross-app tracking.
+
 ## AWARE protocol front-end
 
 The subset the StudyTrace client calls:

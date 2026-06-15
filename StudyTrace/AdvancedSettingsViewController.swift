@@ -445,19 +445,23 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
         case AdvancedSettingsIdentifiers.aboutStudyTrace.rawValue:
             showInfoAlert(title: "About StudyTrace",
                           message: """
-                          StudyTrace is a research data collection app for surveys, location, and device-use data.
+                          StudyTrace is a research data collection app for surveys, location, and optional device-use data.
 
-                          It stores data on-device and uploads only to the study server you configure in the app.
+                          Screen Time summaries are collected only when a study requests them, you approve Apple's Screen Time permission, and you select the specific apps, websites, or categories to include.
+
+                          It stores data on-device and uploads only to the study server you configure in the app. StudyTrace does not use study data for advertising or cross-app tracking.
                           """)
             break
         case AdvancedSettingsIdentifiers.privacy.rawValue:
             showInfoAlert(title: "StudyTrace Privacy",
                           message: """
-                          StudyTrace collects only the data streams enabled for your study.
+                          StudyTrace collects only the data streams enabled for your study after consent.
 
                           Data is stored locally on your device first and may then be uploaded to your configured study server.
 
-                          You can review permissions in iOS Settings and export your local database from this screen at any time.
+                          Optional Screen Time summaries require separate iOS permission and participant selection of specific apps, websites, or categories.
+
+                          You can review permissions in iOS Settings, quit a study, and export your local database from this screen at any time.
                           """)
             break
         default:

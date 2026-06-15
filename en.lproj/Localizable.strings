@@ -105,7 +105,7 @@
 
 // consent
 "onboarding_consent_title" = "Informed Consent";
-"onboarding_consent_body" = "By participating in this study, you agree to allow StudyTrace to collect sensor data (such as location and screen time) and survey responses as configured by your research team.\n\nYour data is stored securely and used only for research purposes. You may withdraw at any time by quitting the study in Settings.\n\nPlease confirm that you understand and consent to participate.";
+"onboarding_consent_body" = "By participating in this study, you agree to allow StudyTrace to collect research data configured by your research team, such as location, survey responses, and optional Screen Time summaries for specific apps, websites, or categories you select.\n\nScreen Time collection requires a separate iOS permission and is used only for the approved study, not for advertising or cross-app tracking.\n\nYour data is stored securely and used only for research purposes. You may withdraw at any time by quitting the study in Settings.\n\nPlease confirm that you understand and consent to participate.";
 "onboarding_consent_agree" = "I Agree to Participate";
 "onboarding_consent_decline" = "Decline";
 
