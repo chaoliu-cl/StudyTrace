@@ -323,6 +323,18 @@ try {
   assert.strictEqual(pluginImageRes.headers.get('content-type'), 'image/png', 'plugin_ios_esm served as PNG');
   console.log('✓ dashboard discovers plugin_ios_esm photo responses');
 
+  const emptyScreenTimeDashboard = await request('GET', `${apiBase}/dashboard/summary`, { headers: jsonAuth });
+  assert.strictEqual(emptyScreenTimeDashboard.status, 200, 'dashboard summary before Screen Time rows ok');
+  assert.ok(
+    emptyScreenTimeDashboard.json.sensors.some((row) => row.sensor === 'screentime_app_usage' && row.rows === 0),
+    'researcher dashboard lists empty normalized app-specific Screen Time export'
+  );
+  const emptyScreenTimeCsv = await request('GET', `${apiBase}/export/screentime_app_usage?format=csv`, { headers: jsonAuth });
+  assert.strictEqual(emptyScreenTimeCsv.status, 200, 'empty Screen Time CSV export ok');
+  assert.ok(/app_name/.test(emptyScreenTimeCsv.json), 'empty Screen Time CSV includes app_name header');
+  assert.ok(/bundle_identifier/.test(emptyScreenTimeCsv.json), 'empty Screen Time CSV includes bundle_identifier header');
+  console.log('✓ researcher Sensor coverage shows Screen Time export before rows arrive');
+
   // 17.6. Screen Time events are uploaded through ios_aware_log and exposed as
   //       a normalized app-specific export sensor in the dashboards.
   const screenTimeLogs = [

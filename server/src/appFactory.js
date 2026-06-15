@@ -34,6 +34,23 @@ import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 
 const SCREEN_TIME_EXPORT_SENSOR = 'screentime_app_usage';
+const SCREEN_TIME_EXPORT_COLUMNS = [
+  'type',
+  'target_kind',
+  'target_index',
+  'target_label',
+  'app_name',
+  'bundle_identifier',
+  'duration_seconds',
+  'duration_minutes',
+  'pickups',
+  'notifications',
+  'threshold_minutes',
+  'event_name',
+  'activity',
+  'interval_start',
+  'interval_end',
+];
 
 export function createApp() {
   const app = express();
@@ -202,7 +219,7 @@ export function createApp() {
     try {
       const rows = await exportDashboardSensorRows(req.params.sensor, { studyId, deviceId, limit, offset });
       if (format === 'csv') {
-        const csv = rowsToCsv(rows);
+        const csv = rowsToCsv(rows, exportColumnsForSensor(req.params.sensor));
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${req.params.sensor}.csv"`);
         return res.send(csv);
@@ -240,7 +257,7 @@ export function createApp() {
         offset,
       });
       if (format === 'csv') {
-        const csv = rowsToCsv(rows);
+        const csv = rowsToCsv(rows, exportColumnsForSensor(req.params.sensor));
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${req.params.studyId}-${req.params.sensor}.csv"`);
         return res.send(csv);
@@ -315,35 +332,42 @@ async function listAdminSensorsForDashboard() {
   const sensors = await listSensorTables();
   const screenTimeRows = await findScreenTimeRows({ limit: 10000 });
   const screenTimeExportRows = screenTimeRows.filter(isAppSpecificScreenTimeRow);
-  if (screenTimeExportRows.length > 0) {
-    sensors.push({
-      sensor: SCREEN_TIME_EXPORT_SENSOR,
-      table: 'virtual_screen_time_from_ios_aware_log',
-      rows: screenTimeExportRows.length,
-    });
-  }
+  upsertScreenTimeExportSensor(sensors, screenTimeExportRows.length);
   return sensors.sort((a, b) => String(a.sensor).localeCompare(String(b.sensor)));
 }
 
 async function attachStudyScreenTimeSensor(overview, studyId) {
   const screenTimeRows = await findScreenTimeRows({ studyId, limit: 10000 });
   const screenTimeExportRows = screenTimeRows.filter(isAppSpecificScreenTimeRow);
-  if (!screenTimeExportRows.length) return overview;
 
-  overview.sensors = [
-    ...(overview.sensors || []),
-    {
-      sensor: SCREEN_TIME_EXPORT_SENSOR,
-      table: 'virtual_screen_time_from_ios_aware_log',
-      rows: screenTimeExportRows.length,
-    },
-  ].sort((a, b) => Number(b.rows || 0) - Number(a.rows || 0) || String(a.sensor).localeCompare(String(b.sensor)));
+  const previousTotal = Number(overview.summary?.total_rows || 0);
+  overview.sensors = [...(overview.sensors || [])];
+  upsertScreenTimeExportSensor(overview.sensors, screenTimeExportRows.length);
+  overview.sensors.sort((a, b) => Number(b.rows || 0) - Number(a.rows || 0) || String(a.sensor).localeCompare(String(b.sensor)));
   overview.summary = {
     ...(overview.summary || {}),
     sensor_count: overview.sensors.length,
-    total_rows: Number(overview.summary?.total_rows || 0) + screenTimeExportRows.length,
+    total_rows: previousTotal + screenTimeExportRows.length,
   };
   return overview;
+}
+
+function upsertScreenTimeExportSensor(sensors, rows) {
+  const existing = sensors.find((sensor) => sensor.sensor === SCREEN_TIME_EXPORT_SENSOR);
+  if (existing) {
+    existing.rows = rows;
+    existing.table = 'virtual_screen_time_from_ios_aware_log';
+    return;
+  }
+  sensors.push({
+    sensor: SCREEN_TIME_EXPORT_SENSOR,
+    table: 'virtual_screen_time_from_ios_aware_log',
+    rows,
+  });
+}
+
+function exportColumnsForSensor(sensor) {
+  return sensor === SCREEN_TIME_EXPORT_SENSOR ? SCREEN_TIME_EXPORT_COLUMNS : [];
 }
 
 async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, offset } = {}) {
@@ -401,8 +425,8 @@ function screenTimeRowToExportRow(row) {
 // timestamp, plus
 // the union of keys found in each row's JSON `data`, then created_at. Values
 // containing commas/quotes/newlines are quoted per RFC 4180.
-function rowsToCsv(rows) {
-  const dataKeys = new Set();
+function rowsToCsv(rows, preferredDataCols = []) {
+  const dataKeys = new Set(preferredDataCols);
   for (const r of rows) {
     if (r.data && typeof r.data === 'object') {
       for (const k of Object.keys(r.data)) dataKeys.add(k);

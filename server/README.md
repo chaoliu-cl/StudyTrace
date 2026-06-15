@@ -85,10 +85,11 @@ Participants must consent to the study, grant Apple's Screen Time / Family
 Controls permission, and choose the apps, websites, or categories to include.
 StudyTrace does not collect Screen Time data for unselected apps. Uploaded
 Screen Time rows are stored through the raw `ios_aware_log` sensor. The
-researcher/admin dashboards also expose a virtual `screentime_app_usage` sensor
-when app-specific Screen Time rows are available. Export that sensor as CSV for
-normalized app-specific columns such as app name, bundle identifier, duration,
-pickups, notifications, and reporting interval. These rows are intended for
+researcher/admin dashboards also expose a virtual `screentime_app_usage` sensor.
+It is visible even before rows arrive, with a row count of `0`, so researchers
+can find the app-specific export path during setup. Export that sensor as CSV
+for normalized app-specific columns such as app name, bundle identifier,
+duration, pickups, notifications, and reporting interval. These rows are intended for
 research analysis only, not advertising, profiling, sale of data, or cross-app
 tracking.
 
