@@ -323,8 +323,8 @@ try {
   assert.strictEqual(pluginImageRes.headers.get('content-type'), 'image/png', 'plugin_ios_esm served as PNG');
   console.log('✓ dashboard discovers plugin_ios_esm photo responses');
 
-  // 17.6. Screen Time events are uploaded through ios_aware_log and rendered by
-  //       dedicated researcher/admin dashboard endpoints.
+  // 17.6. Screen Time events are uploaded through ios_aware_log and exposed as
+  //       a normalized app-specific export sensor in the dashboards.
   const screenTimeLogs = [
     {
       timestamp: 900,
@@ -376,21 +376,6 @@ try {
     form({ device_id: 'dev-1', data: JSON.stringify(screenTimeLogs) }), formHeaders);
   assert.strictEqual(screenTimeIns.status, 200, 'screen time event insert ok');
 
-  const researcherScreenTime = await request('GET', `${apiBase}/dashboard/screentime`, { headers: jsonAuth });
-  assert.strictEqual(researcherScreenTime.status, 200, 'researcher screentime dashboard ok');
-  const appMilestone = researcherScreenTime.json.rows.find((row) =>
-    row.type === 'usage_threshold' && row.target_kind === 'app' && row.target_index === 0
-  );
-  assert.ok(appMilestone, 'researcher dashboard finds per-app screen time milestone');
-  assert.strictEqual(appMilestone.threshold_minutes, 15, 'screen time milestone minutes parsed');
-  const exactAppUsage = researcherScreenTime.json.rows.find((row) =>
-    row.type === 'app_usage_summary' &&
-    row.app_name === 'Instagram' &&
-    row.duration_seconds === 1860
-  );
-  assert.ok(exactAppUsage, 'researcher dashboard finds exact per-app report summary');
-  console.log('✓ researcher dashboard shows exact per-app Screen Time summaries');
-
   // ---- Admin data export ----------------------------------------------------
   const adminHdr = { 'x-admin-token': 'test-admin-token' };
 
@@ -404,6 +389,7 @@ try {
   assert.strictEqual(sensorsList.status, 200, 'list sensors ok');
   const names = sensorsList.json.sensors.map((s) => s.sensor);
   assert.ok(names.includes('steps'), 'steps listed');
+  assert.ok(names.includes('screentime_app_usage'), 'normalized app-specific Screen Time export listed');
   console.log('✓ admin lists sensors:', names.join(', '));
 
   // 20.5. studies list shows the provisioned study and device counts.
@@ -417,15 +403,25 @@ try {
   assert.strictEqual(dashboard.status, 200, 'researcher dashboard ok');
   assert.strictEqual(dashboard.json.study.study_id, 'demo', 'dashboard study id');
   assert.ok(Array.isArray(dashboard.json.devices), 'dashboard devices array');
+  assert.ok(
+    dashboard.json.sensors.some((row) => row.sensor === 'screentime_app_usage'),
+    'researcher dashboard lists normalized app-specific Screen Time export'
+  );
   console.log('✓ researcher dashboard summary');
 
-  const adminScreenTime = await request('GET', `/admin/screentime`, { headers: adminHdr });
-  assert.strictEqual(adminScreenTime.status, 200, 'admin screentime dashboard ok');
-  assert.ok(
-    adminScreenTime.json.rows.some((row) => row.study_id === 'demo' && row.target_label === 'App 1'),
-    'admin dashboard finds screen time milestone'
-  );
-  console.log('✓ admin dashboard shows Screen Time milestones');
+  const researcherScreenTimeCsv = await request('GET', `${apiBase}/export/screentime_app_usage?format=csv`, { headers: jsonAuth });
+  assert.strictEqual(researcherScreenTimeCsv.status, 200, 'researcher Screen Time CSV export ok');
+  assert.ok(/app_name/.test(researcherScreenTimeCsv.json), 'Screen Time CSV includes app_name column');
+  assert.ok(/bundle_identifier/.test(researcherScreenTimeCsv.json), 'Screen Time CSV includes bundle_identifier column');
+  assert.ok(/Instagram/.test(researcherScreenTimeCsv.json), 'Screen Time CSV includes app display name');
+  assert.ok(/com\.burbn\.instagram/.test(researcherScreenTimeCsv.json), 'Screen Time CSV includes bundle identifier');
+  assert.ok(/\b1860\b/.test(researcherScreenTimeCsv.json), 'Screen Time CSV includes duration seconds');
+  console.log('✓ researcher Sensor coverage exports app-specific Screen Time CSV');
+
+  const adminScreenTimeCsv = await request('GET', `/admin/export/screentime_app_usage?format=csv`, { headers: adminHdr });
+  assert.strictEqual(adminScreenTimeCsv.status, 200, 'admin Screen Time CSV export ok');
+  assert.ok(/Instagram/.test(adminScreenTimeCsv.json), 'admin Screen Time CSV includes app display name');
+  console.log('✓ admin Sensor inventory exports app-specific Screen Time CSV');
 
   // 21. JSON export returns the stored rows.
   const expJson = await request('GET', `/admin/export/steps?format=json`, { headers: adminHdr });

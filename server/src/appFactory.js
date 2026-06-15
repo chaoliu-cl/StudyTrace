@@ -33,6 +33,8 @@ import {
 import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 
+const SCREEN_TIME_EXPORT_SENSOR = 'screentime_app_usage';
+
 export function createApp() {
   const app = express();
   app.set('trust proxy', true);
@@ -134,7 +136,7 @@ export function createApp() {
   // GET /admin/sensors  -> list sensor tables with row counts.
   app.get('/admin/sensors', requireAdmin, async (_req, res) => {
     try {
-      const sensors = await listSensorTables();
+      const sensors = await listAdminSensorsForDashboard();
       res.json({ ok: true, sensors });
     } catch (err) {
       console.error('[admin sensors]', err);
@@ -156,6 +158,7 @@ export function createApp() {
     try {
       const overview = await getStudyOverview(req.params.studyId);
       if (!overview) return res.status(404).json({ error: 'study not found' });
+      await attachStudyScreenTimeSensor(overview, req.params.studyId);
       res.json({ ok: true, ...overview });
     } catch (err) {
       console.error(`[admin study ${req.params.studyId}]`, err);
@@ -195,11 +198,9 @@ export function createApp() {
   //   { id, device_id, timestamp, data, created_at }. CSV flattens the JSON
   //   `data` object into columns (union of keys across the returned page).
   app.get('/admin/export/:sensor', requireAdmin, async (req, res) => {
-    const table = safeTableName(req.params.sensor);
-    if (!table) return res.status(400).json({ error: 'invalid sensor name' });
     const { format = 'json', study_id: studyId, device_id: deviceId, limit, offset } = req.query;
     try {
-      const rows = await exportRows(table, { studyId, deviceId, limit, offset });
+      const rows = await exportDashboardSensorRows(req.params.sensor, { studyId, deviceId, limit, offset });
       if (format === 'csv') {
         const csv = rowsToCsv(rows);
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -208,6 +209,9 @@ export function createApp() {
       }
       return res.json({ ok: true, sensor: req.params.sensor, count: rows.length, rows });
     } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
       console.error(`[admin export ${req.params.sensor}]`, err);
       res.status(500).json({ error: 'server error' });
     }
@@ -218,6 +222,7 @@ export function createApp() {
     try {
       const overview = await getStudyOverview(req.params.studyId);
       if (!overview) return res.status(404).json({ error: 'study not found' });
+      await attachStudyScreenTimeSensor(overview, req.params.studyId);
       res.json({ ok: true, ...overview });
     } catch (err) {
       console.error(`[dashboard summary ${req.params.studyId}]`, err);
@@ -226,11 +231,9 @@ export function createApp() {
   });
 
   app.get('/api/v1/studies/:studyId/export/:sensor', requireStudyPassword, async (req, res) => {
-    const table = safeTableName(req.params.sensor);
-    if (!table) return res.status(400).json({ error: 'invalid sensor name' });
     const { format = 'json', device_id: deviceId, limit, offset } = req.query;
     try {
-      const rows = await exportRows(table, {
+      const rows = await exportDashboardSensorRows(req.params.sensor, {
         studyId: req.params.studyId,
         deviceId,
         limit,
@@ -244,6 +247,9 @@ export function createApp() {
       }
       return res.json({ ok: true, sensor: req.params.sensor, count: rows.length, rows });
     } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
       console.error(`[dashboard export ${req.params.studyId}/${req.params.sensor}]`, err);
       res.status(500).json({ error: 'server error' });
     }
@@ -303,6 +309,92 @@ export function createApp() {
   app.use('/api/v1', createGenericApiRouter());
 
   return app;
+}
+
+async function listAdminSensorsForDashboard() {
+  const sensors = await listSensorTables();
+  const screenTimeRows = await findScreenTimeRows({ limit: 10000 });
+  const screenTimeExportRows = screenTimeRows.filter(isAppSpecificScreenTimeRow);
+  if (screenTimeExportRows.length > 0) {
+    sensors.push({
+      sensor: SCREEN_TIME_EXPORT_SENSOR,
+      table: 'virtual_screen_time_from_ios_aware_log',
+      rows: screenTimeExportRows.length,
+    });
+  }
+  return sensors.sort((a, b) => String(a.sensor).localeCompare(String(b.sensor)));
+}
+
+async function attachStudyScreenTimeSensor(overview, studyId) {
+  const screenTimeRows = await findScreenTimeRows({ studyId, limit: 10000 });
+  const screenTimeExportRows = screenTimeRows.filter(isAppSpecificScreenTimeRow);
+  if (!screenTimeExportRows.length) return overview;
+
+  overview.sensors = [
+    ...(overview.sensors || []),
+    {
+      sensor: SCREEN_TIME_EXPORT_SENSOR,
+      table: 'virtual_screen_time_from_ios_aware_log',
+      rows: screenTimeExportRows.length,
+    },
+  ].sort((a, b) => Number(b.rows || 0) - Number(a.rows || 0) || String(a.sensor).localeCompare(String(b.sensor)));
+  overview.summary = {
+    ...(overview.summary || {}),
+    sensor_count: overview.sensors.length,
+    total_rows: Number(overview.summary?.total_rows || 0) + screenTimeExportRows.length,
+  };
+  return overview;
+}
+
+async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, offset } = {}) {
+  if (sensor === SCREEN_TIME_EXPORT_SENSOR) {
+    const rows = await findScreenTimeRows({ studyId, limit: 10000 });
+    const filtered = rows
+      .filter(isAppSpecificScreenTimeRow)
+      .filter((row) => !deviceId || row.device_id === deviceId)
+      .sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+    const start = Math.max(Number(offset) || 0, 0);
+    const pageSize = Math.min(Math.max(Number(limit) || 1000, 1), 10000);
+    return filtered.slice(start, start + pageSize).map(screenTimeRowToExportRow);
+  }
+
+  const table = safeTableName(sensor);
+  if (!table) throw httpError(400, 'invalid sensor name');
+  return exportRows(table, { studyId, deviceId, limit, offset });
+}
+
+function isAppSpecificScreenTimeRow(row) {
+  return row?.target_kind === 'app' && (
+    row.type === 'app_usage_summary' ||
+    row.type === 'usage_threshold'
+  );
+}
+
+function screenTimeRowToExportRow(row) {
+  return {
+    id: row.id,
+    study_id: row.study_id,
+    device_id: row.device_id,
+    timestamp: row.timestamp,
+    created_at: row.created_at,
+    data: {
+      type: row.type || '',
+      target_kind: row.target_kind || '',
+      target_index: row.target_index ?? '',
+      target_label: row.target_label || '',
+      app_name: row.app_name || row.target_label || '',
+      bundle_identifier: row.bundle_identifier || '',
+      duration_seconds: row.duration_seconds ?? '',
+      duration_minutes: row.duration_seconds === undefined ? '' : Math.round(Number(row.duration_seconds || 0) / 60),
+      pickups: row.pickups ?? '',
+      notifications: row.notifications ?? '',
+      threshold_minutes: row.threshold_minutes ?? '',
+      event_name: row.event_name || '',
+      activity: row.activity || '',
+      interval_start: row.interval_start ?? '',
+      interval_end: row.interval_end ?? '',
+    },
+  };
 }
 
 // Flatten exported rows into CSV. Columns are id, study_id, device_id,
@@ -503,7 +595,7 @@ function isEsmDataRow(data) {
 }
 
 async function findScreenTimeRows({ studyId, limit: rawLimit } = {}) {
-  const limit = Math.min(Math.max(Number(rawLimit) || 100, 1), 500);
+  const limit = Math.min(Math.max(Number(rawLimit) || 100, 1), 10000);
   const table = safeTableName('ios_aware_log');
   if (!table || !(await tableExists(table))) return [];
 
