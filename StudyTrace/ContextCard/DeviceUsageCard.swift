@@ -203,6 +203,8 @@ final class SpecificAppUsageManager: NSObject {
     private let authorizationKey = "studytrace.selected-app-usage.authorization"
     private let selectionDataKey = ScreenTimeShared.selectionDataKey
     private var completion: (() -> Void)?
+    private var lastHeadlessRenderAt: Date?
+    private var headlessReportWindow: UIWindow?
 
     var selectedAppCount: Int {
         return UserDefaults.standard.integer(forKey: selectionCountKey)
@@ -345,7 +347,7 @@ final class SpecificAppUsageManager: NSObject {
         let view = SpecificAppPickerView(selection: loadSelection()) { selection in
             self.persist(selection: selection)
             viewController.dismiss(animated: true) {
-                self.presentLabelPromptIfNeeded(from: viewController, selection: selection)
+                self.completion?()
             }
         }
         let host = UIHostingController(rootView: view)
@@ -371,65 +373,6 @@ final class SpecificAppUsageManager: NSObject {
                             categories: selection.categoryTokens.count,
                             webDomains: selection.webDomainTokens.count)
         startMonitoring(selection: selection)
-    }
-
-    @available(iOS 16.0, *)
-    private func presentLabelPromptIfNeeded(from viewController: UIViewController,
-                                            selection: FamilyActivitySelection) {
-        let appCount = selection.applicationTokens.count
-        guard appCount > 0 else {
-            self.completion?()
-            return
-        }
-
-        let editableCount = min(appCount, 10)
-        let alert = UIAlertController(
-            title: "Label selected apps",
-            message: "Apple may hide app names in exported Screen Time data. Add labels so the research dashboard can show meaningful app names.",
-            preferredStyle: .alert
-        )
-        let existing = ScreenTimeUsageStore.shared.loadAppLabels()
-        for index in 0..<editableCount {
-            alert.addTextField { textField in
-                let fallback = "App \(index + 1)"
-                textField.placeholder = fallback
-                textField.text = existing.first {
-                    $0.targetKind == ScreenTimeShared.targetApplication && $0.targetIndex == index
-                }?.label ?? fallback
-            }
-        }
-        alert.addAction(UIAlertAction(title: "Save labels", style: .default) { _ in
-            let now = Date().timeIntervalSince1970 * 1000.0
-            var labels = alert.textFields?.enumerated().map { index, field in
-                ScreenTimeAppLabel(
-                    targetKind: ScreenTimeShared.targetApplication,
-                    targetIndex: index,
-                    label: field.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                        ? field.text!.trimmingCharacters(in: .whitespacesAndNewlines)
-                        : "App \(index + 1)",
-                    timestamp: now
-                )
-            } ?? []
-            if appCount > editableCount {
-                labels.append(contentsOf: (editableCount..<appCount).map { index in
-                    ScreenTimeAppLabel(targetKind: ScreenTimeShared.targetApplication,
-                                       targetIndex: index,
-                                       label: "App \(index + 1)",
-                                       timestamp: now)
-                })
-            }
-            ScreenTimeUsageStore.shared.saveAppLabels(labels)
-            AWAREEventLogger.shared().logEvent([
-                "class": "SpecificAppUsageManager",
-                "event": "screen_time_labels_updated",
-                "labels_json": (String(data: (try? JSONEncoder().encode(labels)) ?? Data(), encoding: .utf8) ?? "[]")
-            ])
-            self.completion?()
-        })
-        alert.addAction(UIAlertAction(title: "Skip", style: .cancel) { _ in
-            self.completion?()
-        })
-        viewController.present(alert, animated: true, completion: nil)
     }
 
     @available(iOS 16.0, *)
@@ -515,14 +458,6 @@ final class SpecificAppUsageManager: NSObject {
         guard !pending.isEmpty || !summaries.isEmpty else { return 0 }
         let logger = AWAREEventLogger.shared()
         for record in pending {
-            let participantLabel: String = {
-                guard let index = record.targetIndex else { return record.targetLabel }
-                return ScreenTimeUsageStore.shared.label(
-                    for: record.targetKind,
-                    index: index,
-                    fallback: record.targetLabel
-                )
-            }()
             logger.logEvent([
                 "class": "SpecificAppUsageManager",
                 "event": "screen_time_threshold_reached",
@@ -530,31 +465,19 @@ final class SpecificAppUsageManager: NSObject {
                 "threshold_minutes": "\(record.thresholdMinutes)",
                 "target_kind": record.targetKind,
                 "target_index": record.targetIndex.map(String.init) ?? "",
-                "target_label": participantLabel,
-                "app_name": record.targetKind == ScreenTimeShared.targetApplication ? participantLabel : "",
+                "target_label": record.targetLabel,
                 "activity": record.activity,
                 "event_timestamp": "\(record.timestamp)"
             ])
         }
         for summary in summaries {
-            let resolvedAppName: String = {
-                if let name = summary.appName, !name.isEmpty { return name }
-                if summary.targetKind == ScreenTimeShared.targetApplication {
-                    return ScreenTimeUsageStore.shared.label(
-                        for: summary.targetKind,
-                        index: summary.targetIndex,
-                        fallback: summary.targetLabel
-                    )
-                }
-                return summary.targetLabel
-            }()
             logger.logEvent([
                 "class": "SpecificAppUsageManager",
                 "event": "screen_time_report_app_usage",
                 "target_kind": summary.targetKind,
                 "target_index": "\(summary.targetIndex)",
-                "target_label": resolvedAppName,
-                "app_name": resolvedAppName,
+                "target_label": summary.targetLabel,
+                "app_name": summary.appName ?? "",
                 "bundle_identifier": summary.bundleIdentifier ?? "",
                 "duration_seconds": "\(summary.durationSeconds)",
                 "pickups": "\(summary.pickups)",
@@ -572,6 +495,11 @@ final class SpecificAppUsageManager: NSObject {
     }
 
     func scheduleScreenTimeDrainAndSync() {
+        #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
+        if #available(iOS 16.0, *) {
+            renderUsageReportHeadlessly()
+        }
+        #endif
         let delays: [TimeInterval] = [0.25, 1.5, 4.0]
         for delay in delays {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -584,6 +512,57 @@ final class SpecificAppUsageManager: NSObject {
         guard StudyParticipationController.hasConsent() else { return }
         AWARESensorManager.shared().syncAllSensorsForcefully()
     }
+
+    #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
+    /// Mounts a `DeviceActivityReport` on an off-screen `UIWindow` so the
+    /// report extension's `makeConfiguration` runs without participant
+    /// involvement. The extension calls `ScreenTimeUsageStore.appendReportSummaries`
+    /// while resolving each app's `localizedDisplayName`, which is the only
+    /// channel Apple gives the host process for real app names. The drain pass
+    /// in `scheduleScreenTimeDrainAndSync` then forwards those summaries to
+    /// AWARE on the next tick.
+    @available(iOS 16.0, *)
+    private func renderUsageReportHeadlessly() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            // Debounce: no more than once every 30 seconds to avoid churn when
+            // the app is rapidly foregrounded/backgrounded.
+            let now = Date()
+            if let last = self.lastHeadlessRenderAt, now.timeIntervalSince(last) < 30 { return }
+            self.lastHeadlessRenderAt = now
+
+            let selection = self.loadSelection()
+            guard !selection.applicationTokens.isEmpty ||
+                  !selection.categoryTokens.isEmpty ||
+                  !selection.webDomainTokens.isEmpty else { return }
+            guard let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first else { return }
+
+            let window = UIWindow(windowScene: scene)
+            window.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+            window.windowLevel = .normal - 1
+            window.isHidden = false
+            window.alpha = 0.0
+            window.isUserInteractionEnabled = false
+
+            let host = UIHostingController(rootView: SpecificAppUsageReportHost(selection: selection) { })
+            host.view.backgroundColor = .clear
+            window.rootViewController = host
+
+            self.headlessReportWindow = window
+
+            // Give the DeviceActivityReport extension time to resolve names and
+            // call appendReportSummaries before tearing the window down.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { [weak self] in
+                guard let self = self else { return }
+                self.headlessReportWindow?.isHidden = true
+                self.headlessReportWindow?.rootViewController = nil
+                self.headlessReportWindow = nil
+            }
+        }
+    }
+    #endif
 
     func resetMonitoringAndSelection() {
         UserDefaults.standard.removeObject(forKey: selectionCountKey)

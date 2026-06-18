@@ -470,7 +470,6 @@ try {
   assert.strictEqual(screenTimeDiagnostics.json.appRows[0].app_name, 'TikTok', 'diagnostics parses double-encoded app usage and sorts by duration');
   assert.strictEqual(screenTimeDiagnostics.json.appRows[1].app_name, 'YouTube', 'diagnostics keeps lower-duration app after higher-duration app');
   assert.ok(screenTimeDiagnostics.json.appRows.some((row) => row.app_name === 'Messages'), 'diagnostics parses camelCase DeviceActivity-style app usage');
-  assert.ok(screenTimeDiagnostics.json.appRows.some((row) => row.app_name === 'Discord' && row.type === 'app_selection_label'), 'diagnostics expands labels into app-specific rows');
   assert.ok(screenTimeDiagnostics.json.appRows.some((row) => row.app_name === 'Reddit'), 'diagnostics parses nested summaries_json arrays');
   console.log('✓ researcher Screen Time diagnostics show raw and cleaned app rows');
 

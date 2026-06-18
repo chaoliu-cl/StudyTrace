@@ -91,12 +91,7 @@ struct StudyTraceAppUsageReportScene: DeviceActivityReportScene {
                         let previous = summariesByKey[key]
                         let index = previous?.targetIndex ?? summariesByKey.count
                         let fallback = "App \(index + 1)"
-                        let participantLabel = ScreenTimeUsageStore.shared.label(
-                            for: ScreenTimeShared.targetApplication,
-                            index: index,
-                            fallback: fallback
-                        )
-                        let label = (name?.isEmpty == false) ? name! : participantLabel
+                        let label = (name?.isEmpty == false) ? name! : fallback
                         let now = Date().timeIntervalSince1970 * 1000.0
 
                         summariesByKey[key] = ScreenTimeAppUsageSummary(

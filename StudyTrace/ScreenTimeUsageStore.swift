@@ -75,20 +75,6 @@ public struct ScreenTimeUsageEvent: Codable {
     }
 }
 
-public struct ScreenTimeAppLabel: Codable {
-    public let targetKind: String
-    public let targetIndex: Int
-    public let label: String
-    public let timestamp: Double
-
-    public init(targetKind: String, targetIndex: Int, label: String, timestamp: Double) {
-        self.targetKind = targetKind
-        self.targetIndex = targetIndex
-        self.label = label
-        self.timestamp = timestamp
-    }
-}
-
 public struct ScreenTimeAppUsageSummary: Codable {
     public let targetKind: String
     public let targetIndex: Int
@@ -133,7 +119,6 @@ public final class ScreenTimeUsageStore {
     public static let shared = ScreenTimeUsageStore()
 
     private let pendingKey = "studytrace.screentime.pending-events"
-    private let appLabelsKey = "studytrace.screentime.app-labels"
     private let reportSummariesKey = "studytrace.screentime.report-summaries"
     private let defaults: UserDefaults?
 
@@ -172,27 +157,6 @@ public final class ScreenTimeUsageStore {
     /// Clears any queued events without draining them into app storage.
     public func clear() {
         defaults?.removeObject(forKey: pendingKey)
-    }
-
-    public func saveAppLabels(_ labels: [ScreenTimeAppLabel]) {
-        guard let defaults = defaults,
-              let data = try? JSONEncoder().encode(labels) else { return }
-        defaults.set(data, forKey: appLabelsKey)
-    }
-
-    public func loadAppLabels() -> [ScreenTimeAppLabel] {
-        guard let defaults = defaults,
-              let data = defaults.data(forKey: appLabelsKey),
-              let labels = try? JSONDecoder().decode([ScreenTimeAppLabel].self, from: data) else {
-            return []
-        }
-        return labels
-    }
-
-    public func label(for targetKind: String, index: Int, fallback: String) -> String {
-        return loadAppLabels().first {
-            $0.targetKind == targetKind && $0.targetIndex == index
-        }?.label ?? fallback
     }
 
     public func appendReportSummaries(_ summaries: [ScreenTimeAppUsageSummary]) {

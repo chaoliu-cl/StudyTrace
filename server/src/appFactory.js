@@ -615,10 +615,8 @@ async function findScreenTimeDiagnostics({ studyId, limit: rawLimit } = {}) {
   const parsedRows = rawRows
     .flatMap((row) => row.parsed_rows || [])
     .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0));
-  const labelLookup = buildAppLabelLookup(parsedRows);
   let appRows = parsedRows
     .filter(isAppSpecificScreenTimeRow)
-    .map((row) => applyAppLabel(row, labelLookup))
     .sort(sortAppUsageRows);
   if (!appRows.length && rawRows.length) {
     appRows = rawRows.map(screenTimeFallbackAppRowFromRaw);
@@ -630,8 +628,7 @@ async function findScreenTimeDiagnostics({ studyId, limit: rawLimit } = {}) {
 function isAppSpecificScreenTimeRow(row) {
   return row?.target_kind === 'app' && (
     row.type === 'app_usage_summary' ||
-    row.type === 'usage_threshold' ||
-    row.type === 'app_selection_label'
+    row.type === 'usage_threshold'
   );
 }
 
@@ -651,40 +648,6 @@ function parseTargetFromEventName(eventName) {
   const kindToken = parts[parts.length - 2];
   if (kindToken === 'aggregate') return { kind: 'aggregate', index: null };
   return { kind: null, index: null };
-}
-
-function buildAppLabelLookup(parsedRows) {
-  const lookup = new Map();
-  for (const row of parsedRows) {
-    if (row?.type !== 'app_selection_label') continue;
-    if (row.target_kind !== 'app') continue;
-    if (row.target_index === null || row.target_index === undefined) continue;
-    const key = `${row.device_id || ''}|${row.target_index}`;
-    const previous = lookup.get(key);
-    if (!previous || Number(row.timestamp || 0) >= Number(previous.timestamp || 0)) {
-      lookup.set(key, row);
-    }
-  }
-  return lookup;
-}
-
-function applyAppLabel(row, lookup) {
-  if (row.target_kind !== 'app') return row;
-  const hasName = row.app_name && String(row.app_name).trim() !== '';
-  const hasMeaningfulLabel = row.target_label && !/^App \d+$/i.test(String(row.target_label).trim());
-  if (hasName && hasMeaningfulLabel) return row;
-
-  const key = `${row.device_id || ''}|${row.target_index}`;
-  const labelRow = lookup.get(key);
-  if (!labelRow) return row;
-  const participantLabel = labelRow.app_name || labelRow.target_label;
-  if (!participantLabel) return row;
-  return {
-    ...row,
-    app_name: hasName ? row.app_name : participantLabel,
-    target_label: hasMeaningfulLabel ? row.target_label : participantLabel,
-    bundle_identifier: row.bundle_identifier || labelRow.bundle_identifier || '',
-  };
 }
 
 function screenTimeRawRowFromLog(row) {
