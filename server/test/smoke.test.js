@@ -406,6 +406,32 @@ try {
         event_timestamp: '903',
       }),
     },
+    {
+      timestamp: 904,
+      device_id: 'dev-1',
+      log_message: JSON.stringify(JSON.stringify({
+        event: 'app_usage_summary',
+        appName: 'TikTok',
+        bundleIdentifier: 'com.zhiliaoapp.musically',
+        durationSeconds: '7200',
+        numberOfPickups: '6',
+        numberOfNotifications: '3',
+        eventTimestamp: '904',
+      })),
+    },
+    {
+      timestamp: 905,
+      device_id: 'dev-1',
+      log_message: JSON.stringify({
+        source: 'DeviceActivityReport',
+        type: 'report-app-usage',
+        displayName: 'Messages',
+        bundleId: 'com.apple.MobileSMS',
+        totalActivityDuration: 600,
+        intervalStart: 100,
+        intervalEnd: 905,
+      }),
+    },
   ];
   const screenTimeIns = await post(`${studyPath}/ios_aware_log/insert`,
     form({ device_id: 'dev-1', data: JSON.stringify(screenTimeLogs) }), formHeaders);
@@ -415,8 +441,9 @@ try {
   assert.strictEqual(screenTimeDiagnostics.status, 200, 'researcher Screen Time diagnostics ok');
   assert.ok(screenTimeDiagnostics.json.rawRows.length >= 4, 'diagnostics exposes raw Screen Time rows');
   assert.ok(screenTimeDiagnostics.json.rawRows.some((row) => row.raw_event === 'screen_time_report_app_usage'), 'diagnostics includes raw app usage event');
-  assert.strictEqual(screenTimeDiagnostics.json.appRows[0].app_name, 'YouTube', 'diagnostics sorts cleaned app rows by duration');
-  assert.strictEqual(screenTimeDiagnostics.json.appRows[1].app_name, 'Instagram', 'diagnostics keeps lower-duration app after higher-duration app');
+  assert.strictEqual(screenTimeDiagnostics.json.appRows[0].app_name, 'TikTok', 'diagnostics parses double-encoded app usage and sorts by duration');
+  assert.strictEqual(screenTimeDiagnostics.json.appRows[1].app_name, 'YouTube', 'diagnostics keeps lower-duration app after higher-duration app');
+  assert.ok(screenTimeDiagnostics.json.appRows.some((row) => row.app_name === 'Messages'), 'diagnostics parses camelCase DeviceActivity-style app usage');
   console.log('✓ researcher Screen Time diagnostics show raw and cleaned app rows');
 
   // ---- Admin data export ----------------------------------------------------

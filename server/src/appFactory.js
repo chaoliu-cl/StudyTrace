@@ -709,8 +709,8 @@ function screenTimeRawRowFromLog(row) {
     device_id: row.device_id,
     timestamp: row.timestamp,
     created_at: row.created_at,
-    raw_class: message?.class || '',
-    raw_event: message?.event || message?.notification || '',
+    raw_class: screenTimeValue(message, ['class', 'source', 'logger']) || '',
+    raw_event: screenTimeValue(message, ['event', 'name', 'notification', 'type']) || '',
     raw_message: rawMessage,
     parsed: Boolean(parsedRow),
     parse_reason: parsedRow ? 'parsed' : screenTimeParseReason(message),
@@ -720,29 +720,31 @@ function screenTimeRawRowFromLog(row) {
 
 function screenTimeRowFromLog(row) {
   const message = parseLogMessage(row.data?.log_message);
-  if (!message || message.class !== 'SpecificAppUsageManager') return null;
+  if (!message || typeof message !== 'object') return null;
 
-  if (message.event === 'screen_time_threshold_reached') {
-    const targetKind = normalizeScreenTimeTargetKind(message.target_kind);
-    const targetIndex = parseOptionalInteger(message.target_index);
+  const event = normalizedScreenTimeEvent(message);
+
+  if (event === 'screen_time_threshold_reached' || hasAnyScreenTimeKey(message, ['threshold_minutes', 'thresholdMinutes'])) {
+    const targetKind = normalizeScreenTimeTargetKind(screenTimeValue(message, ['target_kind', 'targetKind', 'kind']));
+    const targetIndex = parseOptionalInteger(screenTimeValue(message, ['target_index', 'targetIndex', 'index']));
     return {
       id: row.id,
       study_id: row.study_id,
       device_id: row.device_id,
-      timestamp: Number(message.event_timestamp) || row.timestamp,
+      timestamp: parseOptionalNumber(screenTimeValue(message, ['event_timestamp', 'eventTimestamp', 'timestamp'])) || row.timestamp,
       created_at: row.created_at,
       type: 'usage_threshold',
       target_kind: targetKind,
       target_index: targetIndex,
-      target_label: message.target_label || screenTimeTargetLabel(targetKind, targetIndex),
-      threshold_minutes: Number(message.threshold_minutes) || 0,
-      event_name: message.screen_time_event || '',
-      activity: message.activity || '',
+      target_label: screenTimeValue(message, ['target_label', 'targetLabel', 'label', 'app_name', 'appName']) || screenTimeTargetLabel(targetKind, targetIndex),
+      threshold_minutes: parseOptionalNumber(screenTimeValue(message, ['threshold_minutes', 'thresholdMinutes'])) || 0,
+      event_name: screenTimeValue(message, ['screen_time_event', 'screenTimeEvent', 'event_name', 'eventName']) || '',
+      activity: screenTimeValue(message, ['activity', 'activity_name', 'activityName']) || '',
       raw: message,
     };
   }
 
-  if (message.event === 'screen_time_selection_updated') {
+  if (event === 'screen_time_selection_updated') {
     return {
       id: row.id,
       study_id: row.study_id,
@@ -753,14 +755,14 @@ function screenTimeRowFromLog(row) {
       target_kind: 'selection',
       target_index: null,
       target_label: 'Tracked selection changed',
-      selected_app_count: Number(message.selected_app_count) || 0,
-      selected_category_count: Number(message.selected_category_count) || 0,
-      selected_web_count: Number(message.selected_web_count) || 0,
+      selected_app_count: parseOptionalNumber(screenTimeValue(message, ['selected_app_count', 'selectedAppCount', 'application_count', 'applicationCount'])) || 0,
+      selected_category_count: parseOptionalNumber(screenTimeValue(message, ['selected_category_count', 'selectedCategoryCount', 'category_count', 'categoryCount'])) || 0,
+      selected_web_count: parseOptionalNumber(screenTimeValue(message, ['selected_web_count', 'selectedWebCount', 'web_count', 'webCount'])) || 0,
       raw: message,
     };
   }
 
-  if (message.event === 'screen_time_labels_updated') {
+  if (event === 'screen_time_labels_updated') {
     return {
       id: row.id,
       study_id: row.study_id,
@@ -771,31 +773,46 @@ function screenTimeRowFromLog(row) {
       target_kind: 'selection',
       target_index: null,
       target_label: 'Participant app labels updated',
-      labels: parseJsonArray(message.labels_json),
+      labels: parseJsonArray(screenTimeValue(message, ['labels_json', 'labelsJson', 'labels'])),
       raw: message,
     };
   }
 
-  if (message.event === 'screen_time_report_app_usage') {
-    const targetKind = normalizeScreenTimeTargetKind(message.target_kind);
-    const targetIndex = parseOptionalInteger(message.target_index);
+  if (event === 'screen_time_report_app_usage' || looksLikeAppUsageSummary(message)) {
+    const rawTargetKind = screenTimeValue(message, ['target_kind', 'targetKind', 'kind']);
+    const targetKind = rawTargetKind
+      ? normalizeScreenTimeTargetKind(rawTargetKind)
+      : 'app';
+    const targetIndex = parseOptionalInteger(screenTimeValue(message, ['target_index', 'targetIndex', 'index']));
+    const appName = screenTimeValue(message, ['app_name', 'appName', 'localizedDisplayName', 'displayName', 'applicationName', 'name']);
+    const bundleIdentifier = screenTimeValue(message, ['bundle_identifier', 'bundleIdentifier', 'bundleId', 'applicationIdentifier']);
+    const durationSeconds = parseDurationSeconds(screenTimeValue(message, [
+      'duration_seconds',
+      'durationSeconds',
+      'totalActivityDuration',
+      'total_activity_duration',
+      'usage_seconds',
+      'usageSeconds',
+      'seconds',
+      'duration',
+    ]));
     return {
       id: row.id,
       study_id: row.study_id,
       device_id: row.device_id,
-      timestamp: Number(message.event_timestamp) || row.timestamp,
+      timestamp: parseOptionalNumber(screenTimeValue(message, ['event_timestamp', 'eventTimestamp', 'timestamp'])) || row.timestamp,
       created_at: row.created_at,
       type: 'app_usage_summary',
       target_kind: targetKind,
       target_index: targetIndex,
-      target_label: message.target_label || message.app_name || screenTimeTargetLabel(targetKind, targetIndex),
-      app_name: message.app_name || '',
-      bundle_identifier: message.bundle_identifier || '',
-      duration_seconds: Number(message.duration_seconds) || 0,
-      pickups: Number(message.pickups) || 0,
-      notifications: Number(message.notifications) || 0,
-      interval_start: Number(message.interval_start) || null,
-      interval_end: Number(message.interval_end) || null,
+      target_label: screenTimeValue(message, ['target_label', 'targetLabel', 'label']) || appName || bundleIdentifier || screenTimeTargetLabel(targetKind, targetIndex),
+      app_name: appName || '',
+      bundle_identifier: bundleIdentifier || '',
+      duration_seconds: durationSeconds || 0,
+      pickups: parseOptionalNumber(screenTimeValue(message, ['pickups', 'numberOfPickups', 'pickup_count', 'pickupCount'])) || 0,
+      notifications: parseOptionalNumber(screenTimeValue(message, ['notifications', 'numberOfNotifications', 'notification_count', 'notificationCount'])) || 0,
+      interval_start: parseOptionalNumber(screenTimeValue(message, ['interval_start', 'intervalStart', 'start', 'start_time', 'startTime'])) || null,
+      interval_end: parseOptionalNumber(screenTimeValue(message, ['interval_end', 'intervalEnd', 'end', 'end_time', 'endTime'])) || null,
       raw: message,
     };
   }
@@ -804,7 +821,8 @@ function screenTimeRowFromLog(row) {
 }
 
 function looksLikeScreenTimeLog(message, rawMessage) {
-  if (message?.class === 'SpecificAppUsageManager') return true;
+  if (screenTimeValue(message, ['class']) === 'SpecificAppUsageManager') return true;
+  if (looksLikeAppUsageSummary(message)) return true;
   const text = String(rawMessage || '').toLowerCase();
   return text.includes('screen_time') ||
     text.includes('screentime') ||
@@ -815,8 +833,10 @@ function looksLikeScreenTimeLog(message, rawMessage) {
 
 function screenTimeParseReason(message) {
   if (!message) return 'log_message is not valid JSON';
-  if (message.class !== 'SpecificAppUsageManager') return `ignored class: ${message.class || 'missing'}`;
-  return `unrecognized event: ${message.event || 'missing'}`;
+  const event = screenTimeValue(message, ['event', 'name', 'notification', 'type']);
+  const klass = screenTimeValue(message, ['class', 'source', 'logger']);
+  if (!event && !looksLikeAppUsageSummary(message)) return `no recognizable Screen Time event; class=${klass || 'missing'}`;
+  return `unrecognized event: ${event || 'missing'}; class=${klass || 'missing'}`;
 }
 
 function stringifyRawLogMessage(value) {
@@ -829,6 +849,78 @@ function stringifyRawLogMessage(value) {
   }
 }
 
+function normalizedScreenTimeEvent(message) {
+  return String(screenTimeValue(message, ['event', 'name', 'type']) || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, '_');
+}
+
+function looksLikeAppUsageSummary(message) {
+  if (!message || typeof message !== 'object') return false;
+  const event = normalizedScreenTimeEvent(message);
+  if (event.includes('screen_time_report_app_usage') ||
+      event.includes('app_usage_summary') ||
+      event.includes('report_app_usage')) {
+    return true;
+  }
+  const hasDuration = hasAnyScreenTimeKey(message, [
+    'duration_seconds',
+    'durationSeconds',
+    'totalActivityDuration',
+    'total_activity_duration',
+    'usage_seconds',
+    'usageSeconds',
+    'seconds',
+    'duration',
+  ]);
+  const hasAppIdentity = hasAnyScreenTimeKey(message, [
+    'app_name',
+    'appName',
+    'localizedDisplayName',
+    'displayName',
+    'applicationName',
+    'bundle_identifier',
+    'bundleIdentifier',
+    'bundleId',
+    'applicationIdentifier',
+    'target_label',
+    'targetLabel',
+  ]);
+  return hasDuration && hasAppIdentity;
+}
+
+function hasAnyScreenTimeKey(message, keys) {
+  return Boolean(screenTimeValue(message, keys) !== undefined);
+}
+
+function screenTimeValue(message, keys) {
+  if (!message || typeof message !== 'object') return undefined;
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(message, key)) return message[key];
+  }
+  const lowerMap = new Map(Object.keys(message).map((key) => [key.toLowerCase(), key]));
+  for (const key of keys) {
+    const actual = lowerMap.get(String(key).toLowerCase());
+    if (actual) return message[actual];
+  }
+  return undefined;
+}
+
+function parseOptionalNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function parseDurationSeconds(value) {
+  const number = parseOptionalNumber(value);
+  if (number === null) return null;
+  // DeviceActivity reports seconds. If a future client sends milliseconds,
+  // normalize obviously large sub-day values to seconds.
+  return number > 86400 ? number / 1000 : number;
+}
+
 function sortAppUsageRows(a, b) {
   const durationDiff = Number(b.duration_seconds || 0) - Number(a.duration_seconds || 0);
   if (durationDiff !== 0) return durationDiff;
@@ -837,12 +929,19 @@ function sortAppUsageRows(a, b) {
 
 function parseLogMessage(value) {
   if (!value) return null;
-  if (typeof value === 'object') return value;
-  try {
-    return JSON.parse(String(value));
-  } catch {
-    return null;
+  let current = value;
+  for (let i = 0; i < 4; i += 1) {
+    if (current && typeof current === 'object') return current;
+    if (typeof current !== 'string') return null;
+    const trimmed = current.trim();
+    if (!trimmed) return null;
+    try {
+      current = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
   }
+  return current && typeof current === 'object' ? current : null;
 }
 
 function parseJsonArray(value) {
