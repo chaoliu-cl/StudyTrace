@@ -509,8 +509,10 @@ try {
   assert.ok(rawOnlyDiagnostics.json.appRows.length >= 2, 'raw-only diagnostics creates app rows from selection/fallback evidence');
   const rawOnlyCsv = await request('GET', `${rawOnlyApiBase}/export/screentime_apps?format=csv`, { headers: jsonAuth });
   assert.strictEqual(rawOnlyCsv.status, 200, 'raw-only app usage CSV ok');
-  assert.ok(/Selected app 1|raw_screen_time_log|screen_time_/.test(rawOnlyCsv.json), 'raw-only app usage CSV includes fallback evidence rows');
-  console.log('✓ raw Screen Time logs no longer leave screentime_apps empty');
+  const rawOnlyLines = rawOnlyCsv.json.split(/\r?\n/).filter(Boolean);
+  assert.strictEqual(rawOnlyLines.length, 1, 'raw-only CSV has no app rows when participants never supplied app names');
+  assert.ok(/^id,study_id,device_id,timestamp,app_name,created_at/.test(rawOnlyLines[0]), 'raw-only CSV still emits the consolidated header');
+  console.log('✓ Screen Time CSV omits rows without resolvable app names');
 
   // ---- Admin data export ----------------------------------------------------
   const adminHdr = { 'x-admin-token': 'test-admin-token' };

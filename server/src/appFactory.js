@@ -635,6 +635,24 @@ function isAppSpecificScreenTimeRow(row) {
   );
 }
 
+function parseTargetFromEventName(eventName) {
+  if (!eventName || typeof eventName !== 'string') return { kind: null, index: null };
+  const parts = eventName.split('.');
+  if (parts.length < 2) return { kind: null, index: null };
+  const trailingMinutes = Number(parts[parts.length - 1]);
+  if (!Number.isFinite(trailingMinutes)) return { kind: null, index: null };
+  const maybeIndex = Number(parts[parts.length - 2]);
+  if (Number.isInteger(maybeIndex) && parts.length >= 3) {
+    const kindToken = parts[parts.length - 3];
+    if (kindToken === 'app' || kindToken === 'category' || kindToken === 'web') {
+      return { kind: kindToken, index: maybeIndex };
+    }
+  }
+  const kindToken = parts[parts.length - 2];
+  if (kindToken === 'aggregate') return { kind: 'aggregate', index: null };
+  return { kind: null, index: null };
+}
+
 function buildAppLabelLookup(parsedRows) {
   const lookup = new Map();
   for (const row of parsedRows) {
@@ -779,8 +797,8 @@ function screenTimeFallbackAppRowFromRaw(row) {
     type: 'raw_screen_time_log',
     target_kind: 'app',
     target_index: null,
-    target_label: event || `Screen Time log ${row.id}`,
-    app_name: event || `Screen Time log ${row.id}`,
+    target_label: '',
+    app_name: '',
     bundle_identifier: '',
     duration_seconds: null,
     pickups: null,
@@ -798,8 +816,14 @@ function screenTimeRowFromLogObject(row, message) {
   const event = normalizedScreenTimeEvent(message);
 
   if (event === 'screen_time_threshold_reached' || hasAnyScreenTimeKey(message, ['threshold_minutes', 'thresholdMinutes'])) {
-    const targetKind = normalizeScreenTimeTargetKind(screenTimeValue(message, ['target_kind', 'targetKind', 'kind']));
-    const targetIndex = parseOptionalInteger(screenTimeValue(message, ['target_index', 'targetIndex', 'index']));
+    const eventName = screenTimeValue(message, ['screen_time_event', 'screenTimeEvent', 'event_name', 'eventName']) || '';
+    const eventNameTarget = parseTargetFromEventName(eventName);
+    const rawTargetKind = screenTimeValue(message, ['target_kind', 'targetKind', 'kind']);
+    const targetKind = rawTargetKind
+      ? normalizeScreenTimeTargetKind(rawTargetKind)
+      : (eventNameTarget.kind || 'aggregate');
+    const targetIndex = parseOptionalInteger(screenTimeValue(message, ['target_index', 'targetIndex', 'index']))
+      ?? eventNameTarget.index;
     return {
       id: row.id,
       study_id: row.study_id,
@@ -810,8 +834,9 @@ function screenTimeRowFromLogObject(row, message) {
       target_kind: targetKind,
       target_index: targetIndex,
       target_label: screenTimeValue(message, ['target_label', 'targetLabel', 'label', 'app_name', 'appName']) || screenTimeTargetLabel(targetKind, targetIndex),
+      app_name: screenTimeValue(message, ['app_name', 'appName']) || '',
       threshold_minutes: parseOptionalNumber(screenTimeValue(message, ['threshold_minutes', 'thresholdMinutes'])) || 0,
-      event_name: screenTimeValue(message, ['screen_time_event', 'screenTimeEvent', 'event_name', 'eventName']) || '',
+      event_name: eventName,
       activity: screenTimeValue(message, ['activity', 'activity_name', 'activityName']) || '',
       raw: message,
     };
