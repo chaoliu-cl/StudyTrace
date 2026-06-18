@@ -439,7 +439,8 @@ function screenTimeRawRowToExportRow(row) {
 function isAppSpecificScreenTimeRow(row) {
   return row?.target_kind === 'app' && (
     row.type === 'app_usage_summary' ||
-    row.type === 'usage_threshold'
+    row.type === 'usage_threshold' ||
+    row.type === 'app_selection_label'
   );
 }
 
@@ -458,7 +459,7 @@ function screenTimeRowToExportRow(row) {
       app_name: row.app_name || row.target_label || '',
       bundle_identifier: row.bundle_identifier || '',
       duration_seconds: row.duration_seconds ?? '',
-      duration_minutes: row.duration_seconds === undefined ? '' : Math.round(Number(row.duration_seconds || 0) / 60),
+      duration_minutes: row.duration_seconds === null || row.duration_seconds === undefined ? '' : Math.round(Number(row.duration_seconds || 0) / 60),
       pickups: row.pickups ?? '',
       notifications: row.notifications ?? '',
       threshold_minutes: row.threshold_minutes ?? '',
@@ -687,8 +688,7 @@ async function findScreenTimeDiagnostics({ studyId, limit: rawLimit } = {}) {
     .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0))
     .slice(0, limit);
   const parsedRows = rawRows
-    .map((row) => row.parsed_row)
-    .filter(Boolean)
+    .flatMap((row) => row.parsed_rows || [])
     .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0));
   const appRows = parsedRows
     .filter(isAppSpecificScreenTimeRow)
@@ -702,7 +702,7 @@ function screenTimeRawRowFromLog(row) {
   const rawMessage = stringifyRawLogMessage(row.data?.log_message);
   if (!looksLikeScreenTimeLog(message, rawMessage)) return null;
 
-  const parsedRow = screenTimeRowFromLog(row);
+  const parsedRows = screenTimeRowsFromLog(row);
   return {
     id: row.id,
     study_id: row.study_id,
@@ -712,16 +712,59 @@ function screenTimeRawRowFromLog(row) {
     raw_class: screenTimeValue(message, ['class', 'source', 'logger']) || '',
     raw_event: screenTimeValue(message, ['event', 'name', 'notification', 'type']) || '',
     raw_message: rawMessage,
-    parsed: Boolean(parsedRow),
-    parse_reason: parsedRow ? 'parsed' : screenTimeParseReason(message),
-    parsed_row: parsedRow,
+    parsed: parsedRows.length > 0,
+    parse_reason: parsedRows.length > 0 ? `parsed ${parsedRows.length} row${parsedRows.length === 1 ? '' : 's'}` : screenTimeParseReason(message),
+    parsed_rows: parsedRows,
   };
 }
 
-function screenTimeRowFromLog(row) {
+function screenTimeRowsFromLog(row) {
   const message = parseLogMessage(row.data?.log_message);
-  if (!message || typeof message !== 'object') return null;
+  if (!message || typeof message !== 'object') return [];
 
+  const direct = screenTimeRowFromLogObject(row, message);
+  if (direct && direct.type === 'labels_updated') return screenTimeRowsFromLabels(row, direct);
+  if (direct) return [direct];
+
+  const nestedRows = extractNestedScreenTimeObjects(message)
+    .map((object) => screenTimeRowFromLogObject(row, object))
+    .filter(Boolean)
+    .flatMap((parsed) => parsed.type === 'labels_updated' ? screenTimeRowsFromLabels(row, parsed) : [parsed]);
+
+  if (nestedRows.length) return nestedRows;
+  return direct ? [direct] : [];
+}
+
+function screenTimeRowsFromLabels(row, parsed) {
+  const labels = Array.isArray(parsed.labels) ? parsed.labels : [];
+  return labels
+    .filter((label) => normalizeScreenTimeTargetKind(screenTimeValue(label, ['targetKind', 'target_kind', 'kind'])) === 'app')
+    .map((label, index) => {
+      const targetIndex = parseOptionalInteger(screenTimeValue(label, ['targetIndex', 'target_index', 'index'])) ?? index;
+      const appLabel = screenTimeValue(label, ['label', 'appName', 'app_name', 'name']) || screenTimeTargetLabel('app', targetIndex);
+      return {
+        id: row.id,
+        study_id: row.study_id,
+        device_id: row.device_id,
+        timestamp: parseOptionalNumber(screenTimeValue(label, ['timestamp', 'eventTimestamp', 'event_timestamp'])) || parsed.timestamp || row.timestamp,
+        created_at: row.created_at,
+        type: 'app_selection_label',
+        target_kind: 'app',
+        target_index: targetIndex,
+        target_label: appLabel,
+        app_name: appLabel,
+        bundle_identifier: screenTimeValue(label, ['bundleIdentifier', 'bundle_identifier', 'bundleId']) || '',
+        duration_seconds: null,
+        pickups: null,
+        notifications: null,
+        interval_start: null,
+        interval_end: null,
+        raw: label,
+      };
+    });
+}
+
+function screenTimeRowFromLogObject(row, message) {
   const event = normalizedScreenTimeEvent(message);
 
   if (event === 'screen_time_threshold_reached' || hasAnyScreenTimeKey(message, ['threshold_minutes', 'thresholdMinutes'])) {
@@ -763,6 +806,22 @@ function screenTimeRowFromLog(row) {
   }
 
   if (event === 'screen_time_labels_updated') {
+    const labels = parseJsonArray(screenTimeValue(message, ['labels_json', 'labelsJson', 'labels']));
+    if (labels.length) {
+      return {
+        id: row.id,
+        study_id: row.study_id,
+        device_id: row.device_id,
+        timestamp: row.timestamp,
+        created_at: row.created_at,
+        type: 'labels_updated',
+        target_kind: 'selection',
+        target_index: null,
+        target_label: 'Participant app labels updated',
+        labels,
+        raw: message,
+      };
+    }
     return {
       id: row.id,
       study_id: row.study_id,
@@ -773,7 +832,7 @@ function screenTimeRowFromLog(row) {
       target_kind: 'selection',
       target_index: null,
       target_label: 'Participant app labels updated',
-      labels: parseJsonArray(screenTimeValue(message, ['labels_json', 'labelsJson', 'labels'])),
+      labels,
       raw: message,
     };
   }
@@ -847,6 +906,59 @@ function stringifyRawLogMessage(value) {
   } catch {
     return String(value);
   }
+}
+
+function extractNestedScreenTimeObjects(root) {
+  const results = [];
+  const seen = new Set();
+
+  function visit(value, depth = 0) {
+    if (depth > 8 || value === null || value === undefined) return;
+
+    if (typeof value === 'string') {
+      const parsed = parseLogMessage(value);
+      if (parsed && parsed !== value) visit(parsed, depth + 1);
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+
+    if (typeof value !== 'object') return;
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    if (value !== root && looksLikeScreenTimeObject(value)) {
+      results.push(value);
+    }
+
+    for (const child of Object.values(value)) {
+      visit(child, depth + 1);
+    }
+  }
+
+  visit(root);
+  return results;
+}
+
+function looksLikeScreenTimeObject(value) {
+  return looksLikeAppUsageSummary(value) ||
+    normalizedScreenTimeEvent(value).startsWith('screen_time_') ||
+    hasAnyScreenTimeKey(value, [
+      'threshold_minutes',
+      'thresholdMinutes',
+      'target_kind',
+      'targetKind',
+      'duration_seconds',
+      'durationSeconds',
+      'totalActivityDuration',
+      'bundleIdentifier',
+      'bundle_identifier',
+      'appName',
+      'app_name',
+    ]);
 }
 
 function normalizedScreenTimeEvent(message) {
