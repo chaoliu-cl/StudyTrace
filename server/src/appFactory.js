@@ -34,6 +34,7 @@ import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 
 const SCREEN_TIME_EXPORT_SENSOR = 'screentime_app_usage';
+const SCREEN_TIME_RAW_EXPORT_SENSOR = 'screentime_raw_log';
 const SCREEN_TIME_EXPORT_COLUMNS = [
   'type',
   'target_kind',
@@ -50,6 +51,13 @@ const SCREEN_TIME_EXPORT_COLUMNS = [
   'activity',
   'interval_start',
   'interval_end',
+];
+const SCREEN_TIME_RAW_EXPORT_COLUMNS = [
+  'raw_class',
+  'raw_event',
+  'raw_message',
+  'parsed',
+  'parse_reason',
 ];
 
 export function createApp() {
@@ -295,6 +303,19 @@ export function createApp() {
     }
   });
 
+  app.get('/api/v1/studies/:studyId/dashboard/screentime-diagnostics', requireStudyPassword, async (req, res) => {
+    try {
+      const diagnostics = await findScreenTimeDiagnostics({
+        studyId: req.params.studyId,
+        limit: req.query.limit,
+      });
+      return res.json({ ok: true, ...diagnostics });
+    } catch (err) {
+      console.error(`[dashboard screentime diagnostics ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
   app.get('/api/v1/studies/:studyId/media/:sensor/:rowId/image', requireStudyPassword, async (req, res) => {
     try {
       const image = await imageFromEsmRow(req.params.studyId, req.params.sensor, req.params.rowId);
@@ -330,51 +351,62 @@ export function createApp() {
 
 async function listAdminSensorsForDashboard() {
   const sensors = await listSensorTables();
-  const screenTimeRows = await findScreenTimeRows({ limit: 10000 });
-  const screenTimeExportRows = screenTimeRows.filter(isAppSpecificScreenTimeRow);
-  upsertScreenTimeExportSensor(sensors, screenTimeExportRows.length);
+  const diagnostics = await findScreenTimeDiagnostics({ limit: 10000 });
+  upsertVirtualSensor(sensors, SCREEN_TIME_RAW_EXPORT_SENSOR, diagnostics.rawRows.length);
+  upsertVirtualSensor(sensors, SCREEN_TIME_EXPORT_SENSOR, diagnostics.appRows.length);
   return sensors.sort((a, b) => String(a.sensor).localeCompare(String(b.sensor)));
 }
 
 async function attachStudyScreenTimeSensor(overview, studyId) {
-  const screenTimeRows = await findScreenTimeRows({ studyId, limit: 10000 });
-  const screenTimeExportRows = screenTimeRows.filter(isAppSpecificScreenTimeRow);
+  const diagnostics = await findScreenTimeDiagnostics({ studyId, limit: 10000 });
 
   const previousTotal = Number(overview.summary?.total_rows || 0);
   overview.sensors = [...(overview.sensors || [])];
-  upsertScreenTimeExportSensor(overview.sensors, screenTimeExportRows.length);
+  upsertVirtualSensor(overview.sensors, SCREEN_TIME_RAW_EXPORT_SENSOR, diagnostics.rawRows.length);
+  upsertVirtualSensor(overview.sensors, SCREEN_TIME_EXPORT_SENSOR, diagnostics.appRows.length);
   overview.sensors.sort((a, b) => Number(b.rows || 0) - Number(a.rows || 0) || String(a.sensor).localeCompare(String(b.sensor)));
   overview.summary = {
     ...(overview.summary || {}),
     sensor_count: overview.sensors.length,
-    total_rows: previousTotal + screenTimeExportRows.length,
+    total_rows: previousTotal + diagnostics.rawRows.length + diagnostics.appRows.length,
   };
   return overview;
 }
 
-function upsertScreenTimeExportSensor(sensors, rows) {
-  const existing = sensors.find((sensor) => sensor.sensor === SCREEN_TIME_EXPORT_SENSOR);
+function upsertVirtualSensor(sensors, sensorName, rows) {
+  const existing = sensors.find((sensor) => sensor.sensor === sensorName);
   if (existing) {
     existing.rows = rows;
     existing.table = 'virtual_screen_time_from_ios_aware_log';
     return;
   }
   sensors.push({
-    sensor: SCREEN_TIME_EXPORT_SENSOR,
+    sensor: sensorName,
     table: 'virtual_screen_time_from_ios_aware_log',
     rows,
   });
 }
 
 function exportColumnsForSensor(sensor) {
-  return sensor === SCREEN_TIME_EXPORT_SENSOR ? SCREEN_TIME_EXPORT_COLUMNS : [];
+  if (sensor === SCREEN_TIME_EXPORT_SENSOR) return SCREEN_TIME_EXPORT_COLUMNS;
+  if (sensor === SCREEN_TIME_RAW_EXPORT_SENSOR) return SCREEN_TIME_RAW_EXPORT_COLUMNS;
+  return [];
 }
 
 async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, offset } = {}) {
+  if (sensor === SCREEN_TIME_RAW_EXPORT_SENSOR) {
+    const diagnostics = await findScreenTimeDiagnostics({ studyId, limit: 10000 });
+    const filtered = diagnostics.rawRows
+      .filter((row) => !deviceId || row.device_id === deviceId)
+      .sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+    const start = Math.max(Number(offset) || 0, 0);
+    const pageSize = Math.min(Math.max(Number(limit) || 1000, 1), 10000);
+    return filtered.slice(start, start + pageSize).map(screenTimeRawRowToExportRow);
+  }
+
   if (sensor === SCREEN_TIME_EXPORT_SENSOR) {
-    const rows = await findScreenTimeRows({ studyId, limit: 10000 });
-    const filtered = rows
-      .filter(isAppSpecificScreenTimeRow)
+    const diagnostics = await findScreenTimeDiagnostics({ studyId, limit: 10000 });
+    const filtered = diagnostics.appRows
       .filter((row) => !deviceId || row.device_id === deviceId)
       .sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
     const start = Math.max(Number(offset) || 0, 0);
@@ -385,6 +417,23 @@ async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, off
   const table = safeTableName(sensor);
   if (!table) throw httpError(400, 'invalid sensor name');
   return exportRows(table, { studyId, deviceId, limit, offset });
+}
+
+function screenTimeRawRowToExportRow(row) {
+  return {
+    id: row.id,
+    study_id: row.study_id,
+    device_id: row.device_id,
+    timestamp: row.timestamp,
+    created_at: row.created_at,
+    data: {
+      raw_class: row.raw_class || '',
+      raw_event: row.raw_event || '',
+      raw_message: row.raw_message || '',
+      parsed: row.parsed ? 'true' : 'false',
+      parse_reason: row.parse_reason || '',
+    },
+  };
 }
 
 function isAppSpecificScreenTimeRow(row) {
@@ -620,15 +669,53 @@ function isEsmDataRow(data) {
 
 async function findScreenTimeRows({ studyId, limit: rawLimit } = {}) {
   const limit = Math.min(Math.max(Number(rawLimit) || 100, 1), 10000);
+  const diagnostics = await findScreenTimeDiagnostics({ studyId, limit });
+  return diagnostics.parsedRows.slice(0, limit);
+}
+
+async function findScreenTimeDiagnostics({ studyId, limit: rawLimit } = {}) {
+  const limit = Math.min(Math.max(Number(rawLimit) || 100, 1), 10000);
   const table = safeTableName('ios_aware_log');
-  if (!table || !(await tableExists(table))) return [];
+  if (!table || !(await tableExists(table))) {
+    return { rawRows: [], parsedRows: [], appRows: [] };
+  }
 
   const rows = await exportRows(table, { studyId, limit: Math.min(limit * 5, 10000) });
-  return rows
-    .map((row) => screenTimeRowFromLog(row))
+  const rawRows = rows
+    .map(screenTimeRawRowFromLog)
     .filter(Boolean)
     .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0))
     .slice(0, limit);
+  const parsedRows = rawRows
+    .map((row) => row.parsed_row)
+    .filter(Boolean)
+    .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0));
+  const appRows = parsedRows
+    .filter(isAppSpecificScreenTimeRow)
+    .sort(sortAppUsageRows);
+
+  return { rawRows, parsedRows, appRows };
+}
+
+function screenTimeRawRowFromLog(row) {
+  const message = parseLogMessage(row.data?.log_message);
+  const rawMessage = stringifyRawLogMessage(row.data?.log_message);
+  if (!looksLikeScreenTimeLog(message, rawMessage)) return null;
+
+  const parsedRow = screenTimeRowFromLog(row);
+  return {
+    id: row.id,
+    study_id: row.study_id,
+    device_id: row.device_id,
+    timestamp: row.timestamp,
+    created_at: row.created_at,
+    raw_class: message?.class || '',
+    raw_event: message?.event || message?.notification || '',
+    raw_message: rawMessage,
+    parsed: Boolean(parsedRow),
+    parse_reason: parsedRow ? 'parsed' : screenTimeParseReason(message),
+    parsed_row: parsedRow,
+  };
 }
 
 function screenTimeRowFromLog(row) {
@@ -714,6 +801,38 @@ function screenTimeRowFromLog(row) {
   }
 
   return null;
+}
+
+function looksLikeScreenTimeLog(message, rawMessage) {
+  if (message?.class === 'SpecificAppUsageManager') return true;
+  const text = String(rawMessage || '').toLowerCase();
+  return text.includes('screen_time') ||
+    text.includes('screentime') ||
+    text.includes('specificappusagemanager') ||
+    text.includes('deviceactivity') ||
+    text.includes('familyactivity');
+}
+
+function screenTimeParseReason(message) {
+  if (!message) return 'log_message is not valid JSON';
+  if (message.class !== 'SpecificAppUsageManager') return `ignored class: ${message.class || 'missing'}`;
+  return `unrecognized event: ${message.event || 'missing'}`;
+}
+
+function stringifyRawLogMessage(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function sortAppUsageRows(a, b) {
+  const durationDiff = Number(b.duration_seconds || 0) - Number(a.duration_seconds || 0);
+  if (durationDiff !== 0) return durationDiff;
+  return Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0);
 }
 
 function parseLogMessage(value) {

@@ -329,6 +329,10 @@ try {
     emptyScreenTimeDashboard.json.sensors.some((row) => row.sensor === 'screentime_app_usage' && row.rows === 0),
     'researcher dashboard lists empty normalized app-specific Screen Time export'
   );
+  assert.ok(
+    emptyScreenTimeDashboard.json.sensors.some((row) => row.sensor === 'screentime_raw_log' && row.rows === 0),
+    'researcher dashboard lists empty raw Screen Time export'
+  );
   const emptyScreenTimeCsv = await request('GET', `${apiBase}/export/screentime_app_usage?format=csv`, { headers: jsonAuth });
   assert.strictEqual(emptyScreenTimeCsv.status, 200, 'empty Screen Time CSV export ok');
   assert.ok(/app_name/.test(emptyScreenTimeCsv.json), 'empty Screen Time CSV includes app_name header');
@@ -383,10 +387,37 @@ try {
         event_timestamp: '902',
       }),
     },
+    {
+      timestamp: 903,
+      device_id: 'dev-1',
+      log_message: JSON.stringify({
+        class: 'SpecificAppUsageManager',
+        event: 'screen_time_report_app_usage',
+        target_kind: 'app',
+        target_index: '1',
+        target_label: 'YouTube',
+        app_name: 'YouTube',
+        bundle_identifier: 'com.google.ios.youtube',
+        duration_seconds: '5400',
+        pickups: '2',
+        notifications: '1',
+        interval_start: '100',
+        interval_end: '903',
+        event_timestamp: '903',
+      }),
+    },
   ];
   const screenTimeIns = await post(`${studyPath}/ios_aware_log/insert`,
     form({ device_id: 'dev-1', data: JSON.stringify(screenTimeLogs) }), formHeaders);
   assert.strictEqual(screenTimeIns.status, 200, 'screen time event insert ok');
+
+  const screenTimeDiagnostics = await request('GET', `${apiBase}/dashboard/screentime-diagnostics`, { headers: jsonAuth });
+  assert.strictEqual(screenTimeDiagnostics.status, 200, 'researcher Screen Time diagnostics ok');
+  assert.ok(screenTimeDiagnostics.json.rawRows.length >= 4, 'diagnostics exposes raw Screen Time rows');
+  assert.ok(screenTimeDiagnostics.json.rawRows.some((row) => row.raw_event === 'screen_time_report_app_usage'), 'diagnostics includes raw app usage event');
+  assert.strictEqual(screenTimeDiagnostics.json.appRows[0].app_name, 'YouTube', 'diagnostics sorts cleaned app rows by duration');
+  assert.strictEqual(screenTimeDiagnostics.json.appRows[1].app_name, 'Instagram', 'diagnostics keeps lower-duration app after higher-duration app');
+  console.log('✓ researcher Screen Time diagnostics show raw and cleaned app rows');
 
   // ---- Admin data export ----------------------------------------------------
   const adminHdr = { 'x-admin-token': 'test-admin-token' };
@@ -401,6 +432,7 @@ try {
   assert.strictEqual(sensorsList.status, 200, 'list sensors ok');
   const names = sensorsList.json.sensors.map((s) => s.sensor);
   assert.ok(names.includes('steps'), 'steps listed');
+  assert.ok(names.includes('screentime_raw_log'), 'raw Screen Time export listed');
   assert.ok(names.includes('screentime_app_usage'), 'normalized app-specific Screen Time export listed');
   console.log('✓ admin lists sensors:', names.join(', '));
 
@@ -419,6 +451,10 @@ try {
     dashboard.json.sensors.some((row) => row.sensor === 'screentime_app_usage'),
     'researcher dashboard lists normalized app-specific Screen Time export'
   );
+  assert.ok(
+    dashboard.json.sensors.some((row) => row.sensor === 'screentime_raw_log'),
+    'researcher dashboard lists raw Screen Time export'
+  );
   console.log('✓ researcher dashboard summary');
 
   const researcherScreenTimeCsv = await request('GET', `${apiBase}/export/screentime_app_usage?format=csv`, { headers: jsonAuth });
@@ -429,6 +465,12 @@ try {
   assert.ok(/com\.burbn\.instagram/.test(researcherScreenTimeCsv.json), 'Screen Time CSV includes bundle identifier');
   assert.ok(/\b1860\b/.test(researcherScreenTimeCsv.json), 'Screen Time CSV includes duration seconds');
   console.log('✓ researcher Sensor coverage exports app-specific Screen Time CSV');
+
+  const researcherScreenTimeRawCsv = await request('GET', `${apiBase}/export/screentime_raw_log?format=csv`, { headers: jsonAuth });
+  assert.strictEqual(researcherScreenTimeRawCsv.status, 200, 'researcher raw Screen Time CSV export ok');
+  assert.ok(/raw_message/.test(researcherScreenTimeRawCsv.json), 'raw Screen Time CSV includes raw message column');
+  assert.ok(/screen_time_report_app_usage/.test(researcherScreenTimeRawCsv.json), 'raw Screen Time CSV includes uploaded event text');
+  console.log('✓ researcher Sensor coverage exports raw Screen Time CSV');
 
   const adminScreenTimeCsv = await request('GET', `/admin/export/screentime_app_usage?format=csv`, { headers: adminHdr });
   assert.strictEqual(adminScreenTimeCsv.status, 200, 'admin Screen Time CSV export ok');

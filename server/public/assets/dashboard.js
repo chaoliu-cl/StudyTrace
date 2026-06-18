@@ -117,6 +117,47 @@ async function loadEsmResponses({ studyId, password, sensors, table, message }) 
   await hydrateAuthenticatedImages(table);
 }
 
+async function loadScreenTimeDiagnostics({ studyId, password, cleanedTable, rawTable, message }) {
+  const headers = { 'x-study-password': password };
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/screentime-diagnostics?limit=100`, { headers });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load Screen Time diagnostics.', true);
+  }
+
+  renderTable(cleanedTable, [
+    { label: 'App', render: (row) => escapeHtml(row.app_name || row.target_label || '—') },
+    { label: 'Bundle', render: (row) => escapeHtml(row.bundle_identifier || '—') },
+    { label: 'Duration', render: (row) => formatDuration(row.duration_seconds) },
+    { label: 'Pickups', render: (row) => String(row.pickups ?? '—') },
+    { label: 'Notifications', render: (row) => String(row.notifications ?? '—') },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
+  ], payload.appRows || []);
+
+  renderTable(rawTable, [
+    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Event', render: (row) => escapeHtml(row.raw_event || '—') },
+    { label: 'Parsed', render: (row) => row.parsed ? 'yes' : 'no' },
+    { label: 'Reason', render: (row) => escapeHtml(row.parse_reason || '—') },
+    { label: 'Raw message', render: (row) => `<code>${escapeHtml(truncate(row.raw_message || '', 240))}</code>` },
+  ], payload.rawRows || []);
+}
+
+function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined || seconds === '') return '—';
+  const minutes = Math.round(Number(seconds || 0) / 60);
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return hours > 0 ? `${hours}h ${remainder}m` : `${minutes}m`;
+}
+
+function truncate(value, maxLength) {
+  const text = String(value ?? '');
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
 async function hydrateAuthenticatedImages(container) {
   const images = [...container.querySelectorAll('[data-auth-image]')];
   await Promise.all(images.map(async (img) => {
@@ -137,6 +178,8 @@ function initResearcher() {
   const devices = document.querySelector('#researcher-devices');
   const sensors = document.querySelector('#researcher-sensors');
   const esmResponses = document.querySelector('#researcher-esm-responses');
+  const screenTimeCleaned = document.querySelector('#researcher-screentime-cleaned');
+  const screenTimeRaw = document.querySelector('#researcher-screentime-raw');
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -177,6 +220,13 @@ function initResearcher() {
     ], payload.sensors);
 
     dashboard.classList.remove('hidden');
+    await loadScreenTimeDiagnostics({
+      studyId,
+      password,
+      cleanedTable: screenTimeCleaned,
+      rawTable: screenTimeRaw,
+      message,
+    });
     await loadEsmResponses({ studyId, password, sensors: payload.sensors, table: esmResponses, message });
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
   });

@@ -55,11 +55,26 @@
         <div class="section-head">
           <div>
             <h2>Sensor coverage</h2>
-            <p class="section-note"><code>screentime_app_usage</code> exports normalized app-specific Screen Time CSV rows. It shows 0 rows until selected-app usage records arrive.</p>
+            <p class="section-note"><code>screentime_raw_log</code> exports raw uploaded Screen Time logs. <code>screentime_app_usage</code> exports cleaned app-specific rows sorted by usage.</p>
           </div>
         </div>
         <div class="table-wrap">
           <table id="researcher-sensors"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Screen Time diagnostics</h2>
+            <p class="section-note">Use this section to confirm whether raw Screen Time logs reached the server and whether they can be cleaned into app-specific usage rows.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-screentime-cleaned"></table>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-screentime-raw"></table>
         </div>
       </section>
 
