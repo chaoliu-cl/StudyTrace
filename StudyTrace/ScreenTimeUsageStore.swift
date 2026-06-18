@@ -27,6 +27,8 @@ public enum ScreenTimeShared {
     public static let targetCategory = "category"
     public static let targetWebDomain = "web"
     public static let selectionDataKey = "studytrace.selected-app-usage.selection"
+    public static let applicationTokenOrderDataKey = "studytrace.selected-app-usage.application-token-order"
+    public static let resolvedLabelsDataKey = "studytrace.selected-app-usage.resolved-labels"
 
     /// Escalating cumulative-usage thresholds (in minutes). Each DeviceActivity
     /// event fires once when cumulative usage of the selected apps crosses the
@@ -113,6 +115,33 @@ public struct ScreenTimeAppUsageSummary: Codable {
     }
 }
 
+public struct ScreenTimeResolvedLabel: Codable {
+    public let targetKind: String
+    public let targetIndex: Int
+    public let appName: String
+    public let bundleIdentifier: String?
+    public let source: String
+    public let updatedAt: Double
+
+    public init(targetKind: String,
+                targetIndex: Int,
+                appName: String,
+                bundleIdentifier: String?,
+                source: String,
+                updatedAt: Double) {
+        self.targetKind = targetKind
+        self.targetIndex = targetIndex
+        self.appName = appName
+        self.bundleIdentifier = bundleIdentifier
+        self.source = source
+        self.updatedAt = updatedAt
+    }
+
+    public var cacheKey: String {
+        "\(targetKind):\(targetIndex)"
+    }
+}
+
 /// Append-only queue of usage events persisted in the shared App Group.
 /// The extension only appends; the app drains (reads + clears).
 public final class ScreenTimeUsageStore {
@@ -120,6 +149,7 @@ public final class ScreenTimeUsageStore {
 
     private let pendingKey = "studytrace.screentime.pending-events"
     private let reportSummariesKey = "studytrace.screentime.report-summaries"
+    private let resolvedLabelsKey = ScreenTimeShared.resolvedLabelsDataKey
     private let defaults: UserDefaults?
 
     public init() {
@@ -181,5 +211,42 @@ public final class ScreenTimeUsageStore {
         let summaries = loadRawReportSummaries()
         defaults?.removeObject(forKey: reportSummariesKey)
         return summaries
+    }
+
+    public func saveResolvedLabels(_ labels: [ScreenTimeResolvedLabel]) {
+        guard let defaults = defaults else { return }
+        let sanitized = labels.reduce(into: [String: ScreenTimeResolvedLabel]()) { result, label in
+            let appName = label.appName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !appName.isEmpty else { return }
+            result[label.cacheKey] = ScreenTimeResolvedLabel(
+                targetKind: label.targetKind,
+                targetIndex: label.targetIndex,
+                appName: appName,
+                bundleIdentifier: label.bundleIdentifier,
+                source: label.source,
+                updatedAt: label.updatedAt
+            )
+        }
+        if let data = try? JSONEncoder().encode(sanitized) {
+            defaults.set(data, forKey: resolvedLabelsKey)
+        }
+    }
+
+    public func loadResolvedLabels() -> [String: ScreenTimeResolvedLabel] {
+        guard let defaults = defaults,
+              let data = defaults.data(forKey: resolvedLabelsKey),
+              let labels = try? JSONDecoder().decode([String: ScreenTimeResolvedLabel].self, from: data) else {
+            return [:]
+        }
+        return labels
+    }
+
+    public func resolvedLabel(targetKind: String, targetIndex: Int?) -> ScreenTimeResolvedLabel? {
+        guard let targetIndex = targetIndex else { return nil }
+        return loadResolvedLabels()["\(targetKind):\(targetIndex)"]
+    }
+
+    public func clearResolvedLabels() {
+        defaults?.removeObject(forKey: resolvedLabelsKey)
     }
 }

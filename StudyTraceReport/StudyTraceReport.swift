@@ -74,6 +74,7 @@ struct StudyTraceAppUsageReportScene: DeviceActivityReportScene {
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> StudyTraceAppUsageReportConfiguration {
         var summariesByKey: [String: ScreenTimeAppUsageSummary] = [:]
+        let selectedApplicationTokens = loadSelectedApplicationTokenOrder()
         var intervalStart = Date().timeIntervalSince1970 * 1000.0
         var intervalEnd = intervalStart
 
@@ -87,9 +88,10 @@ struct StudyTraceAppUsageReportScene: DeviceActivityReportScene {
                         let app = application.application
                         let name = app.localizedDisplayName
                         let bundleIdentifier = app.bundleIdentifier
-                        let key = bundleIdentifier ?? name ?? String(application.hashValue)
+                        let selectedIndex = app.token.flatMap { selectedApplicationTokens.firstIndex(of: $0) }
+                        let key = selectedIndex.map { "selected-app-\($0)" } ?? bundleIdentifier ?? name ?? String(application.hashValue)
                         let previous = summariesByKey[key]
-                        let index = previous?.targetIndex ?? summariesByKey.count
+                        let index = selectedIndex ?? previous?.targetIndex ?? summariesByKey.count
                         let fallback = "App \(index + 1)"
                         let label = (name?.isEmpty == false) ? name! : fallback
                         let now = Date().timeIntervalSince1970 * 1000.0
@@ -118,8 +120,37 @@ struct StudyTraceAppUsageReportScene: DeviceActivityReportScene {
             }
             return $0.durationSeconds > $1.durationSeconds
         }
+        let resolvedLabels = summaries.compactMap { summary -> ScreenTimeResolvedLabel? in
+            guard let appName = summary.appName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !appName.isEmpty else { return nil }
+            return ScreenTimeResolvedLabel(
+                targetKind: summary.targetKind,
+                targetIndex: summary.targetIndex,
+                appName: appName,
+                bundleIdentifier: summary.bundleIdentifier,
+                source: "device_activity_report",
+                updatedAt: summary.timestamp
+            )
+        }
+        if !resolvedLabels.isEmpty {
+            let existing = ScreenTimeUsageStore.shared.loadResolvedLabels()
+            var merged = existing
+            for label in resolvedLabels {
+                merged[label.cacheKey] = label
+            }
+            ScreenTimeUsageStore.shared.saveResolvedLabels(Array(merged.values))
+        }
         ScreenTimeUsageStore.shared.appendReportSummaries(summaries)
         return StudyTraceAppUsageReportConfiguration(generatedAt: Date(), summaries: summaries)
+    }
+
+    private func loadSelectedApplicationTokenOrder() -> [ApplicationToken] {
+        guard let defaults = UserDefaults(suiteName: ScreenTimeShared.appGroupID),
+              let data = defaults.data(forKey: ScreenTimeShared.applicationTokenOrderDataKey),
+              let tokens = try? PropertyListDecoder().decode([ApplicationToken].self, from: data) else {
+            return []
+        }
+        return tokens
     }
 }
 

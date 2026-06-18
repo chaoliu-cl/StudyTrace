@@ -203,6 +203,7 @@ final class SpecificAppUsageManager: NSObject {
     private let authorizationKey = "studytrace.selected-app-usage.authorization"
     private let selectionDataKey = ScreenTimeShared.selectionDataKey
     private var completion: (() -> Void)?
+    private var reportCompletion: (() -> Void)?
     private var lastHeadlessRenderAt: Date?
     private var headlessReportWindow: UIWindow?
 
@@ -262,28 +263,44 @@ final class SpecificAppUsageManager: NSObject {
         showUnsupportedAlert(from: viewController)
     }
 
-    func presentUsageReport(from viewController: UIViewController) {
+    func presentUsageReport(from viewController: UIViewController,
+                            completion: (() -> Void)? = nil,
+                            autoDismissAfter: TimeInterval? = nil) {
         #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
         if #available(iOS 16.0, *) {
             let selection = loadSelection()
             guard !selection.applicationTokens.isEmpty ||
                   !selection.categoryTokens.isEmpty ||
-                  !selection.webDomainTokens.isEmpty else { return }
+                  !selection.webDomainTokens.isEmpty else {
+                completion?()
+                return
+            }
             let host = UIHostingController(rootView: SpecificAppUsageReportHost(selection: selection) {
                 self.scheduleScreenTimeDrainAndSync()
             })
-            host.title = "Screen Time Report"
+            host.title = "Preparing Screen Time Summary"
             let nav = UINavigationController(rootViewController: host)
             host.navigationItem.rightBarButtonItem = UIBarButtonItem(
                 barButtonSystemItem: .done,
                 target: self,
                 action: #selector(dismissPresentedReport)
             )
+            self.reportCompletion = completion
             viewController.present(nav, animated: true) {
                 self.scheduleScreenTimeDrainAndSync()
+                if let autoDismissAfter = autoDismissAfter {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + autoDismissAfter) { [weak nav] in
+                        guard let nav = nav, nav.presentingViewController != nil else { return }
+                        nav.dismiss(animated: true) {
+                            self.finishReportPresentation()
+                        }
+                    }
+                }
             }
+            return
         }
         #endif
+        completion?()
     }
 
     @objc private func dismissPresentedReport(_ sender: UIBarButtonItem) {
@@ -291,8 +308,15 @@ final class SpecificAppUsageManager: NSObject {
             .rootViewController?
             .presentedViewController?
             .dismiss(animated: true) {
-                self.scheduleScreenTimeDrainAndSync()
+                self.finishReportPresentation()
             }
+    }
+
+    private func finishReportPresentation() {
+        scheduleScreenTimeDrainAndSync()
+        let completion = reportCompletion
+        reportCompletion = nil
+        completion?()
     }
 
     private func showUnsupportedAlert(from viewController: UIViewController) {
@@ -347,7 +371,9 @@ final class SpecificAppUsageManager: NSObject {
         let view = SpecificAppPickerView(selection: loadSelection()) { selection in
             self.persist(selection: selection)
             viewController.dismiss(animated: true) {
-                self.completion?()
+                self.presentUsageReport(from: viewController, completion: {
+                    self.completion?()
+                }, autoDismissAfter: 8.0)
             }
         }
         let host = UIHostingController(rootView: view)
@@ -365,18 +391,24 @@ final class SpecificAppUsageManager: NSObject {
 
     @available(iOS 16.0, *)
     private func persist(selection: FamilyActivitySelection) {
+        let orderedApplicationTokens = Array(selection.applicationTokens)
         if let data = try? PropertyListEncoder().encode(selection) {
             UserDefaults.standard.set(data, forKey: selectionDataKey)
             UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.set(data, forKey: selectionDataKey)
         }
+        if let data = try? PropertyListEncoder().encode(orderedApplicationTokens) {
+            UserDefaults.standard.set(data, forKey: ScreenTimeShared.applicationTokenOrderDataKey)
+            UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.set(data, forKey: ScreenTimeShared.applicationTokenOrderDataKey)
+        }
         saveSelectionCounts(apps: selection.applicationTokens.count,
                             categories: selection.categoryTokens.count,
                             webDomains: selection.webDomainTokens.count)
-        startMonitoring(selection: selection)
+        startMonitoring(selection: selection, orderedApplicationTokens: orderedApplicationTokens)
     }
 
     @available(iOS 16.0, *)
-    private func startMonitoring(selection: FamilyActivitySelection) {
+    private func startMonitoring(selection: FamilyActivitySelection,
+                                 orderedApplicationTokens: [ApplicationToken]) {
         let center = DeviceActivityCenter()
         let activityName = DeviceActivityName(ScreenTimeShared.activityName)
         let schedule = DeviceActivitySchedule(intervalStart: DateComponents(hour: 0, minute: 0),
@@ -407,7 +439,7 @@ final class SpecificAppUsageManager: NSObject {
                       categories: selection.categoryTokens,
                       webDomains: selection.webDomainTokens)
 
-        for (index, token) in Array(selection.applicationTokens).enumerated() {
+        for (index, token) in orderedApplicationTokens.enumerated() {
             addThresholds(nameParts: [ScreenTimeShared.targetApplication, String(index)],
                           applications: Set([token]))
         }
@@ -457,7 +489,9 @@ final class SpecificAppUsageManager: NSObject {
         let summaries = ScreenTimeUsageStore.shared.drainReportSummaries()
         guard !pending.isEmpty || !summaries.isEmpty else { return 0 }
         let logger = AWAREEventLogger.shared()
+        let resolvedLabels = ScreenTimeUsageStore.shared.loadResolvedLabels()
         for record in pending {
+            let resolvedLabel = record.targetIndex.flatMap { resolvedLabels["\(record.targetKind):\($0)"] }
             logger.logEvent([
                 "class": "SpecificAppUsageManager",
                 "event": "screen_time_threshold_reached",
@@ -465,9 +499,41 @@ final class SpecificAppUsageManager: NSObject {
                 "threshold_minutes": "\(record.thresholdMinutes)",
                 "target_kind": record.targetKind,
                 "target_index": record.targetIndex.map(String.init) ?? "",
-                "target_label": record.targetLabel,
+                "target_label": resolvedLabel?.appName ?? record.targetLabel,
+                "app_name": resolvedLabel?.appName ?? "",
+                "bundle_identifier": resolvedLabel?.bundleIdentifier ?? "",
                 "activity": record.activity,
                 "event_timestamp": "\(record.timestamp)"
+            ])
+        }
+        let freshLabels = summaries.compactMap { summary -> ScreenTimeResolvedLabel? in
+            guard let appName = summary.appName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !appName.isEmpty else { return nil }
+            return ScreenTimeResolvedLabel(
+                targetKind: summary.targetKind,
+                targetIndex: summary.targetIndex,
+                appName: appName,
+                bundleIdentifier: summary.bundleIdentifier,
+                source: "device_activity_report",
+                updatedAt: summary.timestamp
+            )
+        }
+        if !freshLabels.isEmpty {
+            ScreenTimeUsageStore.shared.saveResolvedLabels(mergeResolvedLabels(existing: resolvedLabels, incoming: freshLabels))
+            let labelPayload = freshLabels.map { label in
+                [
+                    "targetKind": label.targetKind,
+                    "targetIndex": label.targetIndex,
+                    "label": label.appName,
+                    "bundleIdentifier": label.bundleIdentifier ?? "",
+                    "source": label.source,
+                    "timestamp": label.updatedAt,
+                ]
+            }
+            logger.logEvent([
+                "class": "SpecificAppUsageManager",
+                "event": "screen_time_labels_updated",
+                "labels_json": jsonString(from: labelPayload)
             ])
         }
         for summary in summaries {
@@ -492,6 +558,24 @@ final class SpecificAppUsageManager: NSObject {
             syncScreenTimeLogsNow()
         }
         return loggedCount
+    }
+
+    private func mergeResolvedLabels(existing: [String: ScreenTimeResolvedLabel],
+                                     incoming: [ScreenTimeResolvedLabel]) -> [ScreenTimeResolvedLabel] {
+        var merged = existing
+        for label in incoming {
+            merged[label.cacheKey] = label
+        }
+        return Array(merged.values)
+    }
+
+    private func jsonString(from value: Any) -> String {
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: []),
+              let string = String(data: data, encoding: .utf8) else {
+            return "[]"
+        }
+        return string
     }
 
     func scheduleScreenTimeDrainAndSync() {
@@ -568,7 +652,10 @@ final class SpecificAppUsageManager: NSObject {
         UserDefaults.standard.removeObject(forKey: selectionCountKey)
         UserDefaults.standard.removeObject(forKey: authorizationKey)
         UserDefaults.standard.removeObject(forKey: selectionDataKey)
+        UserDefaults.standard.removeObject(forKey: ScreenTimeShared.applicationTokenOrderDataKey)
         UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.removeObject(forKey: selectionDataKey)
+        UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.removeObject(forKey: ScreenTimeShared.applicationTokenOrderDataKey)
+        ScreenTimeUsageStore.shared.clearResolvedLabels()
 
         #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
         if #available(iOS 16.0, *) {
