@@ -85,18 +85,16 @@ Participants must consent to the study, grant Apple's Screen Time / Family
 Controls permission, and choose the apps, websites, or categories to include.
 StudyTrace does not collect Screen Time data for unselected apps. Uploaded
 Screen Time rows are stored through the raw `ios_aware_log` sensor. The
-researcher/admin dashboards also expose two virtual Screen Time export sensors:
-`screentime_raw_log` and `screentime_app_usage`. Both are visible before rows
-arrive, with a row count of `0`, so researchers can find the export paths during
-setup.
+researcher/admin dashboards also expose a single virtual Screen Time export
+sensor, `screentime_apps`. It is visible before rows arrive, with a row count of
+`0`, so researchers can find the export path during setup.
 
-Use `screentime_raw_log` first when troubleshooting uploads. It preserves the
-raw uploaded `ios_aware_log.log_message` values and indicates whether each row
-was parsed. Use `screentime_app_usage` for cleaned app-specific columns such as
-app name, bundle identifier, duration, pickups, notifications, and reporting
-interval. Cleaned app rows are sorted by usage duration, then timestamp. These
-rows are intended for research analysis only, not advertising, profiling, sale
-of data, or cross-app tracking.
+`screentime_apps` exports just the columns researchers need for analysis: `id`,
+`study_id`, `device_id`, `timestamp`, and `app_name` (plus `created_at` from the
+storage row). App names are resolved from the participant-supplied labels saved
+during onboarding, so the dashboard always shows which app each row belongs to.
+These rows are intended for research analysis only, not advertising, profiling,
+sale of data, or cross-app tracking.
 
 ## AWARE protocol front-end
 

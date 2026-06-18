@@ -33,35 +33,8 @@ import {
 import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 
-const SCREEN_TIME_EXPORT_SENSOR = 'screentime_app_usage';
-const SCREEN_TIME_RAW_EXPORT_SENSOR = 'screentime_raw_log';
-const SCREEN_TIME_EXPORT_COLUMNS = [
-  'type',
-  'target_kind',
-  'target_index',
-  'target_label',
-  'app_name',
-  'bundle_identifier',
-  'duration_seconds',
-  'duration_minutes',
-  'pickups',
-  'notifications',
-  'threshold_minutes',
-  'event_name',
-  'activity',
-  'interval_start',
-  'interval_end',
-  'parse_reason',
-  'raw_event',
-  'raw_message',
-];
-const SCREEN_TIME_RAW_EXPORT_COLUMNS = [
-  'raw_class',
-  'raw_event',
-  'raw_message',
-  'parsed',
-  'parse_reason',
-];
+const SCREEN_TIME_EXPORT_SENSOR = 'screentime_apps';
+const SCREEN_TIME_EXPORT_COLUMNS = ['app_name'];
 
 export function createApp() {
   const app = express();
@@ -355,7 +328,6 @@ export function createApp() {
 async function listAdminSensorsForDashboard() {
   const sensors = await listSensorTables();
   const diagnostics = await findScreenTimeDiagnostics({ limit: 10000 });
-  upsertVirtualSensor(sensors, SCREEN_TIME_RAW_EXPORT_SENSOR, diagnostics.rawRows.length);
   upsertVirtualSensor(sensors, SCREEN_TIME_EXPORT_SENSOR, diagnostics.appRows.length);
   return sensors.sort((a, b) => String(a.sensor).localeCompare(String(b.sensor)));
 }
@@ -365,13 +337,12 @@ async function attachStudyScreenTimeSensor(overview, studyId) {
 
   const previousTotal = Number(overview.summary?.total_rows || 0);
   overview.sensors = [...(overview.sensors || [])];
-  upsertVirtualSensor(overview.sensors, SCREEN_TIME_RAW_EXPORT_SENSOR, diagnostics.rawRows.length);
   upsertVirtualSensor(overview.sensors, SCREEN_TIME_EXPORT_SENSOR, diagnostics.appRows.length);
   overview.sensors.sort((a, b) => Number(b.rows || 0) - Number(a.rows || 0) || String(a.sensor).localeCompare(String(b.sensor)));
   overview.summary = {
     ...(overview.summary || {}),
     sensor_count: overview.sensors.length,
-    total_rows: previousTotal + diagnostics.rawRows.length + diagnostics.appRows.length,
+    total_rows: previousTotal + diagnostics.appRows.length,
   };
   return overview;
 }
@@ -392,25 +363,15 @@ function upsertVirtualSensor(sensors, sensorName, rows) {
 
 function exportColumnsForSensor(sensor) {
   if (sensor === SCREEN_TIME_EXPORT_SENSOR) return SCREEN_TIME_EXPORT_COLUMNS;
-  if (sensor === SCREEN_TIME_RAW_EXPORT_SENSOR) return SCREEN_TIME_RAW_EXPORT_COLUMNS;
   return [];
 }
 
 async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, offset } = {}) {
-  if (sensor === SCREEN_TIME_RAW_EXPORT_SENSOR) {
-    const diagnostics = await findScreenTimeDiagnostics({ studyId, limit: 10000 });
-    const filtered = diagnostics.rawRows
-      .filter((row) => !deviceId || row.device_id === deviceId)
-      .sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
-    const start = Math.max(Number(offset) || 0, 0);
-    const pageSize = Math.min(Math.max(Number(limit) || 1000, 1), 10000);
-    return filtered.slice(start, start + pageSize).map(screenTimeRawRowToExportRow);
-  }
-
   if (sensor === SCREEN_TIME_EXPORT_SENSOR) {
     const diagnostics = await findScreenTimeDiagnostics({ studyId, limit: 10000 });
     const filtered = diagnostics.appRows
       .filter((row) => !deviceId || row.device_id === deviceId)
+      .filter((row) => row.app_name && String(row.app_name).trim() !== '')
       .sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
     const start = Math.max(Number(offset) || 0, 0);
     const pageSize = Math.min(Math.max(Number(limit) || 1000, 1), 10000);
@@ -422,31 +383,6 @@ async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, off
   return exportRows(table, { studyId, deviceId, limit, offset });
 }
 
-function screenTimeRawRowToExportRow(row) {
-  return {
-    id: row.id,
-    study_id: row.study_id,
-    device_id: row.device_id,
-    timestamp: row.timestamp,
-    created_at: row.created_at,
-    data: {
-      raw_class: row.raw_class || '',
-      raw_event: row.raw_event || '',
-      raw_message: row.raw_message || '',
-      parsed: row.parsed ? 'true' : 'false',
-      parse_reason: row.parse_reason || '',
-    },
-  };
-}
-
-function isAppSpecificScreenTimeRow(row) {
-  return row?.target_kind === 'app' && (
-    row.type === 'app_usage_summary' ||
-    row.type === 'usage_threshold' ||
-    row.type === 'app_selection_label'
-  );
-}
-
 function screenTimeRowToExportRow(row) {
   return {
     id: row.id,
@@ -455,24 +391,7 @@ function screenTimeRowToExportRow(row) {
     timestamp: row.timestamp,
     created_at: row.created_at,
     data: {
-      type: row.type || '',
-      target_kind: row.target_kind || '',
-      target_index: row.target_index ?? '',
-      target_label: row.target_label || '',
       app_name: row.app_name || row.target_label || '',
-      bundle_identifier: row.bundle_identifier || '',
-      duration_seconds: row.duration_seconds ?? '',
-      duration_minutes: row.duration_seconds === null || row.duration_seconds === undefined ? '' : Math.round(Number(row.duration_seconds || 0) / 60),
-      pickups: row.pickups ?? '',
-      notifications: row.notifications ?? '',
-      threshold_minutes: row.threshold_minutes ?? '',
-      event_name: row.event_name || '',
-      activity: row.activity || '',
-      interval_start: row.interval_start ?? '',
-      interval_end: row.interval_end ?? '',
-      parse_reason: row.parse_reason || '',
-      raw_event: row.raw_event || '',
-      raw_message: row.raw_message || '',
     },
   };
 }
@@ -706,6 +625,14 @@ async function findScreenTimeDiagnostics({ studyId, limit: rawLimit } = {}) {
   }
 
   return { rawRows, parsedRows, appRows };
+}
+
+function isAppSpecificScreenTimeRow(row) {
+  return row?.target_kind === 'app' && (
+    row.type === 'app_usage_summary' ||
+    row.type === 'usage_threshold' ||
+    row.type === 'app_selection_label'
+  );
 }
 
 function buildAppLabelLookup(parsedRows) {
