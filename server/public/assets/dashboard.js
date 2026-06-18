@@ -126,6 +126,7 @@ async function loadScreenTimeDiagnostics({ studyId, password, cleanedTable, rawT
   }
 
   renderTable(cleanedTable, [
+    { label: 'Type', render: (row) => escapeHtml(row.type || '—') },
     { label: 'App', render: (row) => escapeHtml(row.app_name || row.target_label || '—') },
     { label: 'Bundle', render: (row) => escapeHtml(row.bundle_identifier || '—') },
     { label: 'Duration', render: (row) => formatDuration(row.duration_seconds) },

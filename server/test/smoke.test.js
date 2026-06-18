@@ -479,6 +479,44 @@ try {
   assert.ok(screenTimeDiagnostics.json.appRows.some((row) => row.app_name === 'Reddit'), 'diagnostics parses nested summaries_json arrays');
   console.log('✓ researcher Screen Time diagnostics show raw and cleaned app rows');
 
+  const fallbackStudy = await post('/admin/studies',
+    JSON.stringify({ study_id: 'rawonly', password: 'secret', name: 'Raw Only' }),
+    { 'Content-Type': 'application/json', 'x-admin-token': 'test-admin-token' });
+  assert.strictEqual(fallbackStudy.status, 200, 'admin create raw-only study');
+  const rawOnlyPath = '/index.php/webservice/index/rawonly/secret';
+  const rawOnlyApiBase = '/api/v1/studies/rawonly';
+  await post(`${rawOnlyPath}/ios_aware_log/insert`, form({
+    device_id: 'dev-raw',
+    data: JSON.stringify([
+      {
+        timestamp: 1001,
+        device_id: 'dev-raw',
+        log_message: JSON.stringify({
+          class: 'SpecificAppUsageManager',
+          event: 'screen_time_selection_updated',
+          selected_app_count: '2',
+        }),
+      },
+      {
+        timestamp: 1002,
+        device_id: 'dev-raw',
+        log_message: JSON.stringify({
+          class: 'SpecificAppUsageManager',
+          event: 'screen_time_monitoring_started',
+          threshold_count: '18',
+        }),
+      },
+    ]),
+  }), formHeaders);
+  const rawOnlyDiagnostics = await request('GET', `${rawOnlyApiBase}/dashboard/screentime-diagnostics`, { headers: jsonAuth });
+  assert.strictEqual(rawOnlyDiagnostics.status, 200, 'raw-only diagnostics ok');
+  assert.ok(rawOnlyDiagnostics.json.rawRows.length >= 2, 'raw-only diagnostics has raw rows');
+  assert.ok(rawOnlyDiagnostics.json.appRows.length >= 2, 'raw-only diagnostics creates app rows from selection/fallback evidence');
+  const rawOnlyCsv = await request('GET', `${rawOnlyApiBase}/export/screentime_app_usage?format=csv`, { headers: jsonAuth });
+  assert.strictEqual(rawOnlyCsv.status, 200, 'raw-only app usage CSV ok');
+  assert.ok(/Selected app 1|raw_screen_time_log/.test(rawOnlyCsv.json), 'raw-only app usage CSV includes fallback evidence rows');
+  console.log('✓ raw Screen Time logs no longer leave screentime_app_usage empty');
+
   // ---- Admin data export ----------------------------------------------------
   const adminHdr = { 'x-admin-token': 'test-admin-token' };
 
@@ -499,7 +537,7 @@ try {
   // 20.5. studies list shows the provisioned study and device counts.
   const studiesList = await request('GET', `/admin/studies`, { headers: adminHdr });
   assert.strictEqual(studiesList.status, 200, 'list studies ok');
-  assert.strictEqual(studiesList.json.studies[0].study_id, 'demo', 'study appears in admin list');
+  assert.ok(studiesList.json.studies.some((study) => study.study_id === 'demo'), 'study appears in admin list');
   console.log('✓ admin lists studies');
 
   // 20.6. researcher dashboard summary is study-scoped and authenticated.
