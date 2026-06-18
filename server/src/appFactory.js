@@ -34,7 +34,18 @@ import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 
 const SCREEN_TIME_EXPORT_SENSOR = 'screentime_apps';
-const SCREEN_TIME_EXPORT_COLUMNS = ['app_name'];
+const SCREEN_TIME_EXPORT_COLUMNS = [
+  'app_name',
+  'app_label_source',
+  'event_type',
+  'threshold_minutes',
+  'duration_seconds',
+  'pickups',
+  'notifications',
+  'interval_start',
+  'interval_end',
+];
+const SCREEN_TIME_EXPORT_LIMIT = 10000;
 
 export function createApp() {
   const app = express();
@@ -327,13 +338,13 @@ export function createApp() {
 
 async function listAdminSensorsForDashboard() {
   const sensors = await listSensorTables();
-  const diagnostics = await findScreenTimeDiagnostics({ limit: 10000 });
+  const diagnostics = await findScreenTimeDiagnostics({ limit: SCREEN_TIME_EXPORT_LIMIT });
   upsertVirtualSensor(sensors, SCREEN_TIME_EXPORT_SENSOR, diagnostics.appRows.length);
   return sensors.sort((a, b) => String(a.sensor).localeCompare(String(b.sensor)));
 }
 
 async function attachStudyScreenTimeSensor(overview, studyId) {
-  const diagnostics = await findScreenTimeDiagnostics({ studyId, limit: 10000 });
+  const diagnostics = await findScreenTimeDiagnostics({ studyId, limit: SCREEN_TIME_EXPORT_LIMIT });
 
   const previousTotal = Number(overview.summary?.total_rows || 0);
   overview.sensors = [...(overview.sensors || [])];
@@ -368,13 +379,12 @@ function exportColumnsForSensor(sensor) {
 
 async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, offset } = {}) {
   if (sensor === SCREEN_TIME_EXPORT_SENSOR) {
-    const diagnostics = await findScreenTimeDiagnostics({ studyId, limit: 10000 });
+    const diagnostics = await findScreenTimeDiagnostics({ studyId, limit: SCREEN_TIME_EXPORT_LIMIT });
     const filtered = diagnostics.appRows
       .filter((row) => !deviceId || row.device_id === deviceId)
-      .filter((row) => row.app_name && String(row.app_name).trim() !== '')
       .sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
     const start = Math.max(Number(offset) || 0, 0);
-    const pageSize = Math.min(Math.max(Number(limit) || 1000, 1), 10000);
+    const pageSize = Math.min(Math.max(Number(limit) || 1000, 1), SCREEN_TIME_EXPORT_LIMIT);
     return filtered.slice(start, start + pageSize).map(screenTimeRowToExportRow);
   }
 
@@ -384,6 +394,7 @@ async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, off
 }
 
 function screenTimeRowToExportRow(row) {
+  const appName = screenTimeExportAppName(row);
   return {
     id: row.id,
     study_id: row.study_id,
@@ -391,9 +402,27 @@ function screenTimeRowToExportRow(row) {
     timestamp: row.timestamp,
     created_at: row.created_at,
     data: {
-      app_name: row.app_name || row.target_label || '',
+      app_name: appName,
+      app_label_source: screenTimeAppLabelSource(row),
+      event_type: row.type || '',
+      threshold_minutes: row.threshold_minutes ?? '',
+      duration_seconds: row.duration_seconds ?? '',
+      pickups: row.pickups ?? '',
+      notifications: row.notifications ?? '',
+      interval_start: row.interval_start ?? '',
+      interval_end: row.interval_end ?? '',
     },
   };
+}
+
+function screenTimeExportAppName(row) {
+  const appName = String(row?.app_name || '').trim();
+  if (appName) return appName;
+  const targetLabel = String(row?.target_label || '').trim();
+  if (targetLabel) return targetLabel;
+  const rawEvent = String(row?.raw_event || '').trim();
+  if (rawEvent) return rawEvent;
+  return 'Screen Time log';
 }
 
 // Flatten exported rows into CSV. Columns are id, study_id, device_id,
@@ -612,9 +641,9 @@ async function findScreenTimeDiagnostics({ studyId, limit: rawLimit } = {}) {
     .filter(Boolean)
     .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0))
     .slice(0, limit);
-  const parsedRows = rawRows
+  const parsedRows = enrichScreenTimeRowsWithLabels(rawRows
     .flatMap((row) => row.parsed_rows || [])
-    .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0));
+    .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0)));
   let appRows = parsedRows
     .filter(isAppSpecificScreenTimeRow)
     .sort(sortAppUsageRows);
@@ -623,6 +652,56 @@ async function findScreenTimeDiagnostics({ studyId, limit: rawLimit } = {}) {
   }
 
   return { rawRows, parsedRows, appRows };
+}
+
+function enrichScreenTimeRowsWithLabels(rows) {
+  const labelsByTarget = new Map();
+  for (const row of rows) {
+    if (row?.target_kind !== 'app') continue;
+    if (!['app_selection_label', 'app_usage_summary'].includes(row.type)) continue;
+    const appName = String(row.app_name || '').trim();
+    const targetIndex = parseOptionalInteger(row.target_index);
+    if (appName && targetIndex !== null) {
+      labelsByTarget.set(`app:${targetIndex}`, {
+        appName,
+        source: row.type === 'app_usage_summary' ? 'device_activity_report' : 'participant_label',
+      });
+    }
+  }
+
+  if (!labelsByTarget.size) return rows;
+
+  return rows.map((row) => {
+    if (row?.target_kind !== 'app') return row;
+    if (String(row.app_name || '').trim()) return row;
+    const targetIndex = parseOptionalInteger(row.target_index);
+    if (targetIndex === null) return row;
+    const label = labelsByTarget.get(`app:${targetIndex}`);
+    if (!label) return row;
+    return {
+      ...row,
+      app_name: label.appName,
+      target_label: label.appName,
+      app_label_source: label.source,
+    };
+  });
+}
+
+function screenTimeAppLabelSource(row) {
+  if (row?.app_label_source) return row.app_label_source;
+  if (row?.type === 'app_usage_summary' && String(row.app_name || '').trim()) {
+    return 'device_activity_report';
+  }
+  if (row?.type === 'app_selection_label' && String(row.app_name || '').trim()) {
+    return 'participant_label';
+  }
+  if (String(row?.app_name || '').trim()) {
+    return 'legacy_payload';
+  }
+  if (String(row?.target_label || '').trim()) {
+    return 'fallback_index';
+  }
+  return '';
 }
 
 function isAppSpecificScreenTimeRow(row) {
@@ -714,6 +793,7 @@ function screenTimeRowsFromLabels(row, parsed) {
         target_index: targetIndex,
         target_label: appLabel,
         app_name: appLabel,
+        app_label_source: 'participant_label',
         bundle_identifier: screenTimeValue(label, ['bundleIdentifier', 'bundle_identifier', 'bundleId']) || '',
         duration_seconds: null,
         pickups: null,
@@ -739,6 +819,7 @@ function screenTimeRowsFromSelection(row, parsed) {
     target_index: index,
     target_label: `Selected app ${index + 1}`,
     app_name: `Selected app ${index + 1}`,
+    app_label_source: 'fallback_index',
     bundle_identifier: '',
     duration_seconds: null,
     pickups: null,
@@ -760,8 +841,9 @@ function screenTimeFallbackAppRowFromRaw(row) {
     type: 'raw_screen_time_log',
     target_kind: 'app',
     target_index: null,
-    target_label: '',
-    app_name: '',
+    target_label: event,
+    app_name: event,
+    app_label_source: 'raw_event',
     bundle_identifier: '',
     duration_seconds: null,
     pickups: null,
@@ -884,6 +966,7 @@ function screenTimeRowFromLogObject(row, message) {
       target_index: targetIndex,
       target_label: screenTimeValue(message, ['target_label', 'targetLabel', 'label']) || appName || bundleIdentifier || screenTimeTargetLabel(targetKind, targetIndex),
       app_name: appName || '',
+      app_label_source: appName ? 'device_activity_report' : '',
       bundle_identifier: bundleIdentifier || '',
       duration_seconds: durationSeconds || 0,
       pickups: parseOptionalNumber(screenTimeValue(message, ['pickups', 'numberOfPickups', 'pickup_count', 'pickupCount'])) || 0,
