@@ -515,6 +515,14 @@ final class SpecificAppUsageManager: NSObject {
         guard !pending.isEmpty || !summaries.isEmpty else { return 0 }
         let logger = AWAREEventLogger.shared()
         for record in pending {
+            let participantLabel: String = {
+                guard let index = record.targetIndex else { return record.targetLabel }
+                return ScreenTimeUsageStore.shared.label(
+                    for: record.targetKind,
+                    index: index,
+                    fallback: record.targetLabel
+                )
+            }()
             logger.logEvent([
                 "class": "SpecificAppUsageManager",
                 "event": "screen_time_threshold_reached",
@@ -522,19 +530,31 @@ final class SpecificAppUsageManager: NSObject {
                 "threshold_minutes": "\(record.thresholdMinutes)",
                 "target_kind": record.targetKind,
                 "target_index": record.targetIndex.map(String.init) ?? "",
-                "target_label": record.targetLabel,
+                "target_label": participantLabel,
+                "app_name": record.targetKind == ScreenTimeShared.targetApplication ? participantLabel : "",
                 "activity": record.activity,
                 "event_timestamp": "\(record.timestamp)"
             ])
         }
         for summary in summaries {
+            let resolvedAppName: String = {
+                if let name = summary.appName, !name.isEmpty { return name }
+                if summary.targetKind == ScreenTimeShared.targetApplication {
+                    return ScreenTimeUsageStore.shared.label(
+                        for: summary.targetKind,
+                        index: summary.targetIndex,
+                        fallback: summary.targetLabel
+                    )
+                }
+                return summary.targetLabel
+            }()
             logger.logEvent([
                 "class": "SpecificAppUsageManager",
                 "event": "screen_time_report_app_usage",
                 "target_kind": summary.targetKind,
                 "target_index": "\(summary.targetIndex)",
-                "target_label": summary.targetLabel,
-                "app_name": summary.appName ?? "",
+                "target_label": resolvedAppName,
+                "app_name": resolvedAppName,
                 "bundle_identifier": summary.bundleIdentifier ?? "",
                 "duration_seconds": "\(summary.durationSeconds)",
                 "pickups": "\(summary.pickups)",
