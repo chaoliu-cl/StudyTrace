@@ -272,9 +272,6 @@ enum StudyParticipationController {
         manager.stopAndRemoveAllSensors()
         AWARECore.shared().deactivate()
 
-        SpecificAppUsageManager.shared.resetMonitoringAndSelection()
-        ScreenTimeUsageStore.shared.clear()
-
         manager.removeAllFilesFromDocumentRoot()
         if clearStudySettings {
             AWAREStudy.shared().clearSettings()

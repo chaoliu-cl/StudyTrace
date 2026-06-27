@@ -419,7 +419,7 @@ function exportColumnsForSensor(sensor) {
 
 async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, offset } = {}) {
   if (isLegacyScreenTimeSensor(sensor)) {
-    throw httpError(404, 'legacy Screen Time export has been removed; use battery_usage_apps');
+    throw httpError(404, 'retired app-usage export has been removed; use battery_usage_apps');
   }
 
   if (sensor === BATTERY_USAGE_EXPORT_SENSOR) {

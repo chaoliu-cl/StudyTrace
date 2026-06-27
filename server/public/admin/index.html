@@ -63,10 +63,10 @@
             <span>Delivery mode</span>
             <select name="mode">
               <option value="fixed">Fixed schedule</option>
-              <option value="random">Randomized around listed hours</option>
+              <option value="random">Randomized around listed times</option>
             </select>
           </label>
-          <label><span>Hours, 0-23</span><input name="hours" placeholder="9, 17" required></label>
+          <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="09:30, 17:15" required></label>
           <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
           <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="120"></label>
           <label><span>Notification title</span><input name="notification_title" value="StudyTrace survey available"></label>
@@ -97,7 +97,7 @@
         <div class="section-head">
           <div>
             <h2>Sensor inventory</h2>
-            <p class="section-note"><code>battery_usage_apps</code> is the current app-usage export, derived from participant-uploaded iOS Battery screenshots. <code>screentime_apps</code> is retained for legacy diagnostics.</p>
+            <p class="section-note"><code>battery_usage_apps</code> is the current app-usage export, derived from participant-uploaded iOS Battery screenshots.</p>
           </div>
         </div>
         <div class="table-wrap">

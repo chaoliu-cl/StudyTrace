@@ -387,11 +387,11 @@ try {
   );
   assert.ok(
     !dashboardBeforeLegacyRows.json.sensors.some((row) => row.sensor === 'screentime_apps'),
-    'researcher dashboard does not list legacy Screen Time export'
+    'researcher dashboard does not list retired app-usage export'
   );
   const removedScreenTimeCsv = await request('GET', `${apiBase}/export/screentime_apps?format=csv`, { headers: jsonAuth });
-  assert.strictEqual(removedScreenTimeCsv.status, 404, 'legacy Screen Time CSV export removed');
-  assert.match(removedScreenTimeCsv.json.error, /battery_usage_apps/, 'removed Screen Time export points to Battery workflow');
+  assert.strictEqual(removedScreenTimeCsv.status, 404, 'retired app-usage CSV export removed');
+  assert.match(removedScreenTimeCsv.json.error, /battery_usage_apps/, 'removed app-usage export points to Battery workflow');
   const legacyScreenTimeTable = db.safeTableName('screentime_apps');
   await db.createSensorTable(legacyScreenTimeTable);
   await db.insertRows(legacyScreenTimeTable, 'demo', 'dev-1', [
@@ -405,7 +405,7 @@ try {
   assert.strictEqual(dashboardWithLegacyRows.status, 200, 'dashboard summary with legacy rows ok');
   assert.ok(
     !dashboardWithLegacyRows.json.sensors.some((row) => row.sensor === 'screentime_apps'),
-    'researcher dashboard hides existing legacy Screen Time tables'
+    'researcher dashboard hides existing retired app-usage tables'
   );
   console.log('✓ researcher Sensor coverage keeps Battery screenshot export only');
 
@@ -423,9 +423,9 @@ try {
   const names = sensorsList.json.sensors.map((s) => s.sensor);
   assert.ok(names.includes('steps'), 'steps listed');
   assert.ok(names.includes('battery_usage_apps'), 'Battery screenshot app usage export listed');
-  assert.ok(!names.includes('screentime_apps'), 'legacy consolidated Screen Time export removed');
-  assert.ok(!names.includes('screentime_raw_log'), 'legacy raw Screen Time export removed');
-  assert.ok(!names.includes('screentime_app_usage'), 'legacy app-usage Screen Time export removed');
+  assert.ok(!names.includes('screentime_apps'), 'retired consolidated app-usage export removed');
+  assert.ok(!names.includes('screentime_raw_log'), 'retired raw app-usage export removed');
+  assert.ok(!names.includes('screentime_app_usage'), 'retired app-usage export removed');
   console.log('✓ admin lists sensors:', names.join(', '));
 
   // 20.5. studies list shows the provisioned study and device counts.
@@ -445,7 +445,7 @@ try {
   );
   assert.ok(
     !dashboard.json.sensors.some((row) => row.sensor === 'screentime_apps'),
-    'researcher dashboard omits legacy Screen Time export'
+    'researcher dashboard omits retired app-usage export'
   );
   console.log('✓ researcher dashboard summary');
 

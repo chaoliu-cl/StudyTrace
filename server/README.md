@@ -52,9 +52,10 @@ points the iPhone app to the study's hosted ESM schedule:
 
 Use `/admin/` to create or update the study's **Survey delivery schedule**:
 
-- `Fixed schedule` sends notifications at the listed hours, e.g. `9, 17`.
-- `Randomized around listed hours` sends each notification at a random offset
-  within the configured randomization window around each listed hour.
+- `Fixed schedule` sends notifications at the listed 24-hour times, e.g.
+  `09:30, 17:15`.
+- `Randomized around listed times` sends each notification at a random offset
+  within the configured randomization window around each listed time.
 - `Expiration window` controls how long a survey remains valid after the
   scheduled time.
 - `Survey questions JSON` is an array of ESM question objects. Use
@@ -96,8 +97,8 @@ The derived `battery_usage_apps` export includes: `id`, `study_id`,
 `ocr_text`, `source_sensor`, `source_row_id`, `source_image_url`, and
 `created_at`.
 
-The legacy `screentime_apps` virtual export is retained only for older builds
-and diagnostics. Current studies should use `battery_usage_apps`.
+Retired app-usage exports are hidden from the dashboards. Current studies
+should use `battery_usage_apps`.
 
 ## AWARE protocol front-end
 
