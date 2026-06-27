@@ -447,7 +447,7 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
                           message: """
                           StudyTrace is a research data collection app for surveys, location, and optional device-use data.
 
-                          Screen Time summaries are collected only when a study requests them, you approve Apple's Screen Time permission, and you select the specific apps, websites, or categories to include.
+                          If a study requests app-usage context, StudyTrace asks you to upload an iOS Battery usage screenshot as a survey photo response. StudyTrace does not silently export Apple's Screen Time data.
 
                           It stores data on-device and uploads only to the study server you configure in the app. StudyTrace does not use study data for advertising or cross-app tracking.
                           """)
@@ -459,7 +459,7 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
 
                           Data is stored locally on your device first and may then be uploaded to your configured study server.
 
-                          Optional Screen Time summaries require separate iOS permission and participant selection of specific apps, websites, or categories.
+                          Optional app-usage context is collected through participant-submitted Battery screenshots when requested by a study survey. You can skip or decline this upload when the study protocol allows it.
 
                           You can review permissions in iOS Settings, quit a study, and export your local database from this screen at any time.
                           """)

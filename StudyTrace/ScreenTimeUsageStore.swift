@@ -28,12 +28,13 @@ public enum ScreenTimeShared {
     public static let targetWebDomain = "web"
     public static let selectionDataKey = "studytrace.selected-app-usage.selection"
     public static let applicationTokenOrderDataKey = "studytrace.selected-app-usage.application-token-order"
+    public static let categoryTokenOrderDataKey = "studytrace.selected-app-usage.category-token-order"
     public static let resolvedLabelsDataKey = "studytrace.selected-app-usage.resolved-labels"
 
     /// Escalating cumulative-usage thresholds (in minutes). Each DeviceActivity
     /// event fires once when cumulative usage of the selected apps crosses the
     /// threshold within the monitoring interval, giving coarse usage buckets.
-    public static let thresholdsMinutes: [Int] = [5, 15, 30, 60, 120, 240]
+    public static let thresholdsMinutes: [Int] = [1, 5, 15, 30, 60, 120, 240]
 }
 
 /// A single Screen Time usage record captured by the monitor extension.
@@ -74,6 +75,14 @@ public struct ScreenTimeUsageEvent: Codable {
         default:
             return "Selection \(number)"
         }
+    }
+
+    public var cacheKey: String {
+        "\(targetKind):\(targetIndex.map(String.init) ?? "aggregate")"
+    }
+
+    public var durationLowerBoundSeconds: Double {
+        Double(thresholdMinutes * 60)
     }
 }
 
@@ -148,7 +157,10 @@ public final class ScreenTimeUsageStore {
     public static let shared = ScreenTimeUsageStore()
 
     private let pendingKey = "studytrace.screentime.pending-events"
+    private let latestThresholdEventsKey = "studytrace.screentime.latest-threshold-events"
     private let reportSummariesKey = "studytrace.screentime.report-summaries"
+    private let latestReportSummariesKey = "studytrace.screentime.latest-report-summaries"
+    private let latestReportRefreshAtKey = "studytrace.screentime.latest-report-refresh-at"
     private let resolvedLabelsKey = ScreenTimeShared.resolvedLabelsDataKey
     private let defaults: UserDefaults?
 
@@ -163,7 +175,9 @@ public final class ScreenTimeUsageStore {
         events.append(event)
         if let data = try? JSONEncoder().encode(events) {
             defaults.set(data, forKey: pendingKey)
+            defaults.synchronize()
         }
+        saveLatestThresholdEvent(event)
     }
 
     /// Returns all pending events without removing them.
@@ -181,12 +195,59 @@ public final class ScreenTimeUsageStore {
     public func drain() -> [ScreenTimeUsageEvent] {
         let events = loadRaw()
         defaults?.removeObject(forKey: pendingKey)
+        defaults?.synchronize()
         return events
     }
 
     /// Clears any queued events without draining them into app storage.
     public func clear() {
         defaults?.removeObject(forKey: pendingKey)
+        defaults?.synchronize()
+    }
+
+    public func loadLatestThresholdEvents() -> [ScreenTimeUsageEvent] {
+        guard let defaults = defaults,
+              let data = defaults.data(forKey: latestThresholdEventsKey),
+              let events = try? JSONDecoder().decode([ScreenTimeUsageEvent].self, from: data) else {
+            return []
+        }
+        return events.sorted { lhs, rhs in
+            if lhs.targetKind == rhs.targetKind {
+                if lhs.targetIndex == rhs.targetIndex {
+                    return lhs.thresholdMinutes > rhs.thresholdMinutes
+                }
+                return (lhs.targetIndex ?? -1) < (rhs.targetIndex ?? -1)
+            }
+            return lhs.targetKind < rhs.targetKind
+        }
+    }
+
+    public func clearLatestThresholdEvents() {
+        defaults?.removeObject(forKey: latestThresholdEventsKey)
+        defaults?.synchronize()
+    }
+
+    private func saveLatestThresholdEvent(_ event: ScreenTimeUsageEvent) {
+        guard let defaults = defaults else { return }
+        var latest = loadLatestThresholdEvents()
+        if let index = latest.firstIndex(where: { $0.cacheKey == event.cacheKey }) {
+            let existing = latest[index]
+            if event.thresholdMinutes >= existing.thresholdMinutes || event.timestamp >= existing.timestamp {
+                latest[index] = event
+            }
+        } else {
+            latest.append(event)
+        }
+        latest = Array(latest.sorted { lhs, rhs in
+            if lhs.timestamp == rhs.timestamp {
+                return lhs.thresholdMinutes > rhs.thresholdMinutes
+            }
+            return lhs.timestamp > rhs.timestamp
+        }.prefix(100))
+        if let data = try? JSONEncoder().encode(latest) {
+            defaults.set(data, forKey: latestThresholdEventsKey)
+            defaults.synchronize()
+        }
     }
 
     public func appendReportSummaries(_ summaries: [ScreenTimeAppUsageSummary]) {
@@ -195,7 +256,44 @@ public final class ScreenTimeUsageStore {
         let trimmed = Array((existing + summaries).suffix(500))
         if let data = try? JSONEncoder().encode(trimmed) {
             defaults.set(data, forKey: reportSummariesKey)
+            defaults.synchronize()
         }
+    }
+
+    public func saveLatestReportSummaries(_ summaries: [ScreenTimeAppUsageSummary]) {
+        guard let defaults = defaults else { return }
+        let trimmed = Array(summaries.sorted {
+            if $0.durationSeconds == $1.durationSeconds {
+                return $0.targetLabel < $1.targetLabel
+            }
+            return $0.durationSeconds > $1.durationSeconds
+        }.prefix(20))
+        if let data = try? JSONEncoder().encode(trimmed) {
+            defaults.set(data, forKey: latestReportSummariesKey)
+        }
+        defaults.set(Date().timeIntervalSince1970 * 1000.0, forKey: latestReportRefreshAtKey)
+        defaults.synchronize()
+    }
+
+    public func clearLatestReportSummaries() {
+        defaults?.removeObject(forKey: latestReportSummariesKey)
+        defaults?.removeObject(forKey: latestReportRefreshAtKey)
+        defaults?.synchronize()
+    }
+
+    public func loadLatestReportSummaries() -> [ScreenTimeAppUsageSummary] {
+        guard let defaults = defaults,
+              let data = defaults.data(forKey: latestReportSummariesKey),
+              let summaries = try? JSONDecoder().decode([ScreenTimeAppUsageSummary].self, from: data) else {
+            return []
+        }
+        return summaries
+    }
+
+    public func loadLatestReportRefreshAt() -> Double? {
+        guard let defaults = defaults else { return nil }
+        guard defaults.object(forKey: latestReportRefreshAtKey) != nil else { return nil }
+        return defaults.double(forKey: latestReportRefreshAtKey)
     }
 
     public func loadRawReportSummaries() -> [ScreenTimeAppUsageSummary] {
@@ -210,6 +308,7 @@ public final class ScreenTimeUsageStore {
     public func drainReportSummaries() -> [ScreenTimeAppUsageSummary] {
         let summaries = loadRawReportSummaries()
         defaults?.removeObject(forKey: reportSummariesKey)
+        defaults?.synchronize()
         return summaries
     }
 
@@ -229,6 +328,7 @@ public final class ScreenTimeUsageStore {
         }
         if let data = try? JSONEncoder().encode(sanitized) {
             defaults.set(data, forKey: resolvedLabelsKey)
+            defaults.synchronize()
         }
     }
 
@@ -248,5 +348,8 @@ public final class ScreenTimeUsageStore {
 
     public func clearResolvedLabels() {
         defaults?.removeObject(forKey: resolvedLabelsKey)
+        defaults?.removeObject(forKey: latestReportSummariesKey)
+        defaults?.removeObject(forKey: latestReportRefreshAtKey)
+        defaults?.synchronize()
     }
 }

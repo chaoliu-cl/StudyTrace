@@ -326,10 +326,10 @@ class ViewController: UIViewController {
                             identifier: SENSOR_PLUGIN_IOS_ESM,
                             icon: UIImage(systemName: "list.clipboard.fill")),
             TableRowContent(type: .sensor,
-                            title: "Specific App Usage",
-                            details: SpecificAppUsageManager.shared.statusText,
+                            title: "Battery Usage Screenshot",
+                            details: "Upload iOS Battery app-usage screenshots through study survey prompts.",
                             identifier: AWARESlimConfiguration.specificAppUsageIdentifier,
-                            icon: UIImage(systemName: "apps.iphone"))
+                            icon: UIImage(systemName: "camera.viewfinder"))
         ]
         return contents
     }()
@@ -440,7 +440,7 @@ extension ViewController: UITableViewDataSource {
 
             if sensor.identifier == AWARESlimConfiguration.specificAppUsageIdentifier {
                 cell.icon.tintColor = AWARETheme.ink
-                cell.detail.text = SpecificAppUsageManager.shared.statusText
+                cell.detail.text = "Open Settings > Battery > View All Battery Usage, then upload a screenshot when prompted by a survey."
                 cell.hideSyncProgress()
             } else if (sensorManager.isExist(sensor.identifier)){
                 cell.icon.tintColor = .systemBlue
@@ -514,13 +514,21 @@ extension ViewController: UITableViewDelegate {
         } else if indexPath.section == 1 {
             self.selectedRowContent = sensors[indexPath.row]
             if selectedRowContent?.identifier == AWARESlimConfiguration.specificAppUsageIdentifier {
-                SpecificAppUsageManager.shared.presentConfiguration(from: self) {
-                    self.tableView.reloadData()
-                }
+                showBatteryScreenshotInstructions()
             } else {
                 self.performSegue(withIdentifier: "toSensorSetting", sender: self)
             }
         }
+    }
+
+    private func showBatteryScreenshotInstructions() {
+        let alert = UIAlertController(
+            title: "Battery usage screenshot",
+            message: "When your study sends a Battery usage screenshot survey, open iPhone Settings > Battery > View All Battery Usage, take a screenshot, return to StudyTrace, and upload it as the photo answer.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {

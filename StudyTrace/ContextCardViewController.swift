@@ -73,6 +73,8 @@ class ContextCardViewController: UIViewController {
                                                object: nil)
         if contextCards.count == 0 {
             setupContextCards()
+        } else {
+            refreshVisibleContextCards()
         }
         if StudyParticipationController.hasConsent() {
             _ = LocationPermissionManager().isAuthorizedAlways(with: self)
@@ -93,6 +95,7 @@ class ContextCardViewController: UIViewController {
     
     
     @objc func willEnterForegroundNotification(notification: NSNotification) {
+        refreshVisibleContextCards()
         let esmManager = ESMScheduleManager.shared()
         let schedules = esmManager.getValidSchedules()
         if(schedules.count > 0){
@@ -102,6 +105,14 @@ class ContextCardViewController: UIViewController {
         }
         if StudyParticipationController.hasConsent() {
             _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+        }
+    }
+
+    private func refreshVisibleContextCards() {
+        for card in contextCards {
+            if let deviceUsageCard = card as? DeviceUsageCard {
+                deviceUsageCard.refresh()
+            }
         }
     }
     
@@ -190,9 +201,17 @@ class ContextCardViewController: UIViewController {
     }
     
     @IBAction func didPushAddButton(_ sender: UIBarButtonItem) {
-        SpecificAppUsageManager.shared.presentConfiguration(from: self) {
-            self.setupContextCards()
-        }
+        showBatteryScreenshotInstructions()
+    }
+
+    private func showBatteryScreenshotInstructions() {
+        let alert = UIAlertController(
+            title: "Battery usage screenshot",
+            message: "When your study sends a Battery usage screenshot survey, open iPhone Settings > Battery > View All Battery Usage, take a screenshot, return to StudyTrace, and upload it as the photo answer.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
     
     @IBAction func didPushRemoveButton(_ sender: UIBarButtonItem) {
@@ -367,12 +386,7 @@ class ContextCardViewController: UIViewController {
 
     func addDeviceUsageCard(){
         let contextCard = DeviceUsageCard(frame: CGRect(x:0,y:0, width: self.view.frame.width, height:280))
-        contextCard.configure(sensor: AWARESensorManager.shared().getSensor(SENSOR_PLUGIN_DEVICE_USAGE)) {
-            SpecificAppUsageManager.shared.presentConfiguration(from: self) {
-                SpecificAppUsageManager.shared.presentUsageReport(from: self)
-                contextCard.refresh()
-            }
-        }
+        contextCard.configure(sensor: AWARESensorManager.shared().getSensor(SENSOR_PLUGIN_DEVICE_USAGE), configureHandler: {})
         self.contextCards.append(contextCard)
         self.mainStackView.addArrangedSubview(contextCard)
     }

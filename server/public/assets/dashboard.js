@@ -127,9 +127,12 @@ async function loadScreenTimeDiagnostics({ studyId, password, cleanedTable, rawT
 
   renderTable(cleanedTable, [
     { label: 'Type', render: (row) => escapeHtml(row.type || '—') },
-    { label: 'App', render: (row) => escapeHtml(row.app_name || row.target_label || '—') },
+    { label: 'Target', render: (row) => escapeHtml(row.target_label || row.app_name || '—') },
+    { label: 'Kind', render: (row) => escapeHtml(row.target_kind || '—') },
+    { label: 'Label Source', render: (row) => escapeHtml(row.app_label_source || '—') },
     { label: 'Bundle', render: (row) => escapeHtml(row.bundle_identifier || '—') },
-    { label: 'Duration', render: (row) => formatDuration(row.duration_seconds) },
+    { label: 'Threshold', render: (row) => row.threshold_minutes ? `${escapeHtml(row.threshold_minutes)} min` : '—' },
+    { label: 'Duration', render: (row) => formatScreenTimeDuration(row) },
     { label: 'Pickups', render: (row) => String(row.pickups ?? '—') },
     { label: 'Notifications', render: (row) => String(row.notifications ?? '—') },
     { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
@@ -146,12 +149,53 @@ async function loadScreenTimeDiagnostics({ studyId, password, cleanedTable, rawT
   ], payload.rawRows || []);
 }
 
+async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screenshotTable, message }) {
+  const headers = { 'x-study-password': password };
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/battery-usage?limit=100`, { headers });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load Battery screenshot extraction.', true);
+  }
+
+  renderTable(appTable, [
+    { label: 'App', render: (row) => escapeHtml(row.app_name || '—') },
+    { label: 'Screen time', render: (row) => row.screen_time_seconds ? formatDuration(row.screen_time_seconds) : escapeHtml(row.screen_time_text || '—') },
+    { label: 'Battery', render: (row) => row.battery_percent !== null && row.battery_percent !== undefined && row.battery_percent !== '' ? `${escapeHtml(row.battery_percent)}%` : '—' },
+    { label: 'Status', render: (row) => escapeHtml(row.extraction_status || '—') },
+    { label: 'Method', render: (row) => escapeHtml(row.extraction_method || '—') },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
+  ], payload.appRows || []);
+
+  renderTable(screenshotTable, [
+    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Sensor', render: (row) => escapeHtml(row.sensor || '—') },
+    { label: 'Question', render: (row) => escapeHtml(parseEsmJson(row).esm_title || row.data?.esm_trigger || 'Battery screenshot') },
+    { label: 'Screenshot', render: (row) => renderEsmAnswer(row, studyId, password) },
+  ], payload.screenshotRows || []);
+
+  await hydrateAuthenticatedImages(screenshotTable);
+}
+
 function formatDuration(seconds) {
   if (seconds === null || seconds === undefined || seconds === '') return '—';
   const minutes = Math.round(Number(seconds || 0) / 60);
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   return hours > 0 ? `${hours}h ${remainder}m` : `${minutes}m`;
+}
+
+function formatScreenTimeDuration(row) {
+  if (row.duration_seconds !== null && row.duration_seconds !== undefined && row.duration_seconds !== '') {
+    return formatDuration(row.duration_seconds);
+  }
+  if (row.duration_lower_bound_seconds !== null &&
+      row.duration_lower_bound_seconds !== undefined &&
+      row.duration_lower_bound_seconds !== '') {
+    return `>= ${formatDuration(row.duration_lower_bound_seconds)}`;
+  }
+  return '—';
 }
 
 function truncate(value, maxLength) {
@@ -181,6 +225,8 @@ function initResearcher() {
   const esmResponses = document.querySelector('#researcher-esm-responses');
   const screenTimeCleaned = document.querySelector('#researcher-screentime-cleaned');
   const screenTimeRaw = document.querySelector('#researcher-screentime-raw');
+  const batteryUsageCleaned = document.querySelector('#researcher-battery-usage-cleaned');
+  const batteryUsageScreenshots = document.querySelector('#researcher-battery-usage-screenshots');
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -221,6 +267,13 @@ function initResearcher() {
     ], payload.sensors);
 
     dashboard.classList.remove('hidden');
+    await loadBatteryUsageDiagnostics({
+      studyId,
+      password,
+      appTable: batteryUsageCleaned,
+      screenshotTable: batteryUsageScreenshots,
+      message,
+    });
     await loadScreenTimeDiagnostics({
       studyId,
       password,
@@ -290,9 +343,9 @@ function initAdmin() {
     },
     {
       esm_type: 14,
-      esm_title: 'Context photo',
-      esm_instructions: 'Please take a photo of your current context.',
-      esm_trigger: 'context_photo',
+      esm_title: 'Battery usage screenshot',
+      esm_instructions: 'Open iPhone Settings → Battery → View All Battery Usage. Take a screenshot showing app battery usage and screen time, then upload that screenshot here.',
+      esm_trigger: 'battery_usage_screenshot',
       esm_submit: 'Submit',
       esm_na: true,
     },

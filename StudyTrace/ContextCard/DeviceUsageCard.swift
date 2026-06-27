@@ -28,6 +28,7 @@ class DeviceUsageCard: ContextCard {
     private let totalUsageLabel = UILabel()
     private let pickedAppsLabel = UILabel()
     private let detailLabel = UILabel()
+    private let summaryStack = UIStackView()
     private let configureButton = UIButton(type: .system)
     private let usageBar = UIView()
     private let usageBarFill = UIView()
@@ -35,10 +36,11 @@ class DeviceUsageCard: ContextCard {
     private var usageWidthConstraint: NSLayoutConstraint?
     private weak var sensor: AWARESensor?
     private var configureHandler: (() -> Void)?
+    private var reportHandler: (() -> Void)?
     
     override func setup() {
         super.setup()
-        titleLabel.text = "Screen Time"
+        titleLabel.text = "Battery Usage Screenshot"
         indicatorView.isHidden = true
         activityIndicatorView.isHidden = true
         navigatorView.isHidden = true
@@ -62,6 +64,9 @@ class DeviceUsageCard: ContextCard {
         detailLabel.numberOfLines = 0
         detailLabel.adjustsFontForContentSizeCategory = true
 
+        summaryStack.axis = .vertical
+        summaryStack.spacing = 8
+
         usageBar.backgroundColor = AWARETheme.accent.withAlphaComponent(0.12)
         usageBar.layer.cornerRadius = 8
         usageBar.clipsToBounds = true
@@ -80,8 +85,8 @@ class DeviceUsageCard: ContextCard {
             usageWidthConstraint!
         ])
 
-        configureButton.setTitle(" Choose tracked apps", for: .normal)
-        configureButton.setImage(UIImage(systemName: "checklist"), for: .normal)
+        configureButton.setTitle(" How to upload Battery screenshot", for: .normal)
+        configureButton.setImage(UIImage(systemName: "camera.viewfinder"), for: .normal)
         configureButton.tintColor = AWARETheme.accent
         configureButton.backgroundColor = AWARETheme.accent.withAlphaComponent(0.12)
         configureButton.layer.cornerRadius = 14
@@ -93,14 +98,17 @@ class DeviceUsageCard: ContextCard {
         weeklyTrendStack.alignment = .bottom
         weeklyTrendStack.spacing = 6
         weeklyTrendStack.translatesAutoresizingMaskIntoConstraints = false
+        weeklyTrendStack.isHidden = true
         weeklyTrendStack.heightAnchor.constraint(equalToConstant: 60).isActive = true
         setupWeeklyBars()
+        usageBar.isHidden = true
 
         stack.addArrangedSubview(totalUsageLabel)
         stack.addArrangedSubview(usageBar)
         stack.addArrangedSubview(weeklyTrendStack)
         stack.addArrangedSubview(pickedAppsLabel)
         stack.addArrangedSubview(detailLabel)
+        stack.addArrangedSubview(summaryStack)
         stack.addArrangedSubview(configureButton)
 
         baseStackView.insertArrangedSubview(stack, at: 2)
@@ -112,28 +120,127 @@ class DeviceUsageCard: ContextCard {
         refresh()
     }
 
-    func configure(sensor: AWARESensor?, configureHandler: @escaping () -> Void) {
+    func configure(sensor: AWARESensor?,
+                   configureHandler: @escaping () -> Void,
+                   reportHandler: (() -> Void)? = nil) {
         self.sensor = sensor
         self.configureHandler = configureHandler
+        self.reportHandler = reportHandler
         refresh()
     }
 
     func refresh() {
-        let activeMilliseconds = todaysActiveMilliseconds()
-        let activeMinutes = Int(activeMilliseconds / 1000 / 60)
-        totalUsageLabel.text = format(minutes: activeMinutes)
-        pickedAppsLabel.text = SpecificAppUsageManager.shared.statusText
-        detailLabel.text = SpecificAppUsageManager.shared.explanationText
-
-        let dayMinutes = max(Calendar.current.component(.hour, from: Date()) * 60 + Calendar.current.component(.minute, from: Date()), 1)
-        let fraction = max(0.04, min(CGFloat(activeMinutes) / CGFloat(dayMinutes), 1.0))
-        usageWidthConstraint?.isActive = false
-        usageWidthConstraint = usageBarFill.widthAnchor.constraint(equalTo: usageBar.widthAnchor, multiplier: fraction)
-        usageWidthConstraint?.isActive = true
+        totalUsageLabel.text = "Upload when prompted"
+        pickedAppsLabel.text = "Participant-submitted Battery screenshot"
+        detailLabel.text = "If your study asks for app-usage context, complete the Battery usage screenshot survey. Open iPhone Settings > Battery > View All Battery Usage, take a screenshot, and upload it as the survey photo response."
+        refreshSummaryRows()
+        refreshButtonState()
     }
 
     @objc private func didTapConfigure() {
-        configureHandler?()
+        presentBatteryScreenshotInstructions()
+    }
+
+    private func refreshButtonState() {
+        configureButton.setTitle(" How to upload Battery screenshot", for: .normal)
+        configureButton.setImage(UIImage(systemName: "camera.viewfinder"), for: .normal)
+    }
+
+    private func refreshSummaryRows() {
+        summaryStack.arrangedSubviews.forEach { view in
+            summaryStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+
+        summaryStack.addArrangedSubview(summaryPlaceholder(text: "1. Open iPhone Settings > Battery."))
+        summaryStack.addArrangedSubview(summaryPlaceholder(text: "2. Tap View All Battery Usage so app rows and screen-time values are visible."))
+        summaryStack.addArrangedSubview(summaryPlaceholder(text: "3. Take a screenshot and upload it in the Battery usage screenshot survey."))
+    }
+
+    private func presentBatteryScreenshotInstructions() {
+        let alert = UIAlertController(
+            title: "Battery usage screenshot",
+            message: "When the study sends a Battery usage screenshot survey, open iPhone Settings > Battery > View All Battery Usage, take a screenshot, return to StudyTrace, and upload it as the photo answer.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        nearestViewController()?.present(alert, animated: true)
+    }
+
+    private func nearestViewController() -> UIViewController? {
+        var responder: UIResponder? = self
+        while let next = responder?.next {
+            if let viewController = next as? UIViewController {
+                return viewController
+            }
+            responder = next
+        }
+        return nil
+    }
+
+    private func summaryRow(title: String, detail: String) -> UIView {
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.alignment = .firstBaseline
+        row.spacing = 8
+
+        let titleLabel = UILabel()
+        titleLabel.font = UIFont.preferredFont(forTextStyle: .subheadline)
+        titleLabel.textColor = AWARETheme.ink
+        titleLabel.text = title
+
+        let spacer = UIView()
+
+        let detailLabel = UILabel()
+        detailLabel.font = UIFont.preferredFont(forTextStyle: .caption1)
+        detailLabel.textColor = AWARETheme.secondaryInk
+        detailLabel.textAlignment = .right
+        detailLabel.text = detail
+
+        row.addArrangedSubview(titleLabel)
+        row.addArrangedSubview(spacer)
+        row.addArrangedSubview(detailLabel)
+        return row
+    }
+
+    private func summaryPlaceholder(text: String) -> UIView {
+        let label = UILabel()
+        label.font = UIFont.preferredFont(forTextStyle: .caption1)
+        label.textColor = AWARETheme.secondaryInk
+        label.numberOfLines = 0
+        label.text = text
+        return label
+    }
+
+    private func displayName(for summary: ScreenTimeAppUsageSummary) -> String {
+        if let name = summary.appName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        return summary.targetLabel
+    }
+
+    private func displayName(for milestone: ScreenTimeUsageEvent) -> String {
+        if let resolved = ScreenTimeUsageStore.shared.resolvedLabel(targetKind: milestone.targetKind, targetIndex: milestone.targetIndex) {
+            return resolved.appName
+        }
+        return milestone.targetLabel
+    }
+
+    private func formatMilestoneDetail(for milestone: ScreenTimeUsageEvent) -> String {
+        ">= \(milestone.thresholdMinutes)m today"
+    }
+
+    private func formatExactDuration(seconds: Double) -> String {
+        let totalMinutes = Int(seconds / 60)
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        if totalMinutes > 0 {
+            return "\(totalMinutes)m"
+        }
+        return "<1m"
     }
 
     private func todaysActiveMilliseconds() -> Double {
@@ -204,8 +311,6 @@ final class SpecificAppUsageManager: NSObject {
     private let selectionDataKey = ScreenTimeShared.selectionDataKey
     private var completion: (() -> Void)?
     private var reportCompletion: (() -> Void)?
-    private var lastHeadlessRenderAt: Date?
-    private var headlessReportWindow: UIWindow?
 
     var selectedAppCount: Int {
         return UserDefaults.standard.integer(forKey: selectionCountKey)
@@ -246,10 +351,10 @@ final class SpecificAppUsageManager: NSObject {
     var explanationText: String {
         #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
         if #available(iOS 16.0, *) {
-            return "StudyTrace logs overall phone active time locally. Selected-app tracking uses Apple's Screen Time controls; usage milestones for the apps you choose are recorded on device and uploaded to the research server."
+            return "StudyTrace logs overall phone active time locally. Precise Screen Time rows are generated when you open Apple's visible DeviceActivity report for the approved targets; milestone rows remain as fallback diagnostics."
         }
         #endif
-        return "This device or SDK does not expose Apple's Screen Time app-selection APIs. Overall phone usage is still logged from lock and unlock events."
+        return "This device or SDK does not expose Apple's Screen Time category APIs. Overall phone usage is still logged from lock and unlock events."
     }
 
     func presentConfiguration(from viewController: UIViewController, completion: (() -> Void)? = nil) {
@@ -278,7 +383,7 @@ final class SpecificAppUsageManager: NSObject {
             let host = UIHostingController(rootView: SpecificAppUsageReportHost(selection: selection) {
                 self.scheduleScreenTimeDrainAndSync()
             })
-            host.title = "Preparing Screen Time Summary"
+            host.title = "Precise Screen Time Export"
             let nav = UINavigationController(rootViewController: host)
             host.navigationItem.rightBarButtonItem = UIBarButtonItem(
                 barButtonSystemItem: .done,
@@ -321,7 +426,7 @@ final class SpecificAppUsageManager: NSObject {
 
     private func showUnsupportedAlert(from viewController: UIViewController) {
         let alert = UIAlertController(title: "App usage tracking unavailable",
-                                      message: "iOS only allows selected-app usage through Screen Time APIs on supported systems with Apple's Family Controls entitlement.",
+                                      message: "iOS only allows selected Screen Time target summaries on supported systems with Apple's Family Controls entitlement.",
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { _ in
             self.completion?()
@@ -373,7 +478,7 @@ final class SpecificAppUsageManager: NSObject {
             viewController.dismiss(animated: true) {
                 self.presentUsageReport(from: viewController, completion: {
                     self.completion?()
-                }, autoDismissAfter: 8.0)
+                }, autoDismissAfter: 20.0)
             }
         }
         let host = UIHostingController(rootView: view)
@@ -392,6 +497,7 @@ final class SpecificAppUsageManager: NSObject {
     @available(iOS 16.0, *)
     private func persist(selection: FamilyActivitySelection) {
         let orderedApplicationTokens = Array(selection.applicationTokens)
+        let orderedCategoryTokens = Array(selection.categoryTokens)
         if let data = try? PropertyListEncoder().encode(selection) {
             UserDefaults.standard.set(data, forKey: selectionDataKey)
             UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.set(data, forKey: selectionDataKey)
@@ -400,6 +506,14 @@ final class SpecificAppUsageManager: NSObject {
             UserDefaults.standard.set(data, forKey: ScreenTimeShared.applicationTokenOrderDataKey)
             UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.set(data, forKey: ScreenTimeShared.applicationTokenOrderDataKey)
         }
+        if let data = try? PropertyListEncoder().encode(orderedCategoryTokens) {
+            UserDefaults.standard.set(data, forKey: ScreenTimeShared.categoryTokenOrderDataKey)
+            UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.set(data, forKey: ScreenTimeShared.categoryTokenOrderDataKey)
+        }
+        ScreenTimeUsageStore.shared.clear()
+        ScreenTimeUsageStore.shared.clearLatestThresholdEvents()
+        ScreenTimeUsageStore.shared.clearLatestReportSummaries()
+        ScreenTimeUsageStore.shared.clearResolvedLabels()
         saveSelectionCounts(apps: selection.applicationTokens.count,
                             categories: selection.categoryTokens.count,
                             webDomains: selection.webDomainTokens.count)
@@ -415,7 +529,7 @@ final class SpecificAppUsageManager: NSObject {
                                               intervalEnd: DateComponents(hour: 23, minute: 59),
                                               repeats: true)
 
-        // Register coarse usage milestones. Apple does not expose raw per-app
+        // Register coarse usage milestones. Apple does not expose unrestricted
         // durations or app names to the app, so each selected token is tracked
         // as an indexed app/category/site milestone stream.
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
@@ -468,7 +582,11 @@ final class SpecificAppUsageManager: NSObject {
             AWAREEventLogger.shared().logEvent([
                 "class": "SpecificAppUsageManager",
                 "event": "screen_time_monitoring_started",
-                "threshold_count": "\(events.count)"
+                "threshold_count": "\(events.count)",
+                "threshold_minutes": ScreenTimeShared.thresholdsMinutes.map(String.init).joined(separator: ","),
+                "selected_app_count": "\(selection.applicationTokens.count)",
+                "selected_category_count": "\(selection.categoryTokens.count)",
+                "selected_web_count": "\(selection.webDomainTokens.count)"
             ])
         } catch {
             AWAREEventLogger.shared().logEvent([
@@ -502,6 +620,7 @@ final class SpecificAppUsageManager: NSObject {
                 "target_label": resolvedLabel?.appName ?? record.targetLabel,
                 "app_name": resolvedLabel?.appName ?? "",
                 "bundle_identifier": resolvedLabel?.bundleIdentifier ?? "",
+                "duration_lower_bound_seconds": "\(record.durationLowerBoundSeconds)",
                 "activity": record.activity,
                 "event_timestamp": "\(record.timestamp)"
             ])
@@ -537,9 +656,12 @@ final class SpecificAppUsageManager: NSObject {
             ])
         }
         for summary in summaries {
+            let eventName = summary.targetKind == ScreenTimeShared.targetCategory
+                ? "screen_time_report_category_usage"
+                : "screen_time_report_app_usage"
             logger.logEvent([
                 "class": "SpecificAppUsageManager",
-                "event": "screen_time_report_app_usage",
+                "event": eventName,
                 "target_kind": summary.targetKind,
                 "target_index": "\(summary.targetIndex)",
                 "target_label": summary.targetLabel,
@@ -579,11 +701,6 @@ final class SpecificAppUsageManager: NSObject {
     }
 
     func scheduleScreenTimeDrainAndSync() {
-        #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
-        if #available(iOS 16.0, *) {
-            renderUsageReportHeadlessly()
-        }
-        #endif
         let delays: [TimeInterval] = [0.25, 1.5, 4.0]
         for delay in delays {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -597,64 +714,20 @@ final class SpecificAppUsageManager: NSObject {
         AWARESensorManager.shared().syncAllSensorsForcefully()
     }
 
-    #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
-    /// Mounts a `DeviceActivityReport` on an off-screen `UIWindow` so the
-    /// report extension's `makeConfiguration` runs without participant
-    /// involvement. The extension calls `ScreenTimeUsageStore.appendReportSummaries`
-    /// while resolving each app's `localizedDisplayName`, which is the only
-    /// channel Apple gives the host process for real app names. The drain pass
-    /// in `scheduleScreenTimeDrainAndSync` then forwards those summaries to
-    /// AWARE on the next tick.
-    @available(iOS 16.0, *)
-    private func renderUsageReportHeadlessly() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            // Debounce: no more than once every 30 seconds to avoid churn when
-            // the app is rapidly foregrounded/backgrounded.
-            let now = Date()
-            if let last = self.lastHeadlessRenderAt, now.timeIntervalSince(last) < 30 { return }
-            self.lastHeadlessRenderAt = now
-
-            let selection = self.loadSelection()
-            guard !selection.applicationTokens.isEmpty ||
-                  !selection.categoryTokens.isEmpty ||
-                  !selection.webDomainTokens.isEmpty else { return }
-            guard let scene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first else { return }
-
-            let window = UIWindow(windowScene: scene)
-            window.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
-            window.windowLevel = .normal - 1
-            window.isHidden = false
-            window.alpha = 0.0
-            window.isUserInteractionEnabled = false
-
-            let host = UIHostingController(rootView: SpecificAppUsageReportHost(selection: selection) { })
-            host.view.backgroundColor = .clear
-            window.rootViewController = host
-
-            self.headlessReportWindow = window
-
-            // Give the DeviceActivityReport extension time to resolve names and
-            // call appendReportSummaries before tearing the window down.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { [weak self] in
-                guard let self = self else { return }
-                self.headlessReportWindow?.isHidden = true
-                self.headlessReportWindow?.rootViewController = nil
-                self.headlessReportWindow = nil
-            }
-        }
-    }
-    #endif
-
     func resetMonitoringAndSelection() {
         UserDefaults.standard.removeObject(forKey: selectionCountKey)
+        UserDefaults.standard.removeObject(forKey: selectionCategoryCountKey)
+        UserDefaults.standard.removeObject(forKey: selectionWebCountKey)
         UserDefaults.standard.removeObject(forKey: authorizationKey)
         UserDefaults.standard.removeObject(forKey: selectionDataKey)
         UserDefaults.standard.removeObject(forKey: ScreenTimeShared.applicationTokenOrderDataKey)
+        UserDefaults.standard.removeObject(forKey: ScreenTimeShared.categoryTokenOrderDataKey)
         UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.removeObject(forKey: selectionDataKey)
         UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.removeObject(forKey: ScreenTimeShared.applicationTokenOrderDataKey)
+        UserDefaults(suiteName: ScreenTimeShared.appGroupID)?.removeObject(forKey: ScreenTimeShared.categoryTokenOrderDataKey)
+        ScreenTimeUsageStore.shared.clear()
+        ScreenTimeUsageStore.shared.clearLatestThresholdEvents()
+        ScreenTimeUsageStore.shared.clearLatestReportSummaries()
         ScreenTimeUsageStore.shared.clearResolvedLabels()
 
         #if canImport(SwiftUI) && canImport(FamilyControls) && canImport(DeviceActivity) && canImport(ManagedSettings)
@@ -692,14 +765,91 @@ private struct SpecificAppPickerView: View {
 @available(iOS 16.0, *)
 private struct SpecificAppUsageReportHost: View {
     let selection: FamilyActivitySelection
-    let onReportLifecycle: () -> Void
+    let onRefresh: () -> Void
+    @State private var summaries = ScreenTimeUsageStore.shared.loadLatestReportSummaries()
+    @State private var milestones = ScreenTimeUsageStore.shared.loadLatestThresholdEvents()
+    @State private var reportRefreshID = UUID()
+    @State private var refreshTask: Task<Void, Never>?
 
     var body: some View {
-        DeviceActivityReport(.studyTraceAppUsage, filter: filter)
-            .navigationTitle("App Screen Time")
-            .navigationBarTitleDisplayMode(.inline)
-            .onAppear(perform: onReportLifecycle)
-            .onDisappear(perform: onReportLifecycle)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Precise Screen Time Export")
+                    .font(.headline)
+
+                Text("This screen renders Apple's DeviceActivity report for the approved targets. When iOS returns the report, StudyTrace stores and uploads exact duration rows as duration_seconds.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                if !summaries.isEmpty {
+                    ForEach(Array(summaries.prefix(20).enumerated()), id: \.offset) { _, summary in
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(displayName(for: summary))
+                                    .font(.body.weight(.medium))
+                                Text(targetDescription(for: summary))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(format(seconds: summary.durationSeconds))
+                                .font(.body.monospacedDigit())
+                        }
+                        Divider()
+                    }
+                } else if !milestones.isEmpty {
+                    Text("Exact report rows have not arrived yet. Fallback milestone rows are available below.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    ForEach(Array(milestones.prefix(10).enumerated()), id: \.offset) { _, milestone in
+                        HStack {
+                            Text(displayName(for: milestone))
+                            Spacer()
+                            Text(">= \(milestone.thresholdMinutes)m")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Divider()
+                    }
+                } else {
+                    Text("No precise Screen Time rows are available yet.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Text("Keep this screen open briefly so iOS can run the report extension. If the report is still blank, use an approved target and try again.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button("Refresh precise report") {
+                    requestRefresh()
+                }
+                .buttonStyle(.borderedProminent)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Apple report renderer")
+                        .font(.subheadline.weight(.semibold))
+                    Text("This visible renderer is required for exact Screen Time durations; iOS does not provide these exact rows to the app in the background.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    DeviceActivityReport(.studyTraceAppUsage, filter: filter)
+                        .id(reportRefreshID)
+                        .frame(minHeight: 260)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+        }
+        .navigationTitle("Screen Time")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            refreshFromStore()
+            onRefresh()
+            startRefreshing()
+        }
+        .onDisappear {
+            refreshTask?.cancel()
+            refreshTask = nil
+        }
     }
 
     private var filter: DeviceActivityFilter {
@@ -708,11 +858,90 @@ private struct SpecificAppUsageReportHost: View {
         let interval = DateInterval(start: start, end: Date())
         return DeviceActivityFilter(
             segment: .daily(during: interval),
+            users: .all,
             devices: .all,
             applications: selection.applicationTokens,
             categories: selection.categoryTokens,
             webDomains: selection.webDomainTokens
         )
+    }
+
+    private func startRefreshing() {
+        refreshTask?.cancel()
+        refreshTask = Task {
+            for _ in 0..<15 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    refreshFromStore()
+                }
+            }
+        }
+    }
+
+    private func refreshFromStore() {
+        summaries = ScreenTimeUsageStore.shared.loadLatestReportSummaries()
+        milestones = ScreenTimeUsageStore.shared.loadLatestThresholdEvents()
+    }
+
+    private func requestRefresh() {
+        reportRefreshID = UUID()
+        refreshFromStore()
+        onRefresh()
+        startRefreshing()
+    }
+
+    private func displayName(for summary: ScreenTimeAppUsageSummary) -> String {
+        if let appName = summary.appName?.trimmingCharacters(in: .whitespacesAndNewlines), !appName.isEmpty {
+            return appName
+        }
+        return summary.targetLabel
+    }
+
+    private func displayName(for milestone: ScreenTimeUsageEvent) -> String {
+        if let resolved = ScreenTimeUsageStore.shared.resolvedLabel(targetKind: milestone.targetKind, targetIndex: milestone.targetIndex) {
+            return resolved.appName
+        }
+        return milestone.targetLabel
+    }
+
+    private func targetDescription(for summary: ScreenTimeAppUsageSummary) -> String {
+        switch summary.targetKind {
+        case ScreenTimeShared.targetApplication:
+            return "Exact approved app duration"
+        case ScreenTimeShared.targetCategory:
+            return "Exact approved iOS category duration"
+        case ScreenTimeShared.targetWebDomain:
+            return "Exact approved website duration"
+        default:
+            return "Exact approved selection duration"
+        }
+    }
+
+    private func targetDescription(for milestone: ScreenTimeUsageEvent) -> String {
+        switch milestone.targetKind {
+        case ScreenTimeShared.targetApplication:
+            return "Approved app target"
+        case ScreenTimeShared.targetCategory:
+            return "Approved iOS category target"
+        case ScreenTimeShared.targetWebDomain:
+            return "Approved website target"
+        default:
+            return "Approved selection total"
+        }
+    }
+
+    private func format(seconds: Double) -> String {
+        let totalMinutes = Int(seconds / 60)
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        if totalMinutes > 0 {
+            return "\(totalMinutes)m"
+        }
+        return "<1m"
     }
 }
 #endif

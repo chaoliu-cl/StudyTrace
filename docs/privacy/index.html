@@ -82,7 +82,7 @@
                 <li>Study enrollment information such as the secure study URL or study configuration needed to join a study.</li>
                 <li>Location data, including background location, when a study enables mobility or context sensing.</li>
                 <li>Survey and experience sampling responses, including optional photo attachments that you choose to submit.</li>
-                <li>Device-usage data, including Screen Time summaries for participant-selected specific apps, websites, or app categories when you explicitly authorize that feature.</li>
+                <li>Device-usage context from Battery usage screenshots that you choose to upload as survey photo responses.</li>
                 <li>Technical and device identifiers needed for app operation, syncing, notifications, logging, and study delivery.</li>
                 <li>Push notification token information so the app can receive survey reminders or study updates.</li>
                 <li>Optional motion, health, calendar, contacts, or Bluetooth-related data if a study enables those features and you grant permission.</li>
@@ -91,13 +91,13 @@
                 The exact set of collected data depends on the study you join. Not every study uses every available sensor or permission.
               </p>
               <p>
-                Screen Time data is optional and study-specific. When enabled, StudyTrace first asks you to grant Apple Screen Time / Family Controls permission,
-                then asks you to select the specific apps, websites, or categories that may be included. Many studies request selected-app summaries because broad
-                app categories may be too coarse to answer app-specific research questions. StudyTrace does not collect Screen Time for apps you do not select.
+                Battery usage screenshot collection is optional and study-specific. When enabled, StudyTrace asks you to open
+                iPhone Settings → Battery → View All Battery Usage, take a screenshot, and upload that screenshot through a survey photo question.
+                StudyTrace does not silently export Apple's Screen Time database.
               </p>
               <p>
-                If selected-app summaries are enabled, StudyTrace may record app display names or bundle identifiers when Apple provides them through Screen Time reports,
-                participant-provided app labels, usage duration, pickups, notifications, and the reporting interval. These records are collected for research analysis only.
+                If Battery screenshots are enabled, the secure server may use OCR to extract app names, screen-time text, and battery percentages
+                from screenshots you submit. These records are collected for research analysis only.
               </p>
             </article>
 
@@ -107,8 +107,7 @@
               <ul>
                 <li>Location services</li>
                 <li>Notifications</li>
-                <li>Photos or camera for survey attachments</li>
-                <li>Screen Time / Family Controls for participant-selected app, website, or category usage summaries</li>
+                <li>Photos or camera access for optional survey attachments, including Battery usage screenshots when requested by a study</li>
                 <li>Motion and fitness data</li>
                 <li>Health data</li>
                 <li>Calendar, contacts, or Bluetooth</li>
@@ -118,7 +117,7 @@
                 and permission prompts are tied to the features your study needs.
               </p>
               <p>
-                You can decline Screen Time permission or choose not to select certain apps, websites, or categories. You can also change Screen Time access later in iOS Settings.
+                You can decline to upload a Battery screenshot or skip the survey question when the study protocol allows it.
               </p>
             </article>
 
@@ -133,7 +132,7 @@
               </ul>
               <p>
                 StudyTrace is not intended to use participant data for third-party advertising, profiling, sale of data, or cross-app tracking.
-                Screen Time data is used only for the study purpose described by the research team.
+                Battery screenshot-derived app-usage data is used only for the study purpose described by the research team.
               </p>
             </article>
 

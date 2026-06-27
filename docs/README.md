@@ -5,7 +5,7 @@ This `docs/` folder contains the three public pages typically needed for TestFli
 - `marketing/`
 - `privacy/`
 - `support/`
-- `app-review-screentime.md` for App Review / entitlement support language related to Screen Time collection
+- `app-review-screentime.md` for App Review/support language related to participant-submitted Battery usage screenshots
 
 ## Published URLs
 
@@ -65,7 +65,7 @@ Recommended values:
 - Privacy Policy URL: the `privacy/` page
 - Support URL: the `support/` page
 
-For the App Review notes field and Family Controls entitlement explanations, use:
+For the App Review notes field and app-usage screenshot workflow explanations, use:
 
 - `docs/app-review-screentime.md`
 

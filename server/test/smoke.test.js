@@ -323,6 +323,41 @@ try {
   assert.strictEqual(pluginImageRes.headers.get('content-type'), 'image/png', 'plugin_ios_esm served as PNG');
   console.log('✓ dashboard discovers plugin_ios_esm photo responses');
 
+  const batteryScreenshotRows = [{
+    timestamp: 890,
+    device_id: 'dev-1',
+    esm_trigger: 'battery_usage_screenshot',
+    esm_json: JSON.stringify({
+      esm_type: 14,
+      esm_title: 'Battery usage screenshot',
+      esm_instructions: 'Open Settings → Battery → View All Battery Usage, then upload the screenshot.',
+    }),
+    esm_user_answer: tinyPngBase64,
+    battery_usage_ocr_text: [
+      'Battery Usage by App',
+      'Instagram',
+      '1h 12m On Screen',
+      '21%',
+      'YouTube',
+      '45m On Screen',
+      '10%',
+    ].join('\n'),
+  }];
+  const batteryScreenshotIns = await post(`${studyPath}/plugin_ios_esm/insert`,
+    form({ device_id: 'dev-1', data: JSON.stringify(batteryScreenshotRows) }), formHeaders);
+  assert.strictEqual(batteryScreenshotIns.status, 200, 'battery screenshot ESM insert ok');
+
+  const batteryDiagnostics = await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: jsonAuth });
+  assert.strictEqual(batteryDiagnostics.status, 200, 'battery screenshot diagnostics ok');
+  assert.ok(batteryDiagnostics.json.screenshotRows.length >= 1, 'battery diagnostics lists source screenshots');
+  assert.ok(batteryDiagnostics.json.appRows.some((row) => row.app_name === 'Instagram' && row.screen_time_seconds === 4320 && row.battery_percent === 21), 'battery OCR parser extracts Instagram row');
+  assert.ok(batteryDiagnostics.json.appRows.some((row) => row.app_name === 'YouTube' && row.screen_time_seconds === 2700 && row.battery_percent === 10), 'battery OCR parser extracts YouTube row');
+  const batteryCsv = await request('GET', `${apiBase}/export/battery_usage_apps?format=csv`, { headers: jsonAuth });
+  assert.strictEqual(batteryCsv.status, 200, 'battery usage CSV export ok');
+  assert.ok(/^id,study_id,device_id,timestamp,app_name,battery_percent,battery_percent_text,extraction_method,extraction_status,ocr_confidence,ocr_text,parse_notes,screen_time_seconds,screen_time_text,source_image_url,source_row_id,source_sensor,timestamp,created_at/m.test(batteryCsv.json), 'battery usage CSV header includes OCR fields');
+  assert.ok(/Instagram/.test(batteryCsv.json), 'battery usage CSV includes parsed app');
+  console.log('✓ battery screenshot OCR pipeline exports app usage rows');
+
   const emptyScreenTimeDashboard = await request('GET', `${apiBase}/dashboard/summary`, { headers: jsonAuth });
   assert.strictEqual(emptyScreenTimeDashboard.status, 200, 'dashboard summary before Screen Time rows ok');
   assert.ok(
@@ -331,7 +366,7 @@ try {
   );
   const emptyScreenTimeCsv = await request('GET', `${apiBase}/export/screentime_apps?format=csv`, { headers: jsonAuth });
   assert.strictEqual(emptyScreenTimeCsv.status, 200, 'empty Screen Time CSV export ok');
-  assert.ok(/^id,study_id,device_id,timestamp,app_label_source,app_name,duration_seconds,event_type,interval_end,interval_start,notifications,pickups,threshold_minutes,created_at/m.test(emptyScreenTimeCsv.json), 'empty Screen Time CSV header lists app usage columns');
+  assert.ok(/^id,study_id,device_id,timestamp,app_label_source,app_name,duration_lower_bound_seconds,duration_seconds,event_type,interval_end,interval_start,notifications,pickups,target_index,target_kind,target_label,threshold_minutes,created_at/m.test(emptyScreenTimeCsv.json), 'empty Screen Time CSV header lists Screen Time usage columns');
   console.log('✓ researcher Sensor coverage shows Screen Time export before rows arrive');
 
   // 17.6. Screen Time events are uploaded through ios_aware_log and exposed as
@@ -404,6 +439,22 @@ try {
     {
       timestamp: 904,
       device_id: 'dev-1',
+      log_message: JSON.stringify({
+        class: 'SpecificAppUsageManager',
+        event: 'screen_time_report_category_usage',
+        target_kind: 'category',
+        target_index: '0',
+        target_label: 'Social',
+        app_name: 'Social',
+        duration_seconds: '1800',
+        interval_start: '100',
+        interval_end: '904',
+        event_timestamp: '904',
+      }),
+    },
+    {
+      timestamp: 905,
+      device_id: 'dev-1',
       log_message: JSON.stringify(JSON.stringify({
         event: 'app_usage_summary',
         appName: 'TikTok',
@@ -411,11 +462,11 @@ try {
         durationSeconds: '7200',
         numberOfPickups: '6',
         numberOfNotifications: '3',
-        eventTimestamp: '904',
+        eventTimestamp: '905',
       })),
     },
     {
-      timestamp: 905,
+      timestamp: 906,
       device_id: 'dev-1',
       log_message: JSON.stringify({
         source: 'DeviceActivityReport',
@@ -424,22 +475,22 @@ try {
         bundleId: 'com.apple.MobileSMS',
         totalActivityDuration: 600,
         intervalStart: 100,
-        intervalEnd: 905,
+        intervalEnd: 906,
       }),
     },
     {
-      timestamp: 906,
+      timestamp: 907,
       device_id: 'dev-1',
       log_message: JSON.stringify({
         class: 'SpecificAppUsageManager',
         event: 'screen_time_labels_updated',
         labels_json: JSON.stringify([
-          { targetKind: 'app', targetIndex: 2, label: 'Discord', timestamp: 906 },
+          { targetKind: 'app', targetIndex: 2, label: 'Discord', timestamp: 907 },
         ]),
       }),
     },
     {
-      timestamp: 907,
+      timestamp: 908,
       device_id: 'dev-1',
       log_message: JSON.stringify({
         class: 'SpecificAppUsageManager',
@@ -453,7 +504,7 @@ try {
             durationSeconds: 2400,
             numberOfPickups: 5,
             numberOfNotifications: 2,
-            eventTimestamp: 907,
+            eventTimestamp: 908,
           },
         ]),
       }),
@@ -469,6 +520,7 @@ try {
   assert.ok(screenTimeDiagnostics.json.rawRows.some((row) => row.raw_event === 'screen_time_report_app_usage'), 'diagnostics includes raw app usage event');
   assert.strictEqual(screenTimeDiagnostics.json.appRows[0].app_name, 'TikTok', 'diagnostics parses double-encoded app usage and sorts by duration');
   assert.strictEqual(screenTimeDiagnostics.json.appRows[1].app_name, 'YouTube', 'diagnostics keeps lower-duration app after higher-duration app');
+  assert.ok(screenTimeDiagnostics.json.appRows.some((row) => row.target_kind === 'category' && row.target_label === 'Social'), 'diagnostics keeps category Screen Time summaries');
   assert.ok(screenTimeDiagnostics.json.appRows.some((row) => row.app_name === 'Messages'), 'diagnostics parses camelCase DeviceActivity-style app usage');
   assert.ok(screenTimeDiagnostics.json.appRows.some((row) => row.app_name === 'Reddit'), 'diagnostics parses nested summaries_json arrays');
   console.log('✓ researcher Screen Time diagnostics show raw and cleaned app rows');
@@ -555,7 +607,8 @@ try {
   assert.strictEqual(rawOnlyCsv.status, 200, 'raw-only app usage CSV ok');
   const rawOnlyLines = rawOnlyCsv.json.split(/\r?\n/).filter(Boolean);
   assert.ok(rawOnlyLines.length >= 2, 'report-labeled threshold row appears in Screen Time CSV');
-  assert.ok(/^id,study_id,device_id,timestamp,app_label_source,app_name,duration_seconds,event_type,interval_end,interval_start,notifications,pickups,threshold_minutes,created_at/.test(rawOnlyLines[0]), 'raw-only CSV emits app usage columns');
+  assert.ok(/^id,study_id,device_id,timestamp,app_label_source,app_name,duration_lower_bound_seconds,duration_seconds,event_type,interval_end,interval_start,notifications,pickups,target_index,target_kind,target_label,threshold_minutes,created_at/.test(rawOnlyLines[0]), 'raw-only CSV emits Screen Time usage columns');
+  assert.ok(/,900,/.test(rawOnlyCsv.json), 'raw-only CSV includes threshold lower-bound seconds');
   assert.ok(/Instagram/.test(rawOnlyCsv.json), 'raw-only CSV resolves report app label');
   assert.ok(/device_activity_report/.test(rawOnlyCsv.json), 'raw-only CSV marks report-resolved label source');
   assert.ok(/fallback_index/.test(rawOnlyCsv.json), 'raw-only CSV marks fallback index label source');
@@ -607,6 +660,54 @@ try {
   assert.ok(/raw_event/.test(metadataOnlyCsv.json), 'metadata-only CSV marks fallback label source');
   console.log('✓ Screen Time CSV exports counted fallback rows');
 
+  const labelsOnlyStudy = await post('/admin/studies',
+    JSON.stringify({ study_id: 'labelsonly', password: 'secret', name: 'Screen Time Labels Only' }),
+    { 'Content-Type': 'application/json', 'x-admin-token': 'test-admin-token' });
+  assert.strictEqual(labelsOnlyStudy.status, 200, 'admin create labels-only Screen Time study');
+  const labelsOnlyPath = '/index.php/webservice/index/labelsonly/secret';
+  const labelsOnlyApiBase = '/api/v1/studies/labelsonly';
+  await post(`${labelsOnlyPath}/ios_aware_log/insert`, form({
+    device_id: 'dev-labels',
+    data: JSON.stringify([
+      {
+        timestamp: 1201,
+        device_id: 'dev-labels',
+        log_message: JSON.stringify({
+          class: 'SpecificAppUsageManager',
+          event: 'screen_time_selection_updated',
+          selected_app_count: '2',
+        }),
+      },
+      {
+        timestamp: 1202,
+        device_id: 'dev-labels',
+        log_message: JSON.stringify({
+          class: 'SpecificAppUsageManager',
+          event: 'screen_time_labels_updated',
+          labels_json: JSON.stringify([
+            { targetKind: 'app', targetIndex: 0, label: 'Instagram', timestamp: 1202 },
+            { targetKind: 'app', targetIndex: 1, label: 'YouTube', timestamp: 1202 },
+          ]),
+        }),
+      },
+      {
+        timestamp: 1203,
+        device_id: 'dev-labels',
+        log_message: JSON.stringify({
+          class: 'SpecificAppUsageManager',
+          event: 'screen_time_monitoring_started',
+          threshold_count: '18',
+        }),
+      },
+    ]),
+  }), formHeaders);
+  const labelsOnlyCsv = await request('GET', `${labelsOnlyApiBase}/export/screentime_apps?format=csv`, { headers: jsonAuth });
+  assert.strictEqual(labelsOnlyCsv.status, 200, 'labels-only Screen Time CSV ok');
+  assert.ok(/Instagram/.test(labelsOnlyCsv.json), 'labels-only CSV prefers participant/app labels over raw event names');
+  assert.ok(/YouTube/.test(labelsOnlyCsv.json), 'labels-only CSV includes all labeled apps');
+  assert.ok(!/screen_time_selection_updated/.test(labelsOnlyCsv.json), 'labels-only CSV no longer falls back to raw selection event names');
+  console.log('✓ Screen Time CSV prefers parsed app labels over raw log events');
+
   // ---- Admin data export ----------------------------------------------------
   const adminHdr = { 'x-admin-token': 'test-admin-token' };
 
@@ -620,6 +721,7 @@ try {
   assert.strictEqual(sensorsList.status, 200, 'list sensors ok');
   const names = sensorsList.json.sensors.map((s) => s.sensor);
   assert.ok(names.includes('steps'), 'steps listed');
+  assert.ok(names.includes('battery_usage_apps'), 'Battery screenshot app usage export listed');
   assert.ok(names.includes('screentime_apps'), 'consolidated Screen Time export listed');
   assert.ok(!names.includes('screentime_raw_log'), 'legacy raw Screen Time export removed');
   assert.ok(!names.includes('screentime_app_usage'), 'legacy app-usage Screen Time export removed');
@@ -637,6 +739,10 @@ try {
   assert.strictEqual(dashboard.json.study.study_id, 'demo', 'dashboard study id');
   assert.ok(Array.isArray(dashboard.json.devices), 'dashboard devices array');
   assert.ok(
+    dashboard.json.sensors.some((row) => row.sensor === 'battery_usage_apps'),
+    'researcher dashboard lists Battery screenshot app usage export'
+  );
+  assert.ok(
     dashboard.json.sensors.some((row) => row.sensor === 'screentime_apps'),
     'researcher dashboard lists consolidated Screen Time export'
   );
@@ -644,8 +750,10 @@ try {
 
   const researcherScreenTimeCsv = await request('GET', `${apiBase}/export/screentime_apps?format=csv`, { headers: jsonAuth });
   assert.strictEqual(researcherScreenTimeCsv.status, 200, 'researcher Screen Time CSV export ok');
-  assert.ok(/^id,study_id,device_id,timestamp,app_label_source,app_name,duration_seconds,event_type,interval_end,interval_start,notifications,pickups,threshold_minutes,created_at/m.test(researcherScreenTimeCsv.json), 'Screen Time CSV header includes usage fields');
+  assert.ok(/^id,study_id,device_id,timestamp,app_label_source,app_name,duration_lower_bound_seconds,duration_seconds,event_type,interval_end,interval_start,notifications,pickups,target_index,target_kind,target_label,threshold_minutes,created_at/m.test(researcherScreenTimeCsv.json), 'Screen Time CSV header includes usage fields');
   assert.ok(/Instagram/.test(researcherScreenTimeCsv.json), 'Screen Time CSV includes app display name');
+  assert.ok(/category/.test(researcherScreenTimeCsv.json), 'Screen Time CSV includes category target kind');
+  assert.ok(/Social/.test(researcherScreenTimeCsv.json), 'Screen Time CSV includes category label');
   assert.ok(!/com\.burbn\.instagram/.test(researcherScreenTimeCsv.json), 'Screen Time CSV no longer leaks bundle identifiers');
   console.log('✓ researcher Sensor coverage exports consolidated Screen Time CSV');
 

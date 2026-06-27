@@ -49,8 +49,6 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>StudyTrace needs camera access to capture photos for survey responses.</string>
-	<key>NSFamilyControlsUsageDescription</key>
-	<string>StudyTrace uses Screen Time permission only after study consent so you can choose the specific apps, websites, or categories whose usage summaries may be collected for research. Data is not used for advertising or tracking.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>For collecting your activity, this application needs to access your location data.</string>
 	<key>NSLocationAlwaysUsageDescription</key>

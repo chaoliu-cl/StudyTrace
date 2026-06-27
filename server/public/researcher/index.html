@@ -55,7 +55,7 @@
         <div class="section-head">
           <div>
             <h2>Sensor coverage</h2>
-            <p class="section-note"><code>screentime_apps</code> exports the per-app rows uploaded by participants with the columns researchers need: id, study_id, device_id, timestamp, and app_name.</p>
+            <p class="section-note"><code>battery_usage_apps</code> exports app usage extracted from participant-uploaded iOS Battery screenshots. <code>screentime_apps</code> remains only for legacy diagnostics.</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -66,8 +66,23 @@
       <section class="panel">
         <div class="section-head">
           <div>
-            <h2>Screen Time diagnostics</h2>
-            <p class="section-note">Use this section to confirm whether raw Screen Time logs reached the server and whether they can be cleaned into app-specific usage rows.</p>
+            <h2>Battery screenshot app usage</h2>
+            <p class="section-note">Participants upload screenshots from Settings → Battery → View All Battery Usage. The server OCR pipeline extracts app names, screen-time text, and battery percentages into structured rows.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-battery-usage-cleaned"></table>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-battery-usage-screenshots"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Legacy Screen Time diagnostics</h2>
+            <p class="section-note">Use this only for older builds or troubleshooting. Current studies should use the Battery screenshot workflow instead of Apple's Screen Time export APIs.</p>
           </div>
         </div>
         <div class="table-wrap">

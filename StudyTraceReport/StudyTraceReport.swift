@@ -28,14 +28,19 @@ struct StudyTraceAppUsageReportView: View {
             Text("StudyTrace Screen Time")
                 .font(.headline)
             if configuration.summaries.isEmpty {
-                Text("No app usage available for the selected interval yet.")
+                Text("No precise Screen Time usage available for the selected interval yet.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(configuration.summaries, id: \.targetIndex) { summary in
+                ForEach(Array(configuration.summaries.enumerated()), id: \.offset) { _, summary in
                     HStack {
-                        Text(displayName(for: summary))
-                        Spacer()
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(displayName(for: summary))
+                            Text(targetDescription(for: summary))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 12)
                         Text(format(seconds: summary.durationSeconds))
                             .monospacedDigit()
                     }
@@ -51,6 +56,19 @@ struct StudyTraceAppUsageReportView: View {
             return name
         }
         return summary.targetLabel
+    }
+
+    private func targetDescription(for summary: ScreenTimeAppUsageSummary) -> String {
+        switch summary.targetKind {
+        case ScreenTimeShared.targetApplication:
+            return "App"
+        case ScreenTimeShared.targetCategory:
+            return "Category"
+        case ScreenTimeShared.targetWebDomain:
+            return "Website"
+        default:
+            return "Selection total"
+        }
     }
 
     private func format(seconds: Double) -> String {
@@ -75,50 +93,126 @@ struct StudyTraceAppUsageReportScene: DeviceActivityReportScene {
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> StudyTraceAppUsageReportConfiguration {
         var summariesByKey: [String: ScreenTimeAppUsageSummary] = [:]
         let selectedApplicationTokens = loadSelectedApplicationTokenOrder()
+        let selectedCategoryTokens = loadSelectedCategoryTokenOrder()
         var intervalStart = Date().timeIntervalSince1970 * 1000.0
         var intervalEnd = intervalStart
+        var aggregateDuration: TimeInterval = 0
+        var nextApplicationIndex = 0
+        var nextCategoryIndex = 0
 
         for await deviceData in data {
             for await segment in deviceData.activitySegments {
                 intervalStart = min(intervalStart, segment.dateInterval.start.timeIntervalSince1970 * 1000.0)
                 intervalEnd = max(intervalEnd, segment.dateInterval.end.timeIntervalSince1970 * 1000.0)
+                aggregateDuration += segment.totalActivityDuration
 
-                for await category in segment.categories {
-                    for await application in category.applications {
-                        let app = application.application
-                        let name = app.localizedDisplayName
-                        let bundleIdentifier = app.bundleIdentifier
-                        let selectedIndex = app.token.flatMap { selectedApplicationTokens.firstIndex(of: $0) }
-                        let key = selectedIndex.map { "selected-app-\($0)" } ?? bundleIdentifier ?? name ?? String(application.hashValue)
-                        let previous = summariesByKey[key]
-                        let index = selectedIndex ?? previous?.targetIndex ?? summariesByKey.count
-                        let fallback = "App \(index + 1)"
-                        let label = (name?.isEmpty == false) ? name! : fallback
+                for await categoryActivity in segment.categories {
+                    let category = categoryActivity.category
+                    let name = category.localizedDisplayName
+                    var nestedApplicationDuration: TimeInterval = 0
+                    var nestedPickups = 0
+                    var nestedNotifications = 0
+                    for await applicationActivity in categoryActivity.applications {
+                        nestedApplicationDuration += applicationActivity.totalActivityDuration
+                        nestedPickups += applicationActivity.numberOfPickups
+                        nestedNotifications += applicationActivity.numberOfNotifications
+
+                        let application = applicationActivity.application
+                        let appName = application.localizedDisplayName
+                        let bundleIdentifier = application.bundleIdentifier
+                        let selectedApplicationIndex = application.token.flatMap { selectedApplicationTokens.firstIndex(of: $0) }
+                        let applicationKey = selectedApplicationIndex.map { "selected-app-\($0)" }
+                            ?? bundleIdentifier
+                            ?? appName
+                            ?? "app-\(nextApplicationIndex)"
+                        let previousApplication = summariesByKey[applicationKey]
+                        let applicationIndex: Int
+                        if let selectedApplicationIndex = selectedApplicationIndex {
+                            applicationIndex = selectedApplicationIndex
+                        } else if let previousIndex = previousApplication?.targetIndex {
+                            applicationIndex = previousIndex
+                        } else {
+                            applicationIndex = nextApplicationIndex
+                            nextApplicationIndex += 1
+                        }
+                        let applicationLabel = appName?.isEmpty == false
+                            ? appName!
+                            : "App \(applicationIndex + 1)"
                         let now = Date().timeIntervalSince1970 * 1000.0
 
-                        summariesByKey[key] = ScreenTimeAppUsageSummary(
+                        summariesByKey[applicationKey] = ScreenTimeAppUsageSummary(
                             targetKind: ScreenTimeShared.targetApplication,
-                            targetIndex: index,
-                            targetLabel: label,
-                            appName: name,
+                            targetIndex: applicationIndex,
+                            targetLabel: applicationLabel,
+                            appName: applicationLabel,
                             bundleIdentifier: bundleIdentifier,
-                            durationSeconds: (previous?.durationSeconds ?? 0) + application.totalActivityDuration,
-                            pickups: (previous?.pickups ?? 0) + application.numberOfPickups,
-                            notifications: (previous?.notifications ?? 0) + application.numberOfNotifications,
+                            durationSeconds: (previousApplication?.durationSeconds ?? 0) + applicationActivity.totalActivityDuration,
+                            pickups: (previousApplication?.pickups ?? 0) + applicationActivity.numberOfPickups,
+                            notifications: (previousApplication?.notifications ?? 0) + applicationActivity.numberOfNotifications,
                             intervalStart: intervalStart,
                             intervalEnd: intervalEnd,
                             timestamp: now
                         )
                     }
+                    let categoryDuration = categoryActivity.totalActivityDuration > 0
+                        ? categoryActivity.totalActivityDuration
+                        : nestedApplicationDuration
+                    let selectedIndex = category.token.flatMap { selectedCategoryTokens.firstIndex(of: $0) }
+                    let key = selectedIndex.map { "selected-category-\($0)" } ?? name ?? String(categoryActivity.hashValue)
+                    let previous = summariesByKey[key]
+                    let index: Int
+                    if let selectedIndex = selectedIndex {
+                        index = selectedIndex
+                    } else if let previousIndex = previous?.targetIndex {
+                        index = previousIndex
+                    } else {
+                        index = nextCategoryIndex
+                        nextCategoryIndex += 1
+                    }
+                    let fallback = "Category \(index + 1)"
+                    let label = (name?.isEmpty == false) ? name! : fallback
+                    let now = Date().timeIntervalSince1970 * 1000.0
+
+                    summariesByKey[key] = ScreenTimeAppUsageSummary(
+                        targetKind: ScreenTimeShared.targetCategory,
+                        targetIndex: index,
+                        targetLabel: label,
+                        appName: label,
+                        bundleIdentifier: nil,
+                        durationSeconds: (previous?.durationSeconds ?? 0) + categoryDuration,
+                        pickups: (previous?.pickups ?? 0) + nestedPickups,
+                        notifications: (previous?.notifications ?? 0) + nestedNotifications,
+                        intervalStart: intervalStart,
+                        intervalEnd: intervalEnd,
+                        timestamp: now
+                    )
                 }
             }
         }
 
-        let summaries = summariesByKey.values.sorted {
+        var summaries = summariesByKey.values.filter { $0.durationSeconds > 0 }.sorted {
             if $0.durationSeconds == $1.durationSeconds {
                 return $0.targetLabel < $1.targetLabel
             }
             return $0.durationSeconds > $1.durationSeconds
+        }
+        if summaries.isEmpty && aggregateDuration > 0 {
+            let now = Date().timeIntervalSince1970 * 1000.0
+            summaries = [
+                ScreenTimeAppUsageSummary(
+                    targetKind: ScreenTimeShared.targetAggregate,
+                    targetIndex: 0,
+                    targetLabel: "Selected Screen Time total",
+                    appName: "Selected Screen Time total",
+                    bundleIdentifier: nil,
+                    durationSeconds: aggregateDuration,
+                    pickups: 0,
+                    notifications: 0,
+                    intervalStart: intervalStart,
+                    intervalEnd: intervalEnd,
+                    timestamp: now
+                )
+            ]
         }
         let resolvedLabels = summaries.compactMap { summary -> ScreenTimeResolvedLabel? in
             guard let appName = summary.appName?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -128,7 +222,7 @@ struct StudyTraceAppUsageReportScene: DeviceActivityReportScene {
                 targetIndex: summary.targetIndex,
                 appName: appName,
                 bundleIdentifier: summary.bundleIdentifier,
-                source: "device_activity_report",
+                source: "device_activity_category_report",
                 updatedAt: summary.timestamp
             )
         }
@@ -140,6 +234,7 @@ struct StudyTraceAppUsageReportScene: DeviceActivityReportScene {
             }
             ScreenTimeUsageStore.shared.saveResolvedLabels(Array(merged.values))
         }
+        ScreenTimeUsageStore.shared.saveLatestReportSummaries(summaries)
         ScreenTimeUsageStore.shared.appendReportSummaries(summaries)
         return StudyTraceAppUsageReportConfiguration(generatedAt: Date(), summaries: summaries)
     }
@@ -148,6 +243,15 @@ struct StudyTraceAppUsageReportScene: DeviceActivityReportScene {
         guard let defaults = UserDefaults(suiteName: ScreenTimeShared.appGroupID),
               let data = defaults.data(forKey: ScreenTimeShared.applicationTokenOrderDataKey),
               let tokens = try? PropertyListDecoder().decode([ApplicationToken].self, from: data) else {
+            return []
+        }
+        return tokens
+    }
+
+    private func loadSelectedCategoryTokenOrder() -> [ActivityCategoryToken] {
+        guard let defaults = UserDefaults(suiteName: ScreenTimeShared.appGroupID),
+              let data = defaults.data(forKey: ScreenTimeShared.categoryTokenOrderDataKey),
+              let tokens = try? PropertyListDecoder().decode([ActivityCategoryToken].self, from: data) else {
             return []
         }
         return tokens

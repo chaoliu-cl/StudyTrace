@@ -73,28 +73,31 @@ Each sensor gets its own Postgres table (`aware_<sensor>`), storing the
 while keeping rows scoped to a study. Study and device metadata live in the
 `studies` and `devices` tables.
 
-## Screen Time data semantics
+## Battery screenshot app-usage workflow
 
-Screen Time data is optional and should be configured according to the approved
-study protocol. StudyTrace is designed to support selected-app summaries because
-many behavioral studies need app-specific context that broad Screen Time
-categories cannot provide. Website/domain and category summaries remain
-available when those targets match the protocol.
+StudyTrace no longer depends on exporting Apple's Screen Time data from the
+device. Instead, studies can ask participants to upload an iOS Battery usage
+screenshot through an ESM photo question.
 
-Participants must consent to the study, grant Apple's Screen Time / Family
-Controls permission, and choose the apps, websites, or categories to include.
-StudyTrace does not collect Screen Time data for unselected apps. Uploaded
-Screen Time rows are stored through the raw `ios_aware_log` sensor. The
-researcher/admin dashboards also expose a single virtual Screen Time export
-sensor, `screentime_apps`. It is visible before rows arrive, with a row count of
-`0`, so researchers can find the export path during setup.
+Participant workflow:
 
-`screentime_apps` exports just the columns researchers need for analysis: `id`,
-`study_id`, `device_id`, `timestamp`, and `app_name` (plus `created_at` from the
-storage row). App names are resolved from the participant-supplied labels saved
-during onboarding, so the dashboard always shows which app each row belongs to.
-These rows are intended for research analysis only, not advertising, profiling,
-sale of data, or cross-app tracking.
+1. The scheduled survey asks the participant to open **Settings → Battery → View
+   All Battery Usage**.
+2. The participant takes a screenshot of the app battery usage list.
+3. The participant uploads that screenshot as an in-app photo response.
+4. The server detects Battery screenshot photo rows, runs OCR, parses app names,
+   screen-time text, and battery percentages, then stores derived rows in
+   `battery_usage_apps`.
+
+The derived `battery_usage_apps` export includes: `id`, `study_id`,
+`device_id`, `timestamp`, `app_name`, `screen_time_seconds`,
+`screen_time_text`, `battery_percent`, `battery_percent_text`,
+`extraction_status`, `extraction_method`, `ocr_confidence`, `parse_notes`,
+`ocr_text`, `source_sensor`, `source_row_id`, `source_image_url`, and
+`created_at`.
+
+The legacy `screentime_apps` virtual export is retained only for older builds
+and diagnostics. Current studies should use `battery_usage_apps`.
 
 ## AWARE protocol front-end
 

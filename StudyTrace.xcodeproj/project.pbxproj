@@ -45,9 +45,7 @@
 		987836DD9DF3528B88188F5E /* ScreenTimeUsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F54330EC699252C38CA9593 /* ScreenTimeUsageStore.swift */; };
 		AA1000010000000000000001 /* StudyTraceReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000010000000000000004 /* StudyTraceReport.swift */; };
 		AA1000010000000000000002 /* ScreenTimeUsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F54330EC699252C38CA9593 /* ScreenTimeUsageStore.swift */; };
-		AA1000010000000000000003 /* StudyTraceReport.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = AA1000010000000000000007 /* StudyTraceReport.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AA00000100000001AABBCC10 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA00000100000001AABBCC11 /* PrivacyInfo.xcprivacy */; };
-		C815C75056583A7E78599A04 /* StudyTraceMonitor.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 922FF0344E49ABED66172385 /* StudyTraceMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E8498A01D2CC4CC3BCB6B07C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 19AC1B97FA292B90BA20F7A5 /* Foundation.framework */; };
 		FD3C74F7F08E6CB236571130 /* Pods_StudyTraceUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2037B1A5CBF8297D303D2168 /* Pods_StudyTraceUITests.framework */; };
 /* End PBXBuildFile section */
@@ -67,36 +65,7 @@
 			remoteGlobalIDString = 4FFE19722226A10B00C4715E;
 			remoteInfo = StudyTrace;
 		};
-		B72A6051BBBC403531F90260 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 4FFE196B2226A10B00C4715E /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = B7CE658CA3CCC65564AB7B87;
-			remoteInfo = StudyTraceMonitor;
-		};
-		AA1000010000000000000008 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 4FFE196B2226A10B00C4715E /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = AA1000010000000000000010;
-			remoteInfo = StudyTraceReport;
-		};
 /* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		39B8E377776991570B9523A0 /* Embed App Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				C815C75056583A7E78599A04 /* StudyTraceMonitor.appex in Embed App Extensions */,
-				AA1000010000000000000003 /* StudyTraceReport.appex in Embed App Extensions */,
-			);
-			name = "Embed App Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		19AC1B97FA292B90BA20F7A5 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
@@ -382,13 +351,10 @@
 				4FFE19712226A10B00C4715E /* Resources */,
 				DF2625B046F4277F03BE604C /* [CP] Embed Pods Frameworks */,
 				5C2B54338F029362C1E870A9 /* [CP] Copy Pods Resources */,
-				39B8E377776991570B9523A0 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				3DFA69A69FEDF3DBA56A63F1 /* PBXTargetDependency */,
-				AA1000010000000000000015 /* PBXTargetDependency */,
 			);
 			name = StudyTrace;
 			productName = StudyTrace;
@@ -759,18 +725,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		3DFA69A69FEDF3DBA56A63F1 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			name = StudyTraceMonitor;
-			target = B7CE658CA3CCC65564AB7B87 /* StudyTraceMonitor */;
-			targetProxy = B72A6051BBBC403531F90260 /* PBXContainerItemProxy */;
-		};
-		AA1000010000000000000015 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			name = StudyTraceReport;
-			target = AA1000010000000000000010 /* StudyTraceReport */;
-			targetProxy = AA1000010000000000000008 /* PBXContainerItemProxy */;
-		};
 		4FFE198C2226A10D00C4715E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 4FFE19722226A10B00C4715E /* StudyTrace */;
