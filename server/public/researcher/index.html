@@ -55,11 +55,50 @@
         <div class="section-head">
           <div>
             <h2>Sensor coverage</h2>
-            <p class="section-note"><code>battery_usage_apps</code> exports app usage extracted from participant-uploaded iOS Battery screenshots. <code>screentime_apps</code> remains only for legacy diagnostics.</p>
+            <p class="section-note"><code>battery_usage_apps</code> exports app usage extracted from participant-uploaded iOS Battery screenshots.</p>
           </div>
         </div>
         <div class="table-wrap">
           <table id="researcher-sensors"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Battery screenshot prompt schedule</h2>
+            <p class="section-note">Set when participants receive the survey prompt to upload Settings → Battery → View All Battery Usage screenshots. Fixed mode sends at exact times; random mode jitters around those times by the selected window.</p>
+          </div>
+        </div>
+        <form id="researcher-battery-schedule" class="stack">
+          <label>
+            <span>Delivery mode</span>
+            <select name="mode">
+              <option value="fixed">Fixed exact times</option>
+              <option value="random">Randomized around listed times</option>
+            </select>
+          </label>
+          <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="09:30, 17:15" required></label>
+          <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
+          <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="120"></label>
+          <label><span>Notification title</span><input name="notification_title" value="StudyTrace Battery screenshot"></label>
+          <label><span>Notification body</span><input name="notification_body" value="Please upload your iOS Battery usage screenshot."></label>
+          <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
+          <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
+          <button class="button button-primary" type="submit">Save Battery screenshot prompt schedule</button>
+        </form>
+        <pre id="researcher-battery-schedule-result" class="result-box"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Recent survey responses</h2>
+            <p class="section-note">Photo ESM answers are rendered as images when the survey question uses <code>esm_type: 14</code>.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-esm-responses"></table>
         </div>
       </section>
 
@@ -75,33 +114,6 @@
         </div>
         <div class="table-wrap">
           <table id="researcher-battery-usage-screenshots"></table>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Legacy Screen Time diagnostics</h2>
-            <p class="section-note">Use this only for older builds or troubleshooting. Current studies should use the Battery screenshot workflow instead of Apple's Screen Time export APIs.</p>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table id="researcher-screentime-cleaned"></table>
-        </div>
-        <div class="table-wrap">
-          <table id="researcher-screentime-raw"></table>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Recent survey responses</h2>
-            <p class="section-note">Photo ESM answers are rendered as images when the survey question uses <code>esm_type: 14</code>.</p>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table id="researcher-esm-responses"></table>
         </div>
       </section>
     </section>

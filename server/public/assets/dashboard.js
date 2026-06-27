@@ -117,38 +117,6 @@ async function loadEsmResponses({ studyId, password, sensors, table, message }) 
   await hydrateAuthenticatedImages(table);
 }
 
-async function loadScreenTimeDiagnostics({ studyId, password, cleanedTable, rawTable, message }) {
-  const headers = { 'x-study-password': password };
-  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/screentime-diagnostics?limit=100`, { headers });
-  const payload = await readJson(res);
-  if (!res.ok) {
-    return setMessage(message, payload.error || 'Could not load Screen Time diagnostics.', true);
-  }
-
-  renderTable(cleanedTable, [
-    { label: 'Type', render: (row) => escapeHtml(row.type || '—') },
-    { label: 'Target', render: (row) => escapeHtml(row.target_label || row.app_name || '—') },
-    { label: 'Kind', render: (row) => escapeHtml(row.target_kind || '—') },
-    { label: 'Label Source', render: (row) => escapeHtml(row.app_label_source || '—') },
-    { label: 'Bundle', render: (row) => escapeHtml(row.bundle_identifier || '—') },
-    { label: 'Threshold', render: (row) => row.threshold_minutes ? `${escapeHtml(row.threshold_minutes)} min` : '—' },
-    { label: 'Duration', render: (row) => formatScreenTimeDuration(row) },
-    { label: 'Pickups', render: (row) => String(row.pickups ?? '—') },
-    { label: 'Notifications', render: (row) => String(row.notifications ?? '—') },
-    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
-    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
-  ], payload.appRows || []);
-
-  renderTable(rawTable, [
-    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
-    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
-    { label: 'Event', render: (row) => escapeHtml(row.raw_event || '—') },
-    { label: 'Parsed', render: (row) => row.parsed ? 'yes' : 'no' },
-    { label: 'Reason', render: (row) => escapeHtml(row.parse_reason || '—') },
-    { label: 'Raw message', render: (row) => `<code>${escapeHtml(truncate(row.raw_message || '', 240))}</code>` },
-  ], payload.rawRows || []);
-}
-
 async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screenshotTable, message }) {
   const headers = { 'x-study-password': password };
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/battery-usage?limit=100`, { headers });
@@ -178,24 +146,72 @@ async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screen
   await hydrateAuthenticatedImages(screenshotTable);
 }
 
+const batteryScreenshotQuestions = [
+  {
+    esm_type: 14,
+    esm_title: 'Battery usage screenshot',
+    esm_instructions: 'Open iPhone Settings > Battery > View All Battery Usage. Take a screenshot showing app battery usage and screen time, then upload that screenshot here.',
+    esm_trigger: 'battery_usage_screenshot',
+    esm_submit: 'Submit',
+    esm_na: true,
+  },
+];
+
+function fillScheduleForm(form, schedule) {
+  const first = Array.isArray(schedule) ? schedule[0] : null;
+  form.elements.mode.value = first?.studytrace_delivery_mode || (Number(first?.randomize || 0) > 0 ? 'random' : 'fixed');
+  form.elements.times.value = Array.isArray(first?.times) && first.times.length
+    ? first.times.join(', ')
+    : (Array.isArray(first?.hours) ? first.hours.map((hour) => `${String(hour).padStart(2, '0')}:00`).join(', ') : '09:30');
+  form.elements.randomize_minutes.value = String(first?.randomize || 30);
+  form.elements.expiration_minutes.value = String(first?.expiration || 120);
+  form.elements.notification_title.value = first?.notification_title || 'StudyTrace Battery screenshot';
+  form.elements.notification_body.value = first?.notification_body || 'Please upload your iOS Battery usage screenshot.';
+  form.elements.start_date.value = first?.start_date || '';
+  form.elements.end_date.value = first?.end_date || '';
+}
+
+async function loadBatterySchedule({ studyId, password, form, result, message }) {
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/esm-schedule`, {
+    headers: { 'x-study-password': password },
+  });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    setMessage(message, payload.error || 'Could not load Battery screenshot prompt schedule.', true);
+    return;
+  }
+  fillScheduleForm(form, payload.esm_schedule || []);
+  result.textContent = JSON.stringify(payload.schedule_summary || [], null, 2);
+}
+
+async function saveBatterySchedule({ studyId, password, form, result, message }) {
+  const formData = new FormData(form);
+  const body = Object.fromEntries(formData.entries());
+  body.esms = batteryScreenshotQuestions;
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/esm-schedule`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-study-password': password,
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await readJson(res);
+  result.textContent = JSON.stringify(payload.schedule_summary || payload, null, 2);
+  if (!res.ok) {
+    setMessage(message, payload.error || 'Could not save Battery screenshot prompt schedule.', true);
+    return false;
+  }
+  setMessage(message, 'Battery screenshot prompt schedule saved.');
+  return true;
+}
+
 function formatDuration(seconds) {
   if (seconds === null || seconds === undefined || seconds === '') return '—';
   const minutes = Math.round(Number(seconds || 0) / 60);
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   return hours > 0 ? `${hours}h ${remainder}m` : `${minutes}m`;
-}
-
-function formatScreenTimeDuration(row) {
-  if (row.duration_seconds !== null && row.duration_seconds !== undefined && row.duration_seconds !== '') {
-    return formatDuration(row.duration_seconds);
-  }
-  if (row.duration_lower_bound_seconds !== null &&
-      row.duration_lower_bound_seconds !== undefined &&
-      row.duration_lower_bound_seconds !== '') {
-    return `>= ${formatDuration(row.duration_lower_bound_seconds)}`;
-  }
-  return '—';
 }
 
 function truncate(value, maxLength) {
@@ -223,10 +239,12 @@ function initResearcher() {
   const devices = document.querySelector('#researcher-devices');
   const sensors = document.querySelector('#researcher-sensors');
   const esmResponses = document.querySelector('#researcher-esm-responses');
-  const screenTimeCleaned = document.querySelector('#researcher-screentime-cleaned');
-  const screenTimeRaw = document.querySelector('#researcher-screentime-raw');
   const batteryUsageCleaned = document.querySelector('#researcher-battery-usage-cleaned');
   const batteryUsageScreenshots = document.querySelector('#researcher-battery-usage-screenshots');
+  const batteryScheduleForm = document.querySelector('#researcher-battery-schedule');
+  const batteryScheduleResult = document.querySelector('#researcher-battery-schedule-result');
+  let currentStudyId = '';
+  let currentPassword = '';
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -234,6 +252,8 @@ function initResearcher() {
     const formData = new FormData(form);
     const studyId = formData.get('studyId');
     const password = formData.get('password');
+    currentStudyId = studyId;
+    currentPassword = password;
     const headers = { 'x-study-password': password };
 
     const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/summary`, { headers });
@@ -267,6 +287,13 @@ function initResearcher() {
     ], payload.sensors);
 
     dashboard.classList.remove('hidden');
+    await loadBatterySchedule({
+      studyId,
+      password,
+      form: batteryScheduleForm,
+      result: batteryScheduleResult,
+      message,
+    });
     await loadBatteryUsageDiagnostics({
       studyId,
       password,
@@ -274,15 +301,22 @@ function initResearcher() {
       screenshotTable: batteryUsageScreenshots,
       message,
     });
-    await loadScreenTimeDiagnostics({
-      studyId,
-      password,
-      cleanedTable: screenTimeCleaned,
-      rawTable: screenTimeRaw,
-      message,
-    });
     await loadEsmResponses({ studyId, password, sensors: payload.sensors, table: esmResponses, message });
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
+  });
+
+  batteryScheduleForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!currentStudyId || !currentPassword) {
+      return setMessage(message, 'Load a study before saving the Battery screenshot prompt schedule.', true);
+    }
+    await saveBatterySchedule({
+      studyId: currentStudyId,
+      password: currentPassword,
+      form: batteryScheduleForm,
+      result: batteryScheduleResult,
+      message,
+    });
   });
 
   document.addEventListener('click', async (event) => {
@@ -351,6 +385,9 @@ function initAdmin() {
     },
   ];
 
+  scheduleForm.elements.times.value = '09:30, 17:15';
+  scheduleForm.elements.notification_title.value = 'StudyTrace Battery screenshot';
+  scheduleForm.elements.notification_body.value = 'Please upload your iOS Battery usage screenshot.';
   scheduleForm.elements.esms_json.value = JSON.stringify(defaultEsmQuestions, null, 2);
 
   async function refresh() {

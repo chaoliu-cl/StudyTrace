@@ -30,29 +30,17 @@ import {
   getStudy,
   updateStudyConfig,
   tableExists,
-  countRows,
   isDatabaseConfigured,
 } from './db.js';
 import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 
-const SCREEN_TIME_EXPORT_SENSOR = 'screentime_apps';
 const BATTERY_USAGE_EXPORT_SENSOR = 'battery_usage_apps';
-const SCREEN_TIME_EXPORT_COLUMNS = [
-  'target_kind',
-  'target_index',
-  'target_label',
-  'app_name',
-  'app_label_source',
-  'event_type',
-  'threshold_minutes',
-  'duration_lower_bound_seconds',
-  'duration_seconds',
-  'pickups',
-  'notifications',
-  'interval_start',
-  'interval_end',
-];
+const LEGACY_SCREEN_TIME_SENSORS = new Set([
+  'screentime_apps',
+  'screentime_raw_log',
+  'screentime_app_usage',
+]);
 const BATTERY_USAGE_EXPORT_COLUMNS = [
   'source_sensor',
   'source_row_id',
@@ -68,7 +56,6 @@ const BATTERY_USAGE_EXPORT_COLUMNS = [
   'parse_notes',
   'ocr_text',
 ];
-const SCREEN_TIME_EXPORT_LIMIT = 10000;
 const BATTERY_USAGE_EXPORT_LIMIT = 10000;
 
 export function createApp() {
@@ -194,20 +181,10 @@ export function createApp() {
     try {
       const overview = await getStudyOverview(req.params.studyId);
       if (!overview) return res.status(404).json({ error: 'study not found' });
-      await attachStudyScreenTimeSensor(overview, req.params.studyId);
+      await attachStudyDerivedSensors(overview, req.params.studyId);
       res.json({ ok: true, ...overview });
     } catch (err) {
       console.error(`[admin study ${req.params.studyId}]`, err);
-      res.status(500).json({ error: 'server error' });
-    }
-  });
-
-  app.get('/admin/screentime', requireAdmin, async (req, res) => {
-    try {
-      const rows = await findScreenTimeRows({ limit: req.query.limit });
-      res.json({ ok: true, count: rows.length, rows });
-    } catch (err) {
-      console.error('[admin screentime]', err);
       res.status(500).json({ error: 'server error' });
     }
   });
@@ -222,6 +199,17 @@ export function createApp() {
     }
   });
 
+  app.get('/admin/studies/:studyId/esm-schedule', requireAdmin, async (req, res) => {
+    try {
+      const study = await getStudy(req.params.studyId);
+      if (!study) return res.status(404).json({ error: 'study not found' });
+      res.json(scheduleResponse(study));
+    } catch (err) {
+      console.error(`[admin get esm schedule ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
   app.put('/admin/studies/:studyId/esm-schedule', requireAdmin, async (req, res) => {
     try {
       const study = await getStudy(req.params.studyId);
@@ -229,7 +217,7 @@ export function createApp() {
 
       const esmSchedule = buildEsmScheduleFromRequest(req.body || {});
       const updated = await updateStudyConfig(req.params.studyId, { esm_schedule: esmSchedule });
-      res.json({ ok: true, study_id: updated.study_id, esm_schedule: esmSchedule });
+      res.json(scheduleResponse(updated));
     } catch (err) {
       if (err.statusCode) {
         return res.status(err.statusCode).json({ error: err.message });
@@ -268,7 +256,7 @@ export function createApp() {
     try {
       const overview = await getStudyOverview(req.params.studyId);
       if (!overview) return res.status(404).json({ error: 'study not found' });
-      await attachStudyScreenTimeSensor(overview, req.params.studyId);
+      await attachStudyDerivedSensors(overview, req.params.studyId);
       res.json({ ok: true, ...overview });
     } catch (err) {
       console.error(`[dashboard summary ${req.params.studyId}]`, err);
@@ -301,38 +289,35 @@ export function createApp() {
     }
   });
 
+  app.get('/api/v1/studies/:studyId/esm-schedule', requireStudyPassword, async (req, res) => {
+    try {
+      res.json(scheduleResponse(req.study));
+    } catch (err) {
+      console.error(`[researcher get esm schedule ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  app.put('/api/v1/studies/:studyId/esm-schedule', requireStudyPassword, async (req, res) => {
+    try {
+      const esmSchedule = buildEsmScheduleFromRequest(req.body || {});
+      const updated = await updateStudyConfig(req.params.studyId, { esm_schedule: esmSchedule });
+      res.json(scheduleResponse(updated));
+    } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+      console.error(`[researcher save esm schedule ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
   app.get('/api/v1/studies/:studyId/dashboard/esm-responses', requireStudyPassword, async (req, res) => {
     try {
       const rows = await findEsmResponseRows(req.params.studyId, req.query.limit);
       return res.json({ ok: true, count: rows.length, rows });
     } catch (err) {
       console.error(`[dashboard esm responses ${req.params.studyId}]`, err);
-      res.status(500).json({ error: 'server error' });
-    }
-  });
-
-  app.get('/api/v1/studies/:studyId/dashboard/screentime', requireStudyPassword, async (req, res) => {
-    try {
-      const rows = await findScreenTimeRows({
-        studyId: req.params.studyId,
-        limit: req.query.limit,
-      });
-      return res.json({ ok: true, count: rows.length, rows });
-    } catch (err) {
-      console.error(`[dashboard screentime ${req.params.studyId}]`, err);
-      res.status(500).json({ error: 'server error' });
-    }
-  });
-
-  app.get('/api/v1/studies/:studyId/dashboard/screentime-diagnostics', requireStudyPassword, async (req, res) => {
-    try {
-      const diagnostics = await findScreenTimeDiagnostics({
-        studyId: req.params.studyId,
-        limit: req.query.limit,
-      });
-      return res.json({ ok: true, ...diagnostics });
-    } catch (err) {
-      console.error(`[dashboard screentime diagnostics ${req.params.studyId}]`, err);
       res.status(500).json({ error: 'server error' });
     }
   });
@@ -384,32 +369,36 @@ export function createApp() {
 }
 
 async function listAdminSensorsForDashboard() {
-  const sensors = await listSensorTables();
-  const diagnostics = await findScreenTimeDiagnostics({ limit: SCREEN_TIME_EXPORT_LIMIT });
+  const sensors = filterLegacyScreenTimeSensors(await listSensorTables());
   const batteryDiagnostics = await findBatteryUsageDiagnostics({ limit: BATTERY_USAGE_EXPORT_LIMIT });
-  upsertVirtualSensor(sensors, SCREEN_TIME_EXPORT_SENSOR, diagnostics.appRows.length);
   upsertVirtualSensor(sensors, BATTERY_USAGE_EXPORT_SENSOR, batteryDiagnostics.appRows.length, 'derived_from_battery_screenshot_esm');
   return sensors.sort((a, b) => String(a.sensor).localeCompare(String(b.sensor)));
 }
 
-async function attachStudyScreenTimeSensor(overview, studyId) {
-  const diagnostics = await findScreenTimeDiagnostics({ studyId, limit: SCREEN_TIME_EXPORT_LIMIT });
+async function attachStudyDerivedSensors(overview, studyId) {
   const batteryDiagnostics = await findBatteryUsageDiagnostics({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
 
-  const previousTotal = Number(overview.summary?.total_rows || 0);
-  overview.sensors = [...(overview.sensors || [])];
-  upsertVirtualSensor(overview.sensors, SCREEN_TIME_EXPORT_SENSOR, diagnostics.appRows.length);
+  overview.sensors = filterLegacyScreenTimeSensors(overview.sensors || []);
   upsertVirtualSensor(overview.sensors, BATTERY_USAGE_EXPORT_SENSOR, batteryDiagnostics.appRows.length, 'derived_from_battery_screenshot_esm');
   overview.sensors.sort((a, b) => Number(b.rows || 0) - Number(a.rows || 0) || String(a.sensor).localeCompare(String(b.sensor)));
+  const totalRows = overview.sensors.reduce((sum, sensor) => sum + Number(sensor.rows || 0), 0);
   overview.summary = {
     ...(overview.summary || {}),
     sensor_count: overview.sensors.length,
-    total_rows: previousTotal + diagnostics.appRows.length + batteryDiagnostics.appRows.length,
+    total_rows: totalRows,
   };
   return overview;
 }
 
-function upsertVirtualSensor(sensors, sensorName, rows, tableName = 'virtual_screen_time_from_ios_aware_log') {
+function filterLegacyScreenTimeSensors(sensors) {
+  return [...(sensors || [])].filter((sensor) => !isLegacyScreenTimeSensor(sensor?.sensor));
+}
+
+function isLegacyScreenTimeSensor(sensor) {
+  return LEGACY_SCREEN_TIME_SENSORS.has(String(sensor || '').toLowerCase());
+}
+
+function upsertVirtualSensor(sensors, sensorName, rows, tableName = 'virtual_derived_sensor') {
   const existing = sensors.find((sensor) => sensor.sensor === sensorName);
   if (existing) {
     existing.rows = rows;
@@ -424,20 +413,13 @@ function upsertVirtualSensor(sensors, sensorName, rows, tableName = 'virtual_scr
 }
 
 function exportColumnsForSensor(sensor) {
-  if (sensor === SCREEN_TIME_EXPORT_SENSOR) return SCREEN_TIME_EXPORT_COLUMNS;
   if (sensor === BATTERY_USAGE_EXPORT_SENSOR) return BATTERY_USAGE_EXPORT_COLUMNS;
   return [];
 }
 
 async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, offset } = {}) {
-  if (sensor === SCREEN_TIME_EXPORT_SENSOR) {
-    const diagnostics = await findScreenTimeDiagnostics({ studyId, limit: SCREEN_TIME_EXPORT_LIMIT });
-    const filtered = diagnostics.appRows
-      .filter((row) => !deviceId || row.device_id === deviceId)
-      .sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
-    const start = Math.max(Number(offset) || 0, 0);
-    const pageSize = Math.min(Math.max(Number(limit) || 1000, 1), SCREEN_TIME_EXPORT_LIMIT);
-    return filtered.slice(start, start + pageSize).map(screenTimeRowToExportRow);
+  if (isLegacyScreenTimeSensor(sensor)) {
+    throw httpError(404, 'legacy Screen Time export has been removed; use battery_usage_apps');
   }
 
   if (sensor === BATTERY_USAGE_EXPORT_SENSOR) {
@@ -450,42 +432,6 @@ async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, off
   const table = safeTableName(sensor);
   if (!table) throw httpError(400, 'invalid sensor name');
   return exportRows(table, { studyId, deviceId, limit, offset });
-}
-
-function screenTimeRowToExportRow(row) {
-  const appName = screenTimeExportAppName(row);
-  return {
-    id: row.id,
-    study_id: row.study_id,
-    device_id: row.device_id,
-    timestamp: row.timestamp,
-    created_at: row.created_at,
-    data: {
-      target_kind: row.target_kind || '',
-      target_index: row.target_index ?? '',
-      target_label: row.target_label || '',
-      app_name: appName,
-      app_label_source: screenTimeAppLabelSource(row),
-      event_type: row.type || '',
-      threshold_minutes: row.threshold_minutes ?? '',
-      duration_lower_bound_seconds: row.duration_lower_bound_seconds ?? '',
-      duration_seconds: row.duration_seconds ?? '',
-      pickups: row.pickups ?? '',
-      notifications: row.notifications ?? '',
-      interval_start: row.interval_start ?? '',
-      interval_end: row.interval_end ?? '',
-    },
-  };
-}
-
-function screenTimeExportAppName(row) {
-  const appName = String(row?.app_name || '').trim();
-  if (appName) return appName;
-  const targetLabel = String(row?.target_label || '').trim();
-  if (targetLabel) return targetLabel;
-  const rawEvent = String(row?.raw_event || '').trim();
-  if (rawEvent) return rawEvent;
-  return 'Screen Time log';
 }
 
 // Flatten exported rows into CSV. Columns are id, study_id, device_id,
@@ -521,19 +467,47 @@ function rowsToCsv(rows, preferredDataCols = []) {
   return lines.join('\r\n');
 }
 
+function scheduleResponse(study) {
+  const schedule = Array.isArray(study?.config?.esm_schedule) ? study.config.esm_schedule : [];
+  return {
+    ok: true,
+    study_id: study?.study_id,
+    esm_schedule: schedule,
+    schedule_summary: summarizeEsmSchedule(schedule),
+  };
+}
+
+function summarizeEsmSchedule(schedule) {
+  return schedule.map((item) => ({
+    schedule_id: item.schedule_id,
+    mode: item.studytrace_delivery_mode || (Number(item.randomize || 0) > 0 ? 'random' : 'fixed'),
+    times: Array.isArray(item.times) && item.times.length
+      ? item.times
+      : (Array.isArray(item.hours) ? item.hours.map((hour) => `${String(hour).padStart(2, '0')}:00`) : []),
+    randomize_minutes: Number(item.randomize || 0),
+    expiration_minutes: Number(item.expiration || 0),
+    notification_title: item.notification_title || '',
+    notification_body: item.notification_body || '',
+    question_count: Array.isArray(item.esms) ? item.esms.length : 0,
+  }));
+}
+
 function buildEsmScheduleFromRequest(body) {
   const mode = body.mode === 'random' ? 'random' : 'fixed';
-  const hours = parseHours(body.hours);
+  const promptTimes = parsePromptTimes(body.times || body.hours);
   const randomMinutes = mode === 'random'
     ? clampInteger(body.randomize_minutes, 1, 180, 30)
     : 0;
-  const scheduleId = sanitizeScheduleId(body.schedule_id || `studytrace_${mode}_survey`);
+  const scheduleId = sanitizeScheduleId(body.schedule_id || `studytrace_${mode}_battery_screenshot`);
   const esms = parseEsmQuestions(body);
 
   return [
     {
       schedule_id: scheduleId,
-      hours,
+      hours: promptTimes.hours,
+      times: promptTimes.times,
+      studytrace_prompt_type: 'battery_usage_screenshot',
+      studytrace_delivery_mode: mode,
       randomize: randomMinutes,
       expiration: clampInteger(body.expiration_minutes, 0, 1440, mode === 'random' ? randomMinutes * 2 : 120),
       start_date: normalizeDateString(body.start_date),
@@ -546,15 +520,39 @@ function buildEsmScheduleFromRequest(body) {
   ];
 }
 
-function parseHours(value) {
+function parsePromptTimes(value) {
   const values = Array.isArray(value)
     ? value
     : String(value || '').split(/[,\s]+/);
-  const hours = [...new Set(values
-    .map((item) => Number(item))
-    .filter((item) => Number.isInteger(item) && item >= 0 && item <= 23))];
-  if (!hours.length) throw httpError(400, 'hours must include at least one integer from 0 to 23');
-  return hours.sort((a, b) => a - b);
+  const parsed = values
+    .map((item) => parsePromptTime(item))
+    .filter(Boolean);
+  const uniqueTimes = [...new Map(parsed.map((item) => [item.time, item])).values()]
+    .sort((a, b) => a.minutes - b.minutes);
+  if (!uniqueTimes.length) {
+    throw httpError(400, 'times must include at least one value from 00:00 to 23:59, for example 09:30 or 17');
+  }
+  return {
+    times: uniqueTimes.map((item) => item.time),
+    hours: [...new Set(uniqueTimes.map((item) => item.hour))].sort((a, b) => a - b),
+  };
+}
+
+function parsePromptTime(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const match = text.match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = match[2] === undefined ? 0 : Number(match[2]);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null;
+  return {
+    hour,
+    minute,
+    minutes: hour * 60 + minute,
+    time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+  };
 }
 
 function parseEsmQuestions(body) {
@@ -1025,625 +1023,6 @@ function batteryUsageAppRowFromExport(row) {
     created_at: row.created_at,
     ...(row.data || {}),
   };
-}
-
-async function findScreenTimeRows({ studyId, limit: rawLimit } = {}) {
-  const limit = Math.min(Math.max(Number(rawLimit) || 100, 1), 10000);
-  const diagnostics = await findScreenTimeDiagnostics({ studyId, limit });
-  return diagnostics.parsedRows.slice(0, limit);
-}
-
-async function findScreenTimeDiagnostics({ studyId, limit: rawLimit } = {}) {
-  const limit = Math.min(Math.max(Number(rawLimit) || 100, 1), 10000);
-  const table = safeTableName('ios_aware_log');
-  if (!table || !(await tableExists(table))) {
-    return { rawRows: [], parsedRows: [], appRows: [] };
-  }
-
-  const rows = await exportRows(table, { studyId, limit: Math.min(limit * 5, 10000) });
-  const rawRows = rows
-    .map(screenTimeRawRowFromLog)
-    .filter(Boolean)
-    .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0))
-    .slice(0, limit);
-  const parsedRows = enrichScreenTimeRowsWithLabels(rawRows
-    .flatMap((row) => row.parsed_rows || [])
-    .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0)));
-  let appRows = parsedRows
-    .filter(isScreenTimeUsageRow)
-    .sort(sortAppUsageRows);
-  if (!appRows.length) {
-    appRows = screenTimeParsedAppFallbackRows(parsedRows);
-  }
-  if (!appRows.length && rawRows.length) {
-    appRows = rawRows.map(screenTimeFallbackAppRowFromRaw);
-  }
-
-  return { rawRows, parsedRows, appRows };
-}
-
-function screenTimeParsedAppFallbackRows(rows) {
-  const appRows = rows
-    .filter((row) => row?.target_kind === 'app')
-    .filter((row) => ['app_selection_label', 'app_selection', 'usage_threshold'].includes(row.type))
-    .sort((a, b) => {
-      const priority = screenTimeParsedFallbackPriority(a) - screenTimeParsedFallbackPriority(b);
-      if (priority !== 0) return priority;
-      const targetIndexDiff = Number(a.target_index ?? Number.MAX_SAFE_INTEGER) - Number(b.target_index ?? Number.MAX_SAFE_INTEGER);
-      if (targetIndexDiff !== 0) return targetIndexDiff;
-      return Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0);
-    });
-
-  const deduped = new Map();
-  for (const row of appRows) {
-    const key = `${row.target_kind}:${row.target_index ?? 'none'}`;
-    if (!deduped.has(key)) deduped.set(key, row);
-  }
-  return [...deduped.values()];
-}
-
-function screenTimeParsedFallbackPriority(row) {
-  if (row?.type === 'usage_threshold') return 0;
-  if (row?.type === 'app_selection_label') return 1;
-  if (row?.type === 'app_selection') return 2;
-  return 3;
-}
-
-function enrichScreenTimeRowsWithLabels(rows) {
-  const labelsByTarget = new Map();
-  for (const row of rows) {
-    if (!['app', 'category'].includes(row?.target_kind)) continue;
-    if (!['app_selection_label', 'app_usage_summary', 'category_usage_summary'].includes(row.type)) continue;
-    const appName = String(row.app_name || '').trim();
-    const targetIndex = parseOptionalInteger(row.target_index);
-    if (appName && targetIndex !== null) {
-      labelsByTarget.set(`${row.target_kind}:${targetIndex}`, {
-        appName,
-        source: row.type === 'app_selection_label' ? 'participant_label' : 'device_activity_report',
-      });
-    }
-  }
-
-  if (!labelsByTarget.size) return rows;
-
-  return rows.map((row) => {
-    if (!['app', 'category'].includes(row?.target_kind)) return row;
-    if (String(row.app_name || '').trim()) return row;
-    const targetIndex = parseOptionalInteger(row.target_index);
-    if (targetIndex === null) return row;
-    const label = labelsByTarget.get(`${row.target_kind}:${targetIndex}`);
-    if (!label) return row;
-    return {
-      ...row,
-      app_name: label.appName,
-      target_label: label.appName,
-      app_label_source: label.source,
-    };
-  });
-}
-
-function screenTimeAppLabelSource(row) {
-  if (row?.app_label_source) return row.app_label_source;
-  if (row?.type === 'app_usage_summary' && String(row.app_name || '').trim()) {
-    return 'device_activity_report';
-  }
-  if (row?.type === 'category_usage_summary' && String(row.app_name || '').trim()) {
-    return 'device_activity_report';
-  }
-  if (row?.type === 'app_selection_label' && String(row.app_name || '').trim()) {
-    return 'participant_label';
-  }
-  if (String(row?.app_name || '').trim()) {
-    return 'legacy_payload';
-  }
-  if (String(row?.target_label || '').trim()) {
-    return 'fallback_index';
-  }
-  return '';
-}
-
-function isScreenTimeUsageRow(row) {
-  return ['app', 'category', 'web', 'aggregate'].includes(row?.target_kind) && (
-    row.type === 'app_usage_summary' ||
-    row.type === 'category_usage_summary' ||
-    row.type === 'usage_threshold'
-  );
-}
-
-function parseTargetFromEventName(eventName) {
-  if (!eventName || typeof eventName !== 'string') return { kind: null, index: null };
-  const parts = eventName.split('.');
-  if (parts.length < 2) return { kind: null, index: null };
-  const trailingMinutes = Number(parts[parts.length - 1]);
-  if (!Number.isFinite(trailingMinutes)) return { kind: null, index: null };
-  const maybeIndex = Number(parts[parts.length - 2]);
-  if (Number.isInteger(maybeIndex) && parts.length >= 3) {
-    const kindToken = parts[parts.length - 3];
-    if (kindToken === 'app' || kindToken === 'category' || kindToken === 'web') {
-      return { kind: kindToken, index: maybeIndex };
-    }
-  }
-  const kindToken = parts[parts.length - 2];
-  if (kindToken === 'aggregate') return { kind: 'aggregate', index: null };
-  return { kind: null, index: null };
-}
-
-function screenTimeRawRowFromLog(row) {
-  const message = parseLogMessage(row.data?.log_message);
-  const rawMessage = stringifyRawLogMessage(row.data?.log_message);
-  if (!looksLikeScreenTimeLog(message, rawMessage)) return null;
-
-  const parsedRows = screenTimeRowsFromLog(row);
-  return {
-    id: row.id,
-    study_id: row.study_id,
-    device_id: row.device_id,
-    timestamp: row.timestamp,
-    created_at: row.created_at,
-    raw_class: screenTimeValue(message, ['class', 'source', 'logger']) || '',
-    raw_event: screenTimeValue(message, ['event', 'name', 'notification', 'type']) || '',
-    raw_message: rawMessage,
-    parsed: parsedRows.length > 0,
-    parse_reason: parsedRows.length > 0 ? `parsed ${parsedRows.length} row${parsedRows.length === 1 ? '' : 's'}` : screenTimeParseReason(message),
-    parsed_rows: parsedRows,
-  };
-}
-
-function screenTimeRowsFromLog(row) {
-  const message = parseLogMessage(row.data?.log_message);
-  if (!message || typeof message !== 'object') return [];
-
-  const direct = screenTimeRowFromLogObject(row, message);
-  if (direct && direct.type === 'labels_updated') return screenTimeRowsFromLabels(row, direct);
-  if (direct && direct.type === 'selection_updated') return screenTimeRowsFromSelection(row, direct);
-  if (direct) return [direct];
-
-  const nestedRows = extractNestedScreenTimeObjects(message)
-    .map((object) => screenTimeRowFromLogObject(row, object))
-    .filter(Boolean)
-    .flatMap((parsed) => {
-      if (parsed.type === 'labels_updated') return screenTimeRowsFromLabels(row, parsed);
-      if (parsed.type === 'selection_updated') return screenTimeRowsFromSelection(row, parsed);
-      return [parsed];
-    });
-
-  if (nestedRows.length) return nestedRows;
-  return direct ? [direct] : [];
-}
-
-function screenTimeRowsFromLabels(row, parsed) {
-  const labels = Array.isArray(parsed.labels) ? parsed.labels : [];
-  return labels
-    .filter((label) => {
-      const rawKind = screenTimeValue(label, ['targetKind', 'target_kind', 'kind']);
-      return !rawKind || normalizeScreenTimeTargetKind(rawKind) === 'app';
-    })
-    .map((label, index) => {
-      const targetIndex = parseOptionalInteger(screenTimeValue(label, ['targetIndex', 'target_index', 'index'])) ?? index;
-      const appLabel = screenTimeValue(label, ['label', 'appName', 'app_name', 'name']) || screenTimeTargetLabel('app', targetIndex);
-      return {
-        id: row.id,
-        study_id: row.study_id,
-        device_id: row.device_id,
-        timestamp: parseOptionalNumber(screenTimeValue(label, ['timestamp', 'eventTimestamp', 'event_timestamp'])) || parsed.timestamp || row.timestamp,
-        created_at: row.created_at,
-        type: 'app_selection_label',
-        target_kind: 'app',
-        target_index: targetIndex,
-        target_label: appLabel,
-        app_name: appLabel,
-        app_label_source: 'participant_label',
-        bundle_identifier: screenTimeValue(label, ['bundleIdentifier', 'bundle_identifier', 'bundleId']) || '',
-        duration_seconds: null,
-        pickups: null,
-        notifications: null,
-        interval_start: null,
-        interval_end: null,
-        raw: label,
-      };
-    });
-}
-
-function screenTimeRowsFromSelection(row, parsed) {
-  const appCount = Math.max(Number(parsed.selected_app_count || 0), 0);
-  if (!appCount) return [parsed];
-  return Array.from({ length: appCount }, (_, index) => ({
-    id: row.id,
-    study_id: row.study_id,
-    device_id: row.device_id,
-    timestamp: parsed.timestamp || row.timestamp,
-    created_at: row.created_at,
-    type: 'app_selection',
-    target_kind: 'app',
-    target_index: index,
-    target_label: `Selected app ${index + 1}`,
-    app_name: `Selected app ${index + 1}`,
-    app_label_source: 'fallback_index',
-    bundle_identifier: '',
-    duration_seconds: null,
-    pickups: null,
-    notifications: null,
-    interval_start: null,
-    interval_end: null,
-    raw: parsed.raw,
-  }));
-}
-
-function screenTimeFallbackAppRowFromRaw(row) {
-  const event = row.raw_event || 'screen_time_raw_log';
-  return {
-    id: row.id,
-    study_id: row.study_id,
-    device_id: row.device_id,
-    timestamp: row.timestamp,
-    created_at: row.created_at,
-    type: 'raw_screen_time_log',
-    target_kind: 'app',
-    target_index: null,
-    target_label: event,
-    app_name: event,
-    app_label_source: 'raw_event',
-    bundle_identifier: '',
-    duration_seconds: null,
-    pickups: null,
-    notifications: null,
-    interval_start: null,
-    interval_end: null,
-    parse_reason: row.parse_reason || '',
-    raw_event: event,
-    raw_message: row.raw_message || '',
-    raw: row,
-  };
-}
-
-function screenTimeRowFromLogObject(row, message) {
-  const event = normalizedScreenTimeEvent(message);
-
-  if (event === 'screen_time_threshold_reached' || hasAnyScreenTimeKey(message, ['threshold_minutes', 'thresholdMinutes'])) {
-    const eventName = screenTimeValue(message, ['screen_time_event', 'screenTimeEvent', 'event_name', 'eventName']) || '';
-    const eventNameTarget = parseTargetFromEventName(eventName);
-    const rawTargetKind = screenTimeValue(message, ['target_kind', 'targetKind', 'kind']);
-    const targetKind = rawTargetKind
-      ? normalizeScreenTimeTargetKind(rawTargetKind)
-      : (eventNameTarget.kind || 'aggregate');
-    const targetIndex = parseOptionalInteger(screenTimeValue(message, ['target_index', 'targetIndex', 'index']))
-      ?? eventNameTarget.index;
-    const thresholdMinutes = parseOptionalNumber(screenTimeValue(message, ['threshold_minutes', 'thresholdMinutes'])) || 0;
-    const lowerBoundSeconds = parseOptionalNumber(screenTimeValue(message, [
-      'duration_lower_bound_seconds',
-      'durationLowerBoundSeconds',
-      'lower_bound_seconds',
-      'lowerBoundSeconds',
-    ])) || (thresholdMinutes > 0 ? thresholdMinutes * 60 : null);
-    return {
-      id: row.id,
-      study_id: row.study_id,
-      device_id: row.device_id,
-      timestamp: parseOptionalNumber(screenTimeValue(message, ['event_timestamp', 'eventTimestamp', 'timestamp'])) || row.timestamp,
-      created_at: row.created_at,
-      type: 'usage_threshold',
-      target_kind: targetKind,
-      target_index: targetIndex,
-      target_label: screenTimeValue(message, ['target_label', 'targetLabel', 'label', 'app_name', 'appName']) || screenTimeTargetLabel(targetKind, targetIndex),
-      app_name: screenTimeValue(message, ['app_name', 'appName']) || '',
-      threshold_minutes: thresholdMinutes,
-      duration_lower_bound_seconds: lowerBoundSeconds,
-      event_name: eventName,
-      activity: screenTimeValue(message, ['activity', 'activity_name', 'activityName']) || '',
-      raw: message,
-    };
-  }
-
-  if (event === 'screen_time_selection_updated') {
-    return {
-      id: row.id,
-      study_id: row.study_id,
-      device_id: row.device_id,
-      timestamp: row.timestamp,
-      created_at: row.created_at,
-      type: 'selection_updated',
-      target_kind: 'selection',
-      target_index: null,
-      target_label: 'Tracked selection changed',
-      selected_app_count: parseOptionalNumber(screenTimeValue(message, ['selected_app_count', 'selectedAppCount', 'application_count', 'applicationCount'])) || 0,
-      selected_category_count: parseOptionalNumber(screenTimeValue(message, ['selected_category_count', 'selectedCategoryCount', 'category_count', 'categoryCount'])) || 0,
-      selected_web_count: parseOptionalNumber(screenTimeValue(message, ['selected_web_count', 'selectedWebCount', 'web_count', 'webCount'])) || 0,
-      raw: message,
-    };
-  }
-
-  if (event === 'screen_time_labels_updated') {
-    const labels = parseJsonArray(screenTimeValue(message, ['labels_json', 'labelsJson', 'labels']));
-    if (labels.length) {
-      return {
-        id: row.id,
-        study_id: row.study_id,
-        device_id: row.device_id,
-        timestamp: row.timestamp,
-        created_at: row.created_at,
-        type: 'labels_updated',
-        target_kind: 'selection',
-        target_index: null,
-        target_label: 'Participant app labels updated',
-        labels,
-        raw: message,
-      };
-    }
-    return {
-      id: row.id,
-      study_id: row.study_id,
-      device_id: row.device_id,
-      timestamp: row.timestamp,
-      created_at: row.created_at,
-      type: 'labels_updated',
-      target_kind: 'selection',
-      target_index: null,
-      target_label: 'Participant app labels updated',
-      labels,
-      raw: message,
-    };
-  }
-
-  if (event === 'screen_time_report_app_usage' ||
-      event === 'screen_time_report_category_usage' ||
-      looksLikeAppUsageSummary(message)) {
-    const rawTargetKind = screenTimeValue(message, ['target_kind', 'targetKind', 'kind']);
-    const targetKind = rawTargetKind
-      ? normalizeScreenTimeTargetKind(rawTargetKind)
-      : 'app';
-    const targetIndex = parseOptionalInteger(screenTimeValue(message, ['target_index', 'targetIndex', 'index']));
-    const appName = screenTimeValue(message, ['app_name', 'appName', 'localizedDisplayName', 'displayName', 'applicationName', 'name']);
-    const bundleIdentifier = screenTimeValue(message, ['bundle_identifier', 'bundleIdentifier', 'bundleId', 'applicationIdentifier']);
-    const durationSeconds = parseDurationSeconds(screenTimeValue(message, [
-      'duration_seconds',
-      'durationSeconds',
-      'duration_lower_bound_seconds',
-      'durationLowerBoundSeconds',
-      'totalActivityDuration',
-      'total_activity_duration',
-      'usage_seconds',
-      'usageSeconds',
-      'seconds',
-      'duration',
-    ]));
-    return {
-      id: row.id,
-      study_id: row.study_id,
-      device_id: row.device_id,
-      timestamp: parseOptionalNumber(screenTimeValue(message, ['event_timestamp', 'eventTimestamp', 'timestamp'])) || row.timestamp,
-      created_at: row.created_at,
-      type: targetKind === 'category' ? 'category_usage_summary' : 'app_usage_summary',
-      target_kind: targetKind,
-      target_index: targetIndex,
-      target_label: screenTimeValue(message, ['target_label', 'targetLabel', 'label']) || appName || bundleIdentifier || screenTimeTargetLabel(targetKind, targetIndex),
-      app_name: appName || '',
-      app_label_source: appName ? 'device_activity_report' : '',
-      bundle_identifier: bundleIdentifier || '',
-      duration_seconds: durationSeconds || 0,
-      pickups: parseOptionalNumber(screenTimeValue(message, ['pickups', 'numberOfPickups', 'pickup_count', 'pickupCount'])) || 0,
-      notifications: parseOptionalNumber(screenTimeValue(message, ['notifications', 'numberOfNotifications', 'notification_count', 'notificationCount'])) || 0,
-      interval_start: parseOptionalNumber(screenTimeValue(message, ['interval_start', 'intervalStart', 'start', 'start_time', 'startTime'])) || null,
-      interval_end: parseOptionalNumber(screenTimeValue(message, ['interval_end', 'intervalEnd', 'end', 'end_time', 'endTime'])) || null,
-      raw: message,
-    };
-  }
-
-  return null;
-}
-
-function looksLikeScreenTimeLog(message, rawMessage) {
-  if (screenTimeValue(message, ['class']) === 'SpecificAppUsageManager') return true;
-  if (looksLikeAppUsageSummary(message)) return true;
-  const text = String(rawMessage || '').toLowerCase();
-  return text.includes('screen_time') ||
-    text.includes('screentime') ||
-    text.includes('selected_app') ||
-    text.includes('selectedapp') ||
-    text.includes('specificappusagemanager') ||
-    text.includes('deviceactivity') ||
-    text.includes('familyactivity');
-}
-
-function screenTimeParseReason(message) {
-  if (!message) return 'log_message is not valid JSON';
-  const event = screenTimeValue(message, ['event', 'name', 'notification', 'type']);
-  const klass = screenTimeValue(message, ['class', 'source', 'logger']);
-  if (!event && !looksLikeAppUsageSummary(message)) return `no recognizable Screen Time event; class=${klass || 'missing'}`;
-  return `unrecognized event: ${event || 'missing'}; class=${klass || 'missing'}`;
-}
-
-function stringifyRawLogMessage(value) {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function extractNestedScreenTimeObjects(root) {
-  const results = [];
-  const seen = new Set();
-
-  function visit(value, depth = 0) {
-    if (depth > 8 || value === null || value === undefined) return;
-
-    if (typeof value === 'string') {
-      const parsed = parseLogMessage(value);
-      if (parsed && parsed !== value) visit(parsed, depth + 1);
-      return;
-    }
-
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item, depth + 1);
-      return;
-    }
-
-    if (typeof value !== 'object') return;
-    if (seen.has(value)) return;
-    seen.add(value);
-
-    if (value !== root && looksLikeScreenTimeObject(value)) {
-      results.push(value);
-    }
-
-    for (const child of Object.values(value)) {
-      visit(child, depth + 1);
-    }
-  }
-
-  visit(root);
-  return results;
-}
-
-function looksLikeScreenTimeObject(value) {
-  return looksLikeAppUsageSummary(value) ||
-    normalizedScreenTimeEvent(value).startsWith('screen_time_') ||
-    hasAnyScreenTimeKey(value, [
-      'threshold_minutes',
-      'thresholdMinutes',
-      'target_kind',
-      'targetKind',
-      'duration_seconds',
-      'durationSeconds',
-      'totalActivityDuration',
-      'bundleIdentifier',
-      'bundle_identifier',
-      'appName',
-      'app_name',
-    ]);
-}
-
-function normalizedScreenTimeEvent(message) {
-  return String(screenTimeValue(message, ['event', 'name', 'type']) || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[-\s]+/g, '_');
-}
-
-function looksLikeAppUsageSummary(message) {
-  if (!message || typeof message !== 'object') return false;
-  const event = normalizedScreenTimeEvent(message);
-  if (event.includes('screen_time_report_app_usage') ||
-      event.includes('screen_time_report_category_usage') ||
-      event.includes('category_usage_summary') ||
-      event.includes('app_usage_summary') ||
-      event.includes('report_app_usage')) {
-    return true;
-  }
-  const hasDuration = hasAnyScreenTimeKey(message, [
-    'duration_seconds',
-    'durationSeconds',
-    'totalActivityDuration',
-    'total_activity_duration',
-    'usage_seconds',
-    'usageSeconds',
-    'seconds',
-    'duration',
-  ]);
-  const hasAppIdentity = hasAnyScreenTimeKey(message, [
-    'app_name',
-    'appName',
-    'localizedDisplayName',
-    'displayName',
-    'applicationName',
-    'bundle_identifier',
-    'bundleIdentifier',
-    'bundleId',
-    'applicationIdentifier',
-    'target_label',
-    'targetLabel',
-  ]);
-  return hasDuration && hasAppIdentity;
-}
-
-function hasAnyScreenTimeKey(message, keys) {
-  return Boolean(screenTimeValue(message, keys) !== undefined);
-}
-
-function screenTimeValue(message, keys) {
-  if (!message || typeof message !== 'object') return undefined;
-  for (const key of keys) {
-    if (Object.prototype.hasOwnProperty.call(message, key)) return message[key];
-  }
-  const lowerMap = new Map(Object.keys(message).map((key) => [key.toLowerCase(), key]));
-  for (const key of keys) {
-    const actual = lowerMap.get(String(key).toLowerCase());
-    if (actual) return message[actual];
-  }
-  return undefined;
-}
-
-function parseOptionalNumber(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-function parseDurationSeconds(value) {
-  const number = parseOptionalNumber(value);
-  if (number === null) return null;
-  // DeviceActivity reports seconds. If a future client sends milliseconds,
-  // normalize obviously large sub-day values to seconds.
-  return number > 86400 ? number / 1000 : number;
-}
-
-function sortAppUsageRows(a, b) {
-  const durationDiff = Number(b.duration_seconds || b.duration_lower_bound_seconds || 0) -
-    Number(a.duration_seconds || a.duration_lower_bound_seconds || 0);
-  if (durationDiff !== 0) return durationDiff;
-  return Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0);
-}
-
-function parseLogMessage(value) {
-  if (!value) return null;
-  let current = value;
-  for (let i = 0; i < 4; i += 1) {
-    if (current && typeof current === 'object') return current;
-    if (typeof current !== 'string') return null;
-    const trimmed = current.trim();
-    if (!trimmed) return null;
-    try {
-      current = JSON.parse(trimmed);
-    } catch {
-      return null;
-    }
-  }
-  return current && typeof current === 'object' ? current : null;
-}
-
-function parseJsonArray(value) {
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(String(value));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function normalizeScreenTimeTargetKind(value) {
-  const kind = String(value || '').toLowerCase();
-  if (['app', 'application', 'applications', 'selected_app', 'selectedapp'].includes(kind)) return 'app';
-  if (['website', 'web_domain', 'webdomain', 'domain'].includes(kind)) return 'web';
-  if (['app', 'category', 'web', 'aggregate', 'selection'].includes(kind)) return kind;
-  return 'aggregate';
-}
-
-function parseOptionalInteger(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
-  return Number.isInteger(number) ? number : null;
-}
-
-function screenTimeTargetLabel(kind, index) {
-  if (kind === 'aggregate') return 'Selected apps total';
-  const number = Number.isInteger(index) ? index + 1 : '';
-  if (kind === 'app') return `App ${number}`.trim();
-  if (kind === 'category') return `Category ${number}`.trim();
-  if (kind === 'web') return `Website ${number}`.trim();
-  return 'Selection';
 }
 
 async function imageFromEsmRow(studyId, sensor, rowId) {
