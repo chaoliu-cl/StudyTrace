@@ -146,7 +146,16 @@ async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screen
   await hydrateAuthenticatedImages(screenshotTable);
 }
 
-const batteryScreenshotQuestions = [
+const defaultSurveyQuestions = [
+  {
+    esm_type: 2,
+    esm_title: 'Current activity',
+    esm_instructions: 'What are you doing right now?',
+    esm_radios: ['Working or studying', 'Resting', 'Commuting', 'Socializing', 'Other'],
+    esm_trigger: 'current_activity',
+    esm_submit: 'Next',
+    esm_na: true,
+  },
   {
     esm_type: 14,
     esm_title: 'Battery usage screenshot',
@@ -156,6 +165,11 @@ const batteryScreenshotQuestions = [
     esm_na: true,
   },
 ];
+
+function unwrapEsmQuestions(esms) {
+  return (Array.isArray(esms) && esms.length ? esms : defaultSurveyQuestions)
+    .map((item) => item?.esm || item);
+}
 
 function fillScheduleForm(form, schedule) {
   const first = Array.isArray(schedule) ? schedule[0] : null;
@@ -169,6 +183,9 @@ function fillScheduleForm(form, schedule) {
   form.elements.notification_body.value = first?.notification_body || 'Please upload your iOS Battery usage screenshot.';
   form.elements.start_date.value = first?.start_date || '';
   form.elements.end_date.value = first?.end_date || '';
+  if (form.elements.esms_json) {
+    form.elements.esms_json.value = JSON.stringify(unwrapEsmQuestions(first?.esms), null, 2);
+  }
 }
 
 async function loadBatterySchedule({ studyId, password, form, result, message }) {
@@ -177,7 +194,7 @@ async function loadBatterySchedule({ studyId, password, form, result, message })
   });
   const payload = await readJson(res);
   if (!res.ok) {
-    setMessage(message, payload.error || 'Could not load Battery screenshot prompt schedule.', true);
+    setMessage(message, payload.error || 'Could not load survey delivery schedule.', true);
     return;
   }
   fillScheduleForm(form, payload.esm_schedule || []);
@@ -187,7 +204,7 @@ async function loadBatterySchedule({ studyId, password, form, result, message })
 async function saveBatterySchedule({ studyId, password, form, result, message }) {
   const formData = new FormData(form);
   const body = Object.fromEntries(formData.entries());
-  body.esms = batteryScreenshotQuestions;
+  if (!body.esms_json) body.esms = defaultSurveyQuestions;
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/esm-schedule`, {
     method: 'PUT',
     headers: {
@@ -199,10 +216,10 @@ async function saveBatterySchedule({ studyId, password, form, result, message })
   const payload = await readJson(res);
   result.textContent = JSON.stringify(payload.schedule_summary || payload, null, 2);
   if (!res.ok) {
-    setMessage(message, payload.error || 'Could not save Battery screenshot prompt schedule.', true);
+    setMessage(message, payload.error || 'Could not save survey delivery schedule.', true);
     return false;
   }
-  setMessage(message, 'Battery screenshot prompt schedule saved.');
+  setMessage(message, 'Survey delivery schedule saved. Ask participants to open StudyTrace once so the phone refreshes the new notification schedule.');
   return true;
 }
 
@@ -241,8 +258,8 @@ function initResearcher() {
   const esmResponses = document.querySelector('#researcher-esm-responses');
   const batteryUsageCleaned = document.querySelector('#researcher-battery-usage-cleaned');
   const batteryUsageScreenshots = document.querySelector('#researcher-battery-usage-screenshots');
-  const batteryScheduleForm = document.querySelector('#researcher-battery-schedule');
-  const batteryScheduleResult = document.querySelector('#researcher-battery-schedule-result');
+  const batteryScheduleForm = document.querySelector('#researcher-esm-schedule');
+  const batteryScheduleResult = document.querySelector('#researcher-esm-schedule-result');
   let currentStudyId = '';
   let currentPassword = '';
 
@@ -308,7 +325,7 @@ function initResearcher() {
   batteryScheduleForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!currentStudyId || !currentPassword) {
-      return setMessage(message, 'Load a study before saving the Battery screenshot prompt schedule.', true);
+      return setMessage(message, 'Load a study before saving the survey delivery schedule.', true);
     }
     await saveBatterySchedule({
       studyId: currentStudyId,
@@ -361,34 +378,7 @@ function initAdmin() {
   const sensors = document.querySelector('#admin-sensors');
   const createForm = document.querySelector('#admin-create-study');
   const createResult = document.querySelector('#admin-create-result');
-  const scheduleForm = document.querySelector('#admin-esm-schedule');
-  const scheduleResult = document.querySelector('#admin-esm-schedule-result');
   let token = '';
-
-  const defaultEsmQuestions = [
-    {
-      esm_type: 2,
-      esm_title: 'Current activity',
-      esm_instructions: 'What are you doing right now?',
-      esm_radios: ['Working or studying', 'Resting', 'Commuting', 'Socializing', 'Other'],
-      esm_trigger: 'current_activity',
-      esm_submit: 'Next',
-      esm_na: true,
-    },
-    {
-      esm_type: 14,
-      esm_title: 'Battery usage screenshot',
-      esm_instructions: 'Open iPhone Settings → Battery → View All Battery Usage. Take a screenshot showing app battery usage and screen time, then upload that screenshot here.',
-      esm_trigger: 'battery_usage_screenshot',
-      esm_submit: 'Submit',
-      esm_na: true,
-    },
-  ];
-
-  scheduleForm.elements.times.value = '09:30, 17:15';
-  scheduleForm.elements.notification_title.value = 'StudyTrace Battery screenshot';
-  scheduleForm.elements.notification_body.value = 'Please upload your iOS Battery usage screenshot.';
-  scheduleForm.elements.esms_json.value = JSON.stringify(defaultEsmQuestions, null, 2);
 
   async function refresh() {
     const headers = { 'x-admin-token': token };
@@ -468,31 +458,6 @@ function initAdmin() {
     }
     createResult.textContent = JSON.stringify(payload, null, 2);
     await refresh();
-  });
-
-  scheduleForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!token) {
-      return setMessage(authMessage, 'Load the admin console first.', true);
-    }
-    const formData = new FormData(scheduleForm);
-    const studyId = String(formData.get('study_id') || '').trim();
-    const body = Object.fromEntries(formData.entries());
-    const res = await fetch(`/admin/studies/${encodeURIComponent(studyId)}/esm-schedule`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-token': token,
-      },
-      body: JSON.stringify(body),
-    });
-    const payload = await readJson(res);
-    scheduleResult.textContent = JSON.stringify(payload, null, 2);
-    if (!res.ok) {
-      return setMessage(authMessage, payload.error || 'Could not save survey schedule.', true);
-    }
-    await refresh();
-    setMessage(authMessage, 'Survey delivery schedule saved.');
   });
 
   document.addEventListener('click', async (event) => {

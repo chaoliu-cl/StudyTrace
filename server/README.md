@@ -50,7 +50,7 @@ points the iPhone app to the study's hosted ESM schedule:
 /index.php/webservice/index/{STUDY_ID}/{PASSWORD}/esm/config
 ```
 
-Use `/admin/` to create or update the study's **Survey delivery schedule**:
+Use `/researcher/` to create or update the study's **Survey delivery schedule**:
 
 - `Fixed schedule` sends notifications at the listed 24-hour times, e.g.
   `09:30, 17:15`.

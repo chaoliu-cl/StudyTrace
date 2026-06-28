@@ -55,6 +55,86 @@ static ESMScheduleManager * sharedESMScheduleManager;
     return self;
 }
 
+- (NSArray<NSDateComponents *> *)normalizedScheduleTimesFromTimes:(NSArray *)times hours:(NSArray *)hours {
+    NSMutableArray<NSDateComponents *> *components = [[NSMutableArray alloc] init];
+    NSMutableSet<NSString *> *seen = [[NSMutableSet alloc] init];
+
+    for (id value in times) {
+        NSDateComponents *time = [self scheduleTimeFromValue:value];
+        if (time != nil) {
+            NSString *key = [NSString stringWithFormat:@"%02ld:%02ld", (long)time.hour, (long)time.minute];
+            if (![seen containsObject:key]) {
+                [components addObject:time];
+                [seen addObject:key];
+            }
+        }
+    }
+
+    if (components.count == 0) {
+        for (id hour in hours) {
+            NSDateComponents *time = [self scheduleTimeFromValue:hour];
+            if (time != nil) {
+                NSString *key = [NSString stringWithFormat:@"%02ld:%02ld", (long)time.hour, (long)time.minute];
+                if (![seen containsObject:key]) {
+                    [components addObject:time];
+                    [seen addObject:key];
+                }
+            }
+        }
+    }
+
+    return components;
+}
+
+- (NSDateComponents *)scheduleTimeFromValue:(id)value {
+    NSInteger hour = -1;
+    NSInteger minute = 0;
+
+    if ([value isKindOfClass:[NSNumber class]]) {
+        hour = [value integerValue];
+    } else if ([value isKindOfClass:[NSString class]]) {
+        NSString *text = [(NSString *)value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        NSArray<NSString *> *parts = [text componentsSeparatedByString:@":"];
+        if (parts.count == 1) {
+            hour = [parts[0] integerValue];
+        } else if (parts.count == 2) {
+            hour = [parts[0] integerValue];
+            minute = [parts[1] integerValue];
+        }
+    }
+
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        return nil;
+    }
+
+    NSDateComponents *components = [[NSDateComponents alloc] init];
+    components.hour = hour;
+    components.minute = minute;
+    components.second = 0;
+    return components;
+}
+
+- (NSDate *)targetDateFromDate:(NSDate *)date hour:(NSInteger)hour minute:(NSInteger)minute nextDay:(BOOL)nextDay {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *components = [calendar components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay fromDate:date];
+    components.hour = hour;
+    components.minute = minute;
+    components.second = 0;
+    NSDate *target = [calendar dateFromComponents:components];
+    if (nextDay) {
+        target = [calendar dateByAddingUnit:NSCalendarUnitDay value:1 toDate:target options:0];
+    }
+    return target;
+}
+
+- (NSDate *)nextFutureDateFromDate:(NSDate *)date hour:(NSInteger)hour minute:(NSInteger)minute {
+    NSDate *target = [self targetDateFromDate:date hour:hour minute:minute nextDay:NO];
+    if (target.timeIntervalSince1970 <= date.timeIntervalSince1970) {
+        target = [self targetDateFromDate:date hour:hour minute:minute nextDay:YES];
+    }
+    return target;
+}
+
 
 - (BOOL) setScheduleByConfig:(NSArray <NSDictionary * > * _Nonnull) config {
     NSManagedObjectContext * context = [[NSManagedObjectContext alloc] initWithConcurrencyType:NSMainQueueConcurrencyType];
@@ -64,6 +144,8 @@ static ESMScheduleManager * sharedESMScheduleManager;
     
     for (NSDictionary * schedule in config ) {
         NSArray * hours = [schedule objectForKey:@"hours"];
+        NSArray * times = [schedule objectForKey:@"times"];
+        NSArray<NSDateComponents *> *scheduleTimes = [self normalizedScheduleTimesFromTimes:times hours:hours];
         // NSArray * weekdays = [schedule objectForKey:@"weekdays"];
         // NSArray * months = [schedule objectForKey:@"months"];
         NSArray * esms = [schedule objectForKey:@"esms"];
@@ -104,17 +186,20 @@ static ESMScheduleManager * sharedESMScheduleManager;
         if(interface == nil) interface = @0;
         // NSLog(@"interface: %@", interface);
         
-        for (NSNumber * hour in hours) {
+        for (NSDateComponents * scheduleTime in scheduleTimes) {
+            NSNumber *hour = @(scheduleTime.hour);
+            NSNumber *minute = @(scheduleTime.minute);
             EntityESMSchedule * entityESMSchedule = (EntityESMSchedule *) [NSEntityDescription insertNewObjectForEntityForName:NSStringFromClass([EntityESMSchedule class])
                                                                                                         inManagedObjectContext:context];
             entityESMSchedule.fire_hour  = hour;
+            entityESMSchedule.timer = scheduleTime;
             entityESMSchedule.expiration_threshold = expiration;
             entityESMSchedule.start_date = startDate;
             entityESMSchedule.end_date   = endDate;
             entityESMSchedule.notification_title = notificationTitle;
             entityESMSchedule.notification_body  = notificationBody;
             entityESMSchedule.randomize_schedule = randomize_schedule;
-            entityESMSchedule.schedule_id = scheduleId;
+            entityESMSchedule.schedule_id = [NSString stringWithFormat:@"%@_%02d%02d", scheduleId, hour.intValue, minute.intValue];
             entityESMSchedule.contexts    = eventContext;
             entityESMSchedule.interface   = interface;
             
@@ -488,7 +573,7 @@ Transfer parameters in ESMSchdule to EntityESMSchedule instance.
         }
         
         /**  Timer Based ESM */
-        if( timer != nil ){
+        if( timer != nil && hour.intValue == -1 ){
             isValidSchedule = [self isValidTimerBasedESMSchedule:schedule history:answerHistory targetDatetime:datetime];
         } else if(hour.intValue == -1){
             isValidSchedule = YES;
@@ -536,8 +621,13 @@ Transfer parameters in ESMSchdule to EntityESMSchedule instance.
 
     NSDate * now = [NSDate date];
     NSNumber * fireHour = schedule.fire_hour;
-    NSDate * targetDateInToday       = [AWAREUtils getTargetNSDate:now hour:[fireHour intValue] nextDay:NO];
-    NSDate * targetDateInNextday     = [AWAREUtils getTargetNSDate:now hour:[fireHour intValue] nextDay:YES];
+    NSInteger fireMinute = 0;
+    if ([schedule.timer isKindOfClass:[NSDateComponents class]]) {
+        NSDateComponents *timer = (NSDateComponents *)schedule.timer;
+        fireMinute = timer.minute;
+    }
+    NSDate * targetDateInToday       = [self targetDateFromDate:now hour:[fireHour intValue] minute:fireMinute nextDay:NO];
+    NSDate * targetDateInNextday     = [self targetDateFromDate:now hour:[fireHour intValue] minute:fireMinute nextDay:YES];
     
     double nowUnix = now.timeIntervalSince1970;
     
@@ -618,9 +708,14 @@ Transfer parameters in ESMSchdule to EntityESMSchedule instance.
     if(randomize == nil) randomize = @0;
 
     NSNumber * fireHour   = schedule.fire_hour;
+    NSInteger fireMinute = 0;
+    if ([schedule.timer isKindOfClass:[NSDateComponents class]]) {
+        NSDateComponents *timer = (NSDateComponents *)schedule.timer;
+        fireMinute = timer.minute;
+    }
     NSNumber * expiration = schedule.expiration_threshold;
-    NSDate   * fireDate   = [AWAREUtils getTargetNSDate:[NSDate new] hour:[fireHour intValue] nextDay:YES];
-    NSDate   * originalFireDate = [AWAREUtils getTargetNSDate:[NSDate new] hour:[fireHour intValue] nextDay:YES];
+    NSDate   * fireDate   = [self nextFutureDateFromDate:[NSDate new] hour:[fireHour intValue] minute:fireMinute];
+    NSDate   * originalFireDate = [self nextFutureDateFromDate:[NSDate new] hour:[fireHour intValue] minute:fireMinute];
     NSString * scheduleId = schedule.schedule_id;
     NSNumber * interface  = schedule.interface;
     bool repeat = YES;
@@ -631,7 +726,8 @@ Transfer parameters in ESMSchdule to EntityESMSchedule instance.
     if(![randomize isEqualToNumber:@0]){
         // Make a andom date
         int randomMin = (int)[self randomNumberBetween:-1*randomize.intValue maxNumber:randomize.intValue];
-        fireDate = [AWAREUtils getTargetNSDate:[NSDate new] hour:[fireHour intValue] minute:randomMin second:0 nextDay:YES];
+        NSDate *baseFireDate = [self nextFutureDateFromDate:[NSDate new] hour:[fireHour intValue] minute:fireMinute];
+        fireDate = [baseFireDate dateByAddingTimeInterval:randomMin * 60];
     }
 
     // The fireData is Valid Time?
@@ -671,7 +767,7 @@ Transfer parameters in ESMSchdule to EntityESMSchedule instance.
     NSDateComponents *components = [calendar components:NSCalendarUnitHour|NSCalendarUnitMinute|NSCalendarUnitSecond fromDate:fireDate];
     UNCalendarNotificationTrigger * trigger = [UNCalendarNotificationTrigger triggerWithDateMatchingComponents:components repeats:repeat];
 
-    NSString *notificationId = [NSString stringWithFormat:@"%@_%@_%@",KEY_AWARE_NOTIFICATION_DEFAULT_REQUEST_IDENTIFIER,fireHour.stringValue,schedule.schedule_id];
+    NSString *notificationId = [NSString stringWithFormat:@"%@_%@_%02ld_%@",KEY_AWARE_NOTIFICATION_DEFAULT_REQUEST_IDENTIFIER,fireHour.stringValue,(long)fireMinute,schedule.schedule_id];
     
     UNNotificationRequest    * request = [UNNotificationRequest requestWithIdentifier:notificationId content:content trigger:trigger];
     UNUserNotificationCenter * center  = [UNUserNotificationCenter currentNotificationCenter];

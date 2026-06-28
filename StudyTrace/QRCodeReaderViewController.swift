@@ -82,6 +82,9 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
             if let hours = schedule["hours"] as? [NSNumber] {
                 return !hours.isEmpty
             }
+            if let times = schedule["times"] as? [String] {
+                return !times.isEmpty
+            }
             return false
         }
     }

@@ -66,11 +66,11 @@
       <section class="panel">
         <div class="section-head">
           <div>
-            <h2>Battery screenshot prompt schedule</h2>
-            <p class="section-note">Set when participants receive the survey prompt to upload Settings → Battery → View All Battery Usage screenshots. Fixed mode sends at exact times; random mode jitters around those times by the selected window.</p>
+            <h2>Survey delivery schedule</h2>
+            <p class="section-note">Set when participants receive study surveys through app notifications. Fixed mode sends at exact times; random mode jitters around those times by the selected window. Use <code>esm_type: 14</code> for an in-survey Battery screenshot upload question.</p>
           </div>
         </div>
-        <form id="researcher-battery-schedule" class="stack">
+        <form id="researcher-esm-schedule" class="stack">
           <label>
             <span>Delivery mode</span>
             <select name="mode">
@@ -85,9 +85,13 @@
           <label><span>Notification body</span><input name="notification_body" value="Please upload your iOS Battery usage screenshot."></label>
           <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
           <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
-          <button class="button button-primary" type="submit">Save Battery screenshot prompt schedule</button>
+          <label>
+            <span>Survey questions JSON</span>
+            <textarea name="esms_json" rows="16" spellcheck="false"></textarea>
+          </label>
+          <button class="button button-primary" type="submit">Save survey delivery schedule</button>
         </form>
-        <pre id="researcher-battery-schedule-result" class="result-box"></pre>
+        <pre id="researcher-esm-schedule-result" class="result-box"></pre>
       </section>
 
       <section class="panel">

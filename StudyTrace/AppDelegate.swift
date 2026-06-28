@@ -117,13 +117,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
-        refreshRemoteESMScheduleIfNeeded(force: false)
+        refreshRemoteESMScheduleIfNeeded(force: true)
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationWillEnterForeground:"]);
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        refreshRemoteESMScheduleIfNeeded(force: false)
+        refreshRemoteESMScheduleIfNeeded(force: true)
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationDidBecomeActive:"]);
     }
@@ -191,6 +191,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                                 fitbitPresenter: self.window?.rootViewController,
                                 createRemoteTables: true
                             )
+                            self.refreshRemoteESMScheduleIfNeeded(force: true)
                         }
                     }
                 }else {
