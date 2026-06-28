@@ -66,11 +66,12 @@
       <section class="panel">
         <div class="section-head">
           <div>
-            <h2>Survey delivery schedule</h2>
-            <p class="section-note">Set when participants receive study surveys through app notifications. Fixed mode sends at exact times; random mode jitters around those times by the selected window. Use <code>esm_type: 14</code> for an in-survey Battery screenshot upload question.</p>
+            <h2>ESM survey notifications</h2>
+            <p class="section-note">Schedule ordinary ESM survey prompts. Fixed mode sends at exact times; random mode jitters around those times by the selected window.</p>
           </div>
         </div>
         <form id="researcher-esm-schedule" class="stack">
+          <input type="hidden" name="prompt_type" value="esm_survey">
           <label>
             <span>Delivery mode</span>
             <select name="mode">
@@ -81,17 +82,49 @@
           <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="09:30, 17:15" required></label>
           <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
           <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="120"></label>
-          <label><span>Notification title</span><input name="notification_title" value="StudyTrace Battery screenshot"></label>
-          <label><span>Notification body</span><input name="notification_body" value="Please upload your iOS Battery usage screenshot."></label>
+          <label><span>Notification title</span><input name="notification_title" value="StudyTrace survey available"></label>
+          <label><span>Notification body</span><input name="notification_body" value="Please complete your scheduled study survey."></label>
           <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
           <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
           <label>
             <span>Survey questions JSON</span>
             <textarea name="esms_json" rows="16" spellcheck="false"></textarea>
           </label>
-          <button class="button button-primary" type="submit">Save survey delivery schedule</button>
+          <button class="button button-primary" type="submit">Save ESM survey schedule</button>
         </form>
         <pre id="researcher-esm-schedule-result" class="result-box"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Battery screenshot notifications</h2>
+            <p class="section-note">Schedule prompts that ask participants to upload Settings → Battery → View All Battery Usage screenshots. This section uses an <code>esm_type: 14</code> photo question.</p>
+          </div>
+        </div>
+        <form id="researcher-battery-schedule" class="stack">
+          <input type="hidden" name="prompt_type" value="battery_usage_screenshot">
+          <label>
+            <span>Delivery mode</span>
+            <select name="mode">
+              <option value="fixed">Fixed exact times</option>
+              <option value="random">Randomized around listed times</option>
+            </select>
+          </label>
+          <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="20:30" required></label>
+          <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
+          <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="120"></label>
+          <label><span>Notification title</span><input name="notification_title" value="StudyTrace Battery screenshot"></label>
+          <label><span>Notification body</span><input name="notification_body" value="Please upload your iOS Battery usage screenshot."></label>
+          <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
+          <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
+          <label>
+            <span>Battery screenshot question JSON</span>
+            <textarea name="esms_json" rows="10" spellcheck="false"></textarea>
+          </label>
+          <button class="button button-primary" type="submit">Save Battery screenshot schedule</button>
+        </form>
+        <pre id="researcher-battery-schedule-result" class="result-box"></pre>
       </section>
 
       <section class="panel">

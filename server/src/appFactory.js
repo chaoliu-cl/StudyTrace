@@ -300,7 +300,8 @@ export function createApp() {
 
   app.put('/api/v1/studies/:studyId/esm-schedule', requireStudyPassword, async (req, res) => {
     try {
-      const esmSchedule = buildEsmScheduleFromRequest(req.body || {});
+      const existingSchedule = Array.isArray(req.study?.config?.esm_schedule) ? req.study.config.esm_schedule : [];
+      const esmSchedule = mergeScheduleSlot(existingSchedule, buildEsmScheduleFromRequest(req.body || {})[0]);
       const updated = await updateStudyConfig(req.params.studyId, { esm_schedule: esmSchedule });
       res.json(scheduleResponse(updated));
     } catch (err) {
@@ -480,6 +481,7 @@ function scheduleResponse(study) {
 function summarizeEsmSchedule(schedule) {
   return schedule.map((item) => ({
     schedule_id: item.schedule_id,
+    prompt_type: item.studytrace_prompt_type || '',
     mode: item.studytrace_delivery_mode || (Number(item.randomize || 0) > 0 ? 'random' : 'fixed'),
     times: Array.isArray(item.times) && item.times.length
       ? item.times
@@ -494,19 +496,20 @@ function summarizeEsmSchedule(schedule) {
 
 function buildEsmScheduleFromRequest(body) {
   const mode = body.mode === 'random' ? 'random' : 'fixed';
+  const promptType = normalizePromptType(body.prompt_type || body.studytrace_prompt_type);
   const promptTimes = parsePromptTimes(body.times || body.hours);
   const randomMinutes = mode === 'random'
     ? clampInteger(body.randomize_minutes, 1, 180, 30)
     : 0;
-  const scheduleId = sanitizeScheduleId(body.schedule_id || `studytrace_${mode}_battery_screenshot`);
-  const esms = parseEsmQuestions(body);
+  const scheduleId = sanitizeScheduleId(body.schedule_id || `studytrace_${mode}_${scheduleSlugForPrompt(promptType)}`);
+  const esms = parseEsmQuestions(body, promptType);
 
   return [
     {
       schedule_id: scheduleId,
       hours: promptTimes.hours,
       times: promptTimes.times,
-      studytrace_prompt_type: 'battery_usage_screenshot',
+      studytrace_prompt_type: promptType,
       studytrace_delivery_mode: mode,
       randomize: randomMinutes,
       expiration: clampInteger(body.expiration_minutes, 0, 1440, mode === 'random' ? randomMinutes * 2 : 120),
@@ -518,6 +521,31 @@ function buildEsmScheduleFromRequest(body) {
       esms,
     },
   ];
+}
+
+function mergeScheduleSlot(existingSchedule, updatedSchedule) {
+  const promptType = updatedSchedule.studytrace_prompt_type;
+  const withoutSlot = existingSchedule.filter((item) => {
+    if (item.studytrace_prompt_type) return item.studytrace_prompt_type !== promptType;
+    if (promptType === 'battery_usage_screenshot') {
+      return !String(item.schedule_id || '').includes('battery_screenshot');
+    }
+    if (promptType === 'esm_survey') {
+      return !String(item.schedule_id || '').includes('esm_survey');
+    }
+    return true;
+  });
+  return [...withoutSlot, updatedSchedule];
+}
+
+function normalizePromptType(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (text === 'esm' || text === 'esm_survey' || text === 'survey') return 'esm_survey';
+  return 'battery_usage_screenshot';
+}
+
+function scheduleSlugForPrompt(promptType) {
+  return promptType === 'esm_survey' ? 'esm_survey' : 'battery_screenshot';
 }
 
 function parsePromptTimes(value) {
@@ -555,7 +583,7 @@ function parsePromptTime(value) {
   };
 }
 
-function parseEsmQuestions(body) {
+function parseEsmQuestions(body, promptType = 'battery_usage_screenshot') {
   if (Array.isArray(body.esms)) return normalizeEsmArray(body.esms);
   if (body.esms_json) {
     try {
@@ -565,7 +593,7 @@ function parseEsmQuestions(body) {
       throw httpError(400, 'esms_json must be valid JSON');
     }
   }
-  return normalizeEsmArray(defaultEsmQuestions());
+  return normalizeEsmArray(defaultEsmQuestions(promptType));
 }
 
 function normalizeEsmArray(value) {
@@ -593,17 +621,21 @@ function normalizeEsmArray(value) {
   });
 }
 
-function defaultEsmQuestions() {
+function defaultEsmQuestions(promptType = 'battery_usage_screenshot') {
+  if (promptType === 'esm_survey') {
+    return [
+      {
+        esm_type: 2,
+        esm_title: 'Current activity',
+        esm_instructions: 'What are you doing right now?',
+        esm_radios: ['Working or studying', 'Resting', 'Commuting', 'Socializing', 'Other'],
+        esm_trigger: 'current_activity',
+        esm_submit: 'Submit',
+        esm_na: true,
+      },
+    ];
+  }
   return [
-    {
-      esm_type: 2,
-      esm_title: 'Current activity',
-      esm_instructions: 'What are you doing right now?',
-      esm_radios: ['Working or studying', 'Resting', 'Commuting', 'Socializing', 'Other'],
-      esm_trigger: 'current_activity',
-      esm_submit: 'Next',
-      esm_na: true,
-    },
     {
       esm_type: 14,
       esm_title: 'Battery usage screenshot',

@@ -362,6 +362,7 @@ try {
 
   const researcherScheduleSave = await request('PUT', `${apiBase}/esm-schedule`, {
     body: JSON.stringify({
+      prompt_type: 'battery_usage_screenshot',
       mode: 'fixed',
       times: '08:45, 21:05',
       expiration_minutes: '180',
@@ -371,13 +372,38 @@ try {
     headers: jsonAuth,
   });
   assert.strictEqual(researcherScheduleSave.status, 200, 'researcher saves Battery prompt schedule');
-  assert.deepStrictEqual(researcherScheduleSave.json.esm_schedule[0].times, ['08:45', '21:05'], 'researcher schedule stores exact times');
-  assert.strictEqual(researcherScheduleSave.json.esm_schedule[0].studytrace_prompt_type, 'battery_usage_screenshot', 'researcher schedule is Battery prompt');
-  assert.strictEqual(researcherScheduleSave.json.esm_schedule[0].esms.length, 2, 'default Battery prompt survey questions saved');
+  const savedBatterySchedule = researcherScheduleSave.json.esm_schedule.find((item) => item.studytrace_prompt_type === 'battery_usage_screenshot');
+  assert.deepStrictEqual(savedBatterySchedule.times, ['08:45', '21:05'], 'researcher Battery schedule stores exact times');
+  assert.strictEqual(savedBatterySchedule.esms.length, 1, 'default Battery prompt survey question saved');
+  const researcherEsmScheduleSave = await request('PUT', `${apiBase}/esm-schedule`, {
+    body: JSON.stringify({
+      prompt_type: 'esm_survey',
+      mode: 'random',
+      times: '10:15',
+      randomize_minutes: '15',
+      notification_title: 'ESM check',
+      notification_body: 'Please answer the scheduled ESM survey.',
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(researcherEsmScheduleSave.status, 200, 'researcher saves ESM survey schedule');
+  assert.ok(
+    researcherEsmScheduleSave.json.esm_schedule.some((item) => item.studytrace_prompt_type === 'battery_usage_screenshot'),
+    'saving ESM schedule preserves Battery schedule'
+  );
+  const savedEsmSchedule = researcherEsmScheduleSave.json.esm_schedule.find((item) => item.studytrace_prompt_type === 'esm_survey');
+  assert.deepStrictEqual(savedEsmSchedule.times, ['10:15'], 'researcher ESM schedule stores exact times');
   const researcherScheduleGet = await request('GET', `${apiBase}/esm-schedule`, { headers: jsonAuth });
   assert.strictEqual(researcherScheduleGet.status, 200, 'researcher gets Battery prompt schedule');
-  assert.deepStrictEqual(researcherScheduleGet.json.schedule_summary[0].times, ['08:45', '21:05'], 'schedule summary exposes prompt times');
-  console.log('✓ researcher saves exact-time Battery screenshot prompt schedule');
+  assert.ok(
+    researcherScheduleGet.json.schedule_summary.some((item) => item.prompt_type === 'battery_usage_screenshot' && item.times.join(',') === '08:45,21:05'),
+    'schedule summary exposes Battery prompt times'
+  );
+  assert.ok(
+    researcherScheduleGet.json.schedule_summary.some((item) => item.prompt_type === 'esm_survey' && item.times.join(',') === '10:15'),
+    'schedule summary exposes ESM prompt times'
+  );
+  console.log('✓ researcher saves separate ESM and Battery screenshot schedules');
 
   const dashboardBeforeLegacyRows = await request('GET', `${apiBase}/dashboard/summary`, { headers: jsonAuth });
   assert.strictEqual(dashboardBeforeLegacyRows.status, 200, 'dashboard summary before legacy rows ok');

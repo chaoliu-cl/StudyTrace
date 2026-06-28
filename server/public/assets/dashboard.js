@@ -146,7 +146,7 @@ async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screen
   await hydrateAuthenticatedImages(screenshotTable);
 }
 
-const defaultSurveyQuestions = [
+const defaultEsmSurveyQuestions = [
   {
     esm_type: 2,
     esm_title: 'Current activity',
@@ -156,6 +156,9 @@ const defaultSurveyQuestions = [
     esm_submit: 'Next',
     esm_na: true,
   },
+];
+
+const defaultBatteryScreenshotQuestions = [
   {
     esm_type: 14,
     esm_title: 'Battery usage screenshot',
@@ -166,29 +169,41 @@ const defaultSurveyQuestions = [
   },
 ];
 
-function unwrapEsmQuestions(esms) {
-  return (Array.isArray(esms) && esms.length ? esms : defaultSurveyQuestions)
+function defaultQuestionsForPrompt(promptType) {
+  return promptType === 'esm_survey' ? defaultEsmSurveyQuestions : defaultBatteryScreenshotQuestions;
+}
+
+function unwrapEsmQuestions(esms, promptType) {
+  return (Array.isArray(esms) && esms.length ? esms : defaultQuestionsForPrompt(promptType))
     .map((item) => item?.esm || item);
 }
 
-function fillScheduleForm(form, schedule) {
-  const first = Array.isArray(schedule) ? schedule[0] : null;
-  form.elements.mode.value = first?.studytrace_delivery_mode || (Number(first?.randomize || 0) > 0 ? 'random' : 'fixed');
-  form.elements.times.value = Array.isArray(first?.times) && first.times.length
-    ? first.times.join(', ')
-    : (Array.isArray(first?.hours) ? first.hours.map((hour) => `${String(hour).padStart(2, '0')}:00`).join(', ') : '09:30');
-  form.elements.randomize_minutes.value = String(first?.randomize || 30);
-  form.elements.expiration_minutes.value = String(first?.expiration || 120);
-  form.elements.notification_title.value = first?.notification_title || 'StudyTrace Battery screenshot';
-  form.elements.notification_body.value = first?.notification_body || 'Please upload your iOS Battery usage screenshot.';
-  form.elements.start_date.value = first?.start_date || '';
-  form.elements.end_date.value = first?.end_date || '';
+function findScheduleForPrompt(schedule, promptType) {
+  if (!Array.isArray(schedule)) return null;
+  return schedule.find((item) => item.studytrace_prompt_type === promptType) ||
+    schedule.find((item) => promptType === 'battery_usage_screenshot' && String(item.schedule_id || '').includes('battery_screenshot')) ||
+    schedule.find((item) => promptType === 'esm_survey' && String(item.schedule_id || '').includes('esm_survey')) ||
+    null;
+}
+
+function fillScheduleForm(form, schedule, promptType) {
+  const item = findScheduleForPrompt(schedule, promptType);
+  form.elements.mode.value = item?.studytrace_delivery_mode || (Number(item?.randomize || 0) > 0 ? 'random' : 'fixed');
+  form.elements.times.value = Array.isArray(item?.times) && item.times.length
+    ? item.times.join(', ')
+    : (Array.isArray(item?.hours) ? item.hours.map((hour) => `${String(hour).padStart(2, '0')}:00`).join(', ') : (promptType === 'esm_survey' ? '09:30, 17:15' : '20:30'));
+  form.elements.randomize_minutes.value = String(item?.randomize || 30);
+  form.elements.expiration_minutes.value = String(item?.expiration || 120);
+  form.elements.notification_title.value = item?.notification_title || (promptType === 'esm_survey' ? 'StudyTrace survey available' : 'StudyTrace Battery screenshot');
+  form.elements.notification_body.value = item?.notification_body || (promptType === 'esm_survey' ? 'Please complete your scheduled study survey.' : 'Please upload your iOS Battery usage screenshot.');
+  form.elements.start_date.value = item?.start_date || '';
+  form.elements.end_date.value = item?.end_date || '';
   if (form.elements.esms_json) {
-    form.elements.esms_json.value = JSON.stringify(unwrapEsmQuestions(first?.esms), null, 2);
+    form.elements.esms_json.value = JSON.stringify(unwrapEsmQuestions(item?.esms, promptType), null, 2);
   }
 }
 
-async function loadBatterySchedule({ studyId, password, form, result, message }) {
+async function loadScheduleSection({ studyId, password, sections, message }) {
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/esm-schedule`, {
     headers: { 'x-study-password': password },
   });
@@ -197,14 +212,18 @@ async function loadBatterySchedule({ studyId, password, form, result, message })
     setMessage(message, payload.error || 'Could not load survey delivery schedule.', true);
     return;
   }
-  fillScheduleForm(form, payload.esm_schedule || []);
-  result.textContent = JSON.stringify(payload.schedule_summary || [], null, 2);
+  for (const section of sections) {
+    fillScheduleForm(section.form, payload.esm_schedule || [], section.promptType);
+    const summary = (payload.schedule_summary || []).filter((item) => item.prompt_type === section.promptType);
+    section.result.textContent = JSON.stringify(summary, null, 2);
+  }
 }
 
-async function saveBatterySchedule({ studyId, password, form, result, message }) {
+async function saveScheduleSection({ studyId, password, form, result, message, promptType, label }) {
   const formData = new FormData(form);
   const body = Object.fromEntries(formData.entries());
-  if (!body.esms_json) body.esms = defaultSurveyQuestions;
+  body.prompt_type = promptType;
+  if (!body.esms_json) body.esms = defaultQuestionsForPrompt(promptType);
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/esm-schedule`, {
     method: 'PUT',
     headers: {
@@ -216,10 +235,12 @@ async function saveBatterySchedule({ studyId, password, form, result, message })
   const payload = await readJson(res);
   result.textContent = JSON.stringify(payload.schedule_summary || payload, null, 2);
   if (!res.ok) {
-    setMessage(message, payload.error || 'Could not save survey delivery schedule.', true);
+    setMessage(message, payload.error || `Could not save ${label} schedule.`, true);
     return false;
   }
-  setMessage(message, 'Survey delivery schedule saved. Ask participants to open StudyTrace once so the phone refreshes the new notification schedule.');
+  const summary = (payload.schedule_summary || []).filter((item) => item.prompt_type === promptType);
+  result.textContent = JSON.stringify(summary, null, 2);
+  setMessage(message, `${label} schedule saved. Ask participants to open StudyTrace once so the phone refreshes the new notification schedule.`);
   return true;
 }
 
@@ -258,8 +279,10 @@ function initResearcher() {
   const esmResponses = document.querySelector('#researcher-esm-responses');
   const batteryUsageCleaned = document.querySelector('#researcher-battery-usage-cleaned');
   const batteryUsageScreenshots = document.querySelector('#researcher-battery-usage-screenshots');
-  const batteryScheduleForm = document.querySelector('#researcher-esm-schedule');
-  const batteryScheduleResult = document.querySelector('#researcher-esm-schedule-result');
+  const esmScheduleForm = document.querySelector('#researcher-esm-schedule');
+  const esmScheduleResult = document.querySelector('#researcher-esm-schedule-result');
+  const batteryScheduleForm = document.querySelector('#researcher-battery-schedule');
+  const batteryScheduleResult = document.querySelector('#researcher-battery-schedule-result');
   let currentStudyId = '';
   let currentPassword = '';
 
@@ -304,11 +327,13 @@ function initResearcher() {
     ], payload.sensors);
 
     dashboard.classList.remove('hidden');
-    await loadBatterySchedule({
+    await loadScheduleSection({
       studyId,
       password,
-      form: batteryScheduleForm,
-      result: batteryScheduleResult,
+      sections: [
+        { promptType: 'esm_survey', form: esmScheduleForm, result: esmScheduleResult },
+        { promptType: 'battery_usage_screenshot', form: batteryScheduleForm, result: batteryScheduleResult },
+      ],
       message,
     });
     await loadBatteryUsageDiagnostics({
@@ -322,17 +347,35 @@ function initResearcher() {
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
   });
 
+  esmScheduleForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!currentStudyId || !currentPassword) {
+      return setMessage(message, 'Load a study before saving the ESM survey schedule.', true);
+    }
+    await saveScheduleSection({
+      studyId: currentStudyId,
+      password: currentPassword,
+      form: esmScheduleForm,
+      result: esmScheduleResult,
+      message,
+      promptType: 'esm_survey',
+      label: 'ESM survey',
+    });
+  });
+
   batteryScheduleForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!currentStudyId || !currentPassword) {
-      return setMessage(message, 'Load a study before saving the survey delivery schedule.', true);
+      return setMessage(message, 'Load a study before saving the Battery screenshot schedule.', true);
     }
-    await saveBatterySchedule({
+    await saveScheduleSection({
       studyId: currentStudyId,
       password: currentPassword,
       form: batteryScheduleForm,
       result: batteryScheduleResult,
       message,
+      promptType: 'battery_usage_screenshot',
+      label: 'Battery screenshot',
     });
   });
 

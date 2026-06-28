@@ -50,7 +50,7 @@ points the iPhone app to the study's hosted ESM schedule:
 /index.php/webservice/index/{STUDY_ID}/{PASSWORD}/esm/config
 ```
 
-Use `/researcher/` to create or update the study's **Survey delivery schedule**:
+Use `/researcher/` to create or update the study's notification schedules:
 
 - `Fixed schedule` sends notifications at the listed 24-hour times, e.g.
   `09:30, 17:15`.
@@ -58,8 +58,11 @@ Use `/researcher/` to create or update the study's **Survey delivery schedule**:
   within the configured randomization window around each listed time.
 - `Expiration window` controls how long a survey remains valid after the
   scheduled time.
-- `Survey questions JSON` is an array of ESM question objects. Use
-  `esm_type: 14` for an in-survey photo question.
+- `ESM survey notifications` schedule ordinary study survey prompts.
+- `Battery screenshot notifications` schedule the photo-upload prompt for
+  Settings → Battery → View All Battery Usage screenshots.
+- Each section has its own question JSON. Use `esm_type: 14` for an in-survey
+  photo question.
 
 Existing participants pick up the schedule when the app starts/restarts its
 collection state. For immediate testing after changing a schedule, ask the
