@@ -149,9 +149,9 @@ export function createApp() {
       status: true,
       study_id,
       // AWARE-protocol study URL (paste/QR into the StudyTrace app).
-      study_url: `${base}/index.php/webservice/index/${study_id}/${password}`,
+      study_url: `${base}/index.php/webservice/index/${encodeURIComponent(study_id)}/${encodeURIComponent(password)}`,
       // Generic-API base for any other client.
-      api_base: `${base}/api/v1/studies/${study_id}`,
+      api_base: `${base}/api/v1/studies/${encodeURIComponent(study_id)}`,
     });
   });
 
@@ -340,43 +340,20 @@ export function createApp() {
 
   app.post('/api/v1/studies/:studyId/battery-screenshots', requireStudyPassword, async (req, res) => {
     try {
-      const payload = req.body || {};
-      const deviceId = String(payload.device_id || '').trim();
-      const screenshotBase64 = normalizeBase64Image(payload.screenshot_base64 || payload.esm_user_answer);
-      if (!deviceId) {
-        return res.status(400).json({ error: 'device_id is required' });
-      }
-      if (!screenshotBase64) {
-        return res.status(400).json({ error: 'screenshot_base64 is required' });
-      }
+      return await handleBatteryScreenshotUpload(req, res, req.params.studyId);
+    } catch (err) {
+      console.error(`[battery screenshot upload ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
 
-      const timestamp = Number(payload.timestamp) || Date.now();
-      const esmJson = {
-        esm_type: 14,
-        esm_title: 'Battery usage screenshot',
-        esm_instructions: 'Open Settings > Battery > View All Battery Usage, then upload the screenshot.',
-        esm_trigger: 'battery_usage_screenshot',
-        esm_submit: 'Submit',
-        esm_na: true,
-      };
-      const row = {
-        timestamp,
-        device_id: deviceId,
-        esm_trigger: 'battery_usage_screenshot',
-        esm_json: JSON.stringify(esmJson),
-        esm_user_answer: screenshotBase64,
-        double_esm_user_answer_timestamp: timestamp,
-        esm_status: 2,
-      };
-      if (payload.battery_usage_ocr_text || payload.ocr_text) {
-        row.battery_usage_ocr_text = String(payload.battery_usage_ocr_text || payload.ocr_text);
+  app.post('/index.php/webservice/index/:studyId/:password/battery-screenshots', async (req, res) => {
+    try {
+      const study = await getStudy(req.params.studyId);
+      if (!study || study.password !== req.params.password) {
+        return res.status(403).json({ error: 'invalid study id or password' });
       }
-
-      const table = safeTableName('plugin_ios_esm');
-      await createSensorTable(table);
-      const inserted = await insertRows(table, req.params.studyId, deviceId, [row]);
-      const processed = await processBatteryScreenshotUploads({ studyId: req.params.studyId, limit: 25 });
-      return res.status(201).json({ ok: true, inserted, processed });
+      return await handleBatteryScreenshotUpload(req, res, req.params.studyId);
     } catch (err) {
       console.error(`[battery screenshot upload ${req.params.studyId}]`, err);
       res.status(500).json({ error: 'server error' });
@@ -752,6 +729,46 @@ function httpError(statusCode, message) {
   const err = new Error(message);
   err.statusCode = statusCode;
   return err;
+}
+
+async function handleBatteryScreenshotUpload(req, res, studyId) {
+  const payload = req.body || {};
+  const deviceId = String(payload.device_id || '').trim();
+  const screenshotBase64 = normalizeBase64Image(payload.screenshot_base64 || payload.esm_user_answer);
+  if (!deviceId) {
+    return res.status(400).json({ error: 'device_id is required' });
+  }
+  if (!screenshotBase64) {
+    return res.status(400).json({ error: 'screenshot_base64 is required' });
+  }
+
+  const timestamp = Number(payload.timestamp) || Date.now();
+  const esmJson = {
+    esm_type: 14,
+    esm_title: 'Battery usage screenshot',
+    esm_instructions: 'Open Settings > Battery > View All Battery Usage, then upload the screenshot.',
+    esm_trigger: 'battery_usage_screenshot',
+    esm_submit: 'Submit',
+    esm_na: true,
+  };
+  const row = {
+    timestamp,
+    device_id: deviceId,
+    esm_trigger: 'battery_usage_screenshot',
+    esm_json: JSON.stringify(esmJson),
+    esm_user_answer: screenshotBase64,
+    double_esm_user_answer_timestamp: timestamp,
+    esm_status: 2,
+  };
+  if (payload.battery_usage_ocr_text || payload.ocr_text) {
+    row.battery_usage_ocr_text = String(payload.battery_usage_ocr_text || payload.ocr_text);
+  }
+
+  const table = safeTableName('plugin_ios_esm');
+  await createSensorTable(table);
+  const inserted = await insertRows(table, studyId, deviceId, [row]);
+  const processed = await processBatteryScreenshotUploads({ studyId, limit: 25 });
+  return res.status(201).json({ ok: true, inserted, processed });
 }
 
 async function findEsmResponseRows(studyId, rawLimit) {

@@ -316,48 +316,25 @@ class ContextCardViewController: UIViewController, UIImagePickerControllerDelega
             return nil
         }
 
-        var request = URLRequest(url: target.url)
+        var request = URLRequest(url: target)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(target.password, forHTTPHeaderField: "x-study-password")
         request.httpBody = body
         return request
     }
 
-    private func batteryScreenshotUploadTarget(from studyURL: String) -> (url: URL, password: String)? {
-        guard let components = URLComponents(string: studyURL),
+    private func batteryScreenshotUploadTarget(from studyURL: String) -> URL? {
+        guard var components = URLComponents(string: studyURL),
               components.scheme?.lowercased() == "https",
               components.host?.isEmpty == false else {
             return nil
         }
-
-        let pathParts = components.path.split(separator: "/").map(String.init)
-        var studyId: String?
-        var password: String?
-        if pathParts.count >= 5 {
-            for index in 0...(pathParts.count - 5) {
-                if pathParts[index] == "index.php",
-                   pathParts[index + 1] == "webservice",
-                   pathParts[index + 2] == "index" {
-                    studyId = pathParts[index + 3]
-                    password = pathParts[index + 4]
-                    break
-                }
-            }
-        }
-
-        guard let studyId = studyId, !studyId.isEmpty,
-              let password = password, !password.isEmpty else {
-            return nil
-        }
-
-        var uploadComponents = URLComponents()
-        uploadComponents.scheme = components.scheme
-        uploadComponents.host = components.host
-        uploadComponents.port = components.port
-        uploadComponents.path = "/api/v1/studies/\(studyId)/battery-screenshots"
-        guard let uploadURL = uploadComponents.url else { return nil }
-        return (uploadURL, password)
+        let path = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard path.contains("index.php/webservice/index") else { return nil }
+        components.percentEncodedPath = "/\(path)/battery-screenshots"
+        components.query = nil
+        components.fragment = nil
+        return components.url
     }
 
     private func jsonString(_ value: Any) -> String {

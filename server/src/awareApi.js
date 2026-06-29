@@ -47,7 +47,7 @@ export function createAwareRouter(getPublicBaseUrl) {
 
   function webserviceUrlFor(req) {
     const base = getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
-    return `${base}/index.php/webservice/index/${req.params.studyId}/${req.params.password}`;
+    return `${base}/index.php/webservice/index/${encodeURIComponent(req.params.studyId)}/${encodeURIComponent(req.params.password)}`;
   }
 
   // ---- Join / configuration -------------------------------------------------

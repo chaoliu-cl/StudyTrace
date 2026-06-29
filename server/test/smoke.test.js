@@ -382,6 +382,29 @@ try {
   assert.strictEqual(badParticipantBatteryUpload.status, 403, 'participant battery screenshot rejects wrong password');
   const participantBatteryDiagnostics = await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: jsonAuth });
   assert.ok(participantBatteryDiagnostics.json.appRows.some((row) => row.app_name === 'TikTok' && row.screen_time_seconds === 1920 && row.battery_percent === 8), 'participant battery upload is parsed for dashboard export');
+
+  const awarePathBatteryUpload = await request('POST', `${studyPath}/battery-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-1',
+      timestamp: 892,
+      screenshot_base64: tinyPngBase64,
+      battery_usage_ocr_text: [
+        'Battery Usage by App',
+        'Safari',
+        '14m On Screen',
+        '4%',
+      ].join('\n'),
+    }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  assert.strictEqual(awarePathBatteryUpload.status, 201, 'AWARE-path battery screenshot upload ok');
+  const badAwarePathBatteryUpload = await request('POST', '/index.php/webservice/index/demo/wrong/battery-screenshots', {
+    body: JSON.stringify({ device_id: 'dev-1', screenshot_base64: tinyPngBase64 }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  assert.strictEqual(badAwarePathBatteryUpload.status, 403, 'AWARE-path battery screenshot rejects wrong password');
+  const awarePathBatteryDiagnostics = await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: jsonAuth });
+  assert.ok(awarePathBatteryDiagnostics.json.appRows.some((row) => row.app_name === 'Safari' && row.screen_time_seconds === 840 && row.battery_percent === 4), 'AWARE-path battery upload is parsed for dashboard export');
   console.log('✓ participant battery screenshot upload endpoint works');
   console.log('✓ battery screenshot OCR pipeline exports app usage rows');
 
