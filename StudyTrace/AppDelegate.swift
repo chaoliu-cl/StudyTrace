@@ -317,7 +317,14 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        
+        DispatchQueue.main.async {
+            if let tabBar = self.window?.rootViewController as? UITabBarController {
+                tabBar.selectedIndex = 2
+            } else {
+                self.window?.rootViewController?.tabBarController?.selectedIndex = 2
+            }
+        }
+        completionHandler()
     }
     
     func userNotificationCenter(_ center: UNUserNotificationCenter,
@@ -326,7 +333,11 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
         if let userInfo = notification.request.content.userInfo as? [String:Any]{
             print(userInfo)
         }
-        completionHandler([.alert])
+        if #available(iOS 14.0, *) {
+            completionHandler([.banner, .list, .sound, .badge])
+        } else {
+            completionHandler([.alert, .sound, .badge])
+        }
     }
     
 

@@ -728,6 +728,9 @@ Transfer parameters in ESMSchdule to EntityESMSchedule instance.
         int randomMin = (int)[self randomNumberBetween:-1*randomize.intValue maxNumber:randomize.intValue];
         NSDate *baseFireDate = [self nextFutureDateFromDate:[NSDate new] hour:[fireHour intValue] minute:fireMinute];
         fireDate = [baseFireDate dateByAddingTimeInterval:randomMin * 60];
+        if (fireDate.timeIntervalSince1970 <= datetime.timeIntervalSince1970) {
+            fireDate = [fireDate dateByAddingTimeInterval:60 * 60 * 24];
+        }
     }
 
     // The fireData is Valid Time?
@@ -745,7 +748,7 @@ Transfer parameters in ESMSchdule to EntityESMSchedule instance.
     
     // Check an answering condition
     if(isInTime){
-        [fireDate dateByAddingTimeInterval:60*60*24]; // <- temporary solution
+        fireDate = [fireDate dateByAddingTimeInterval:60*60*24]; // <- temporary solution
     }
 
     // NSLog(@"[FIRE_TIME:%@] [EXPIRATION_TIME:%@] [IN_TIME:%d]", fireDate, expirationTime, isInTime);
@@ -762,6 +765,10 @@ Transfer parameters in ESMSchdule to EntityESMSchedule instance.
     content.categoryIdentifier = categoryNormalESM;
     content.userInfo = userInfo;
     content.badge = @(1);
+    content.threadIdentifier = @"studytrace.esm";
+    if (@available(iOS 15.0, *)) {
+        content.interruptionLevel = UNNotificationInterruptionLevelTimeSensitive;
+    }
 
     NSCalendar *calendar = [NSCalendar currentCalendar];
     NSDateComponents *components = [calendar components:NSCalendarUnitHour|NSCalendarUnitMinute|NSCalendarUnitSecond fromDate:fireDate];
@@ -772,7 +779,6 @@ Transfer parameters in ESMSchdule to EntityESMSchedule instance.
     UNNotificationRequest    * request = [UNNotificationRequest requestWithIdentifier:notificationId content:content trigger:trigger];
     UNUserNotificationCenter * center  = [UNUserNotificationCenter currentNotificationCenter];
     [center removePendingNotificationRequestsWithIdentifiers:@[notificationId]];
-    [center removeDeliveredNotificationsWithIdentifiers:@[notificationId]];
     [center addNotificationRequest:request withCompletionHandler:^(NSError * _Nullable error) {
         if (error!=nil) {
             NSLog(@"[ESMScheduleManager:HourBasedNotification] %@", error.debugDescription);
