@@ -203,7 +203,7 @@ export function createApp() {
     try {
       const study = await getStudy(req.params.studyId);
       if (!study) return res.status(404).json({ error: 'study not found' });
-      res.json(scheduleResponse(study));
+      res.json(scheduleResponse(study, 'esm_schedule'));
     } catch (err) {
       console.error(`[admin get esm schedule ${req.params.studyId}]`, err);
       res.status(500).json({ error: 'server error' });
@@ -215,9 +215,9 @@ export function createApp() {
       const study = await getStudy(req.params.studyId);
       if (!study) return res.status(404).json({ error: 'study not found' });
 
-      const esmSchedule = buildEsmScheduleFromRequest(req.body || {});
+      const esmSchedule = buildEsmScheduleFromRequest(req.body || {}, 'esm_survey');
       const updated = await updateStudyConfig(req.params.studyId, { esm_schedule: esmSchedule });
-      res.json(scheduleResponse(updated));
+      res.json(scheduleResponse(updated, 'esm_schedule'));
     } catch (err) {
       if (err.statusCode) {
         return res.status(err.statusCode).json({ error: err.message });
@@ -291,7 +291,7 @@ export function createApp() {
 
   app.get('/api/v1/studies/:studyId/esm-schedule', requireStudyPassword, async (req, res) => {
     try {
-      res.json(scheduleResponse(req.study));
+      res.json(scheduleResponse(req.study, 'esm_schedule'));
     } catch (err) {
       console.error(`[researcher get esm schedule ${req.params.studyId}]`, err);
       res.status(500).json({ error: 'server error' });
@@ -300,15 +300,85 @@ export function createApp() {
 
   app.put('/api/v1/studies/:studyId/esm-schedule', requireStudyPassword, async (req, res) => {
     try {
-      const existingSchedule = Array.isArray(req.study?.config?.esm_schedule) ? req.study.config.esm_schedule : [];
-      const esmSchedule = mergeScheduleSlot(existingSchedule, buildEsmScheduleFromRequest(req.body || {})[0]);
+      const esmSchedule = buildEsmScheduleFromRequest(req.body || {}, 'esm_survey');
       const updated = await updateStudyConfig(req.params.studyId, { esm_schedule: esmSchedule });
-      res.json(scheduleResponse(updated));
+      res.json(scheduleResponse(updated, 'esm_schedule'));
     } catch (err) {
       if (err.statusCode) {
         return res.status(err.statusCode).json({ error: err.message });
       }
       console.error(`[researcher save esm schedule ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  app.get('/api/v1/studies/:studyId/battery-screenshot-schedule', requireStudyPassword, async (req, res) => {
+    try {
+      res.json(scheduleResponse(req.study, 'battery_screenshot_schedule'));
+    } catch (err) {
+      console.error(`[researcher get battery screenshot schedule ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  app.put('/api/v1/studies/:studyId/battery-screenshot-schedule', requireStudyPassword, async (req, res) => {
+    try {
+      const batterySchedule = buildEsmScheduleFromRequest(req.body || {}, 'battery_usage_screenshot');
+      const updated = await updateStudyConfig(req.params.studyId, {
+        battery_screenshot_schedule: batterySchedule,
+        esm_schedule: scheduleForKey(req.study, 'esm_schedule'),
+      });
+      res.json(scheduleResponse(updated, 'battery_screenshot_schedule'));
+    } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+      console.error(`[researcher save battery screenshot schedule ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  app.post('/api/v1/studies/:studyId/battery-screenshots', requireStudyPassword, async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const deviceId = String(payload.device_id || '').trim();
+      const screenshotBase64 = normalizeBase64Image(payload.screenshot_base64 || payload.esm_user_answer);
+      if (!deviceId) {
+        return res.status(400).json({ error: 'device_id is required' });
+      }
+      if (!screenshotBase64) {
+        return res.status(400).json({ error: 'screenshot_base64 is required' });
+      }
+
+      const timestamp = Number(payload.timestamp) || Date.now();
+      const esmJson = {
+        esm_type: 14,
+        esm_title: 'Battery usage screenshot',
+        esm_instructions: 'Open Settings > Battery > View All Battery Usage, then upload the screenshot.',
+        esm_trigger: 'battery_usage_screenshot',
+        esm_submit: 'Submit',
+        esm_na: true,
+      };
+      const row = {
+        timestamp,
+        device_id: deviceId,
+        esm_trigger: 'battery_usage_screenshot',
+        esm_json: JSON.stringify(esmJson),
+        esm_user_answer: screenshotBase64,
+        double_esm_user_answer_timestamp: timestamp,
+        esm_status: 2,
+      };
+      if (payload.battery_usage_ocr_text || payload.ocr_text) {
+        row.battery_usage_ocr_text = String(payload.battery_usage_ocr_text || payload.ocr_text);
+      }
+
+      const table = safeTableName('plugin_ios_esm');
+      await createSensorTable(table);
+      const inserted = await insertRows(table, req.params.studyId, deviceId, [row]);
+      const processed = await processBatteryScreenshotUploads({ studyId: req.params.studyId, limit: 25 });
+      return res.status(201).json({ ok: true, inserted, processed });
+    } catch (err) {
+      console.error(`[battery screenshot upload ${req.params.studyId}]`, err);
       res.status(500).json({ error: 'server error' });
     }
   });
@@ -468,8 +538,8 @@ function rowsToCsv(rows, preferredDataCols = []) {
   return lines.join('\r\n');
 }
 
-function scheduleResponse(study) {
-  const schedule = Array.isArray(study?.config?.esm_schedule) ? study.config.esm_schedule : [];
+function scheduleResponse(study, key = 'esm_schedule') {
+  const schedule = scheduleForKey(study, key);
   return {
     ok: true,
     study_id: study?.study_id,
@@ -494,9 +564,28 @@ function summarizeEsmSchedule(schedule) {
   }));
 }
 
-function buildEsmScheduleFromRequest(body) {
+function scheduleForKey(study, key = 'esm_schedule') {
+  const config = study?.config || {};
+  const esmSchedule = Array.isArray(config.esm_schedule) ? config.esm_schedule : [];
+  const batterySchedule = Array.isArray(config.battery_screenshot_schedule) ? config.battery_screenshot_schedule : [];
+  if (key === 'battery_screenshot_schedule') {
+    return batterySchedule.length
+      ? batterySchedule.filter((item) => schedulePromptType(item) === 'battery_usage_screenshot')
+      : esmSchedule.filter((item) => schedulePromptType(item) === 'battery_usage_screenshot');
+  }
+  return esmSchedule.filter((item) => schedulePromptType(item) !== 'battery_usage_screenshot');
+}
+
+function schedulePromptType(item) {
+  if (item?.studytrace_prompt_type) return normalizePromptType(item.studytrace_prompt_type);
+  const scheduleId = String(item?.schedule_id || '').toLowerCase();
+  if (scheduleId.includes('battery_screenshot') || scheduleId.includes('battery_usage')) return 'battery_usage_screenshot';
+  return 'esm_survey';
+}
+
+function buildEsmScheduleFromRequest(body, defaultPromptType = 'esm_survey') {
   const mode = body.mode === 'random' ? 'random' : 'fixed';
-  const promptType = normalizePromptType(body.prompt_type || body.studytrace_prompt_type);
+  const promptType = normalizePromptType(body.prompt_type || body.studytrace_prompt_type || defaultPromptType);
   const promptTimes = parsePromptTimes(body.times || body.hours);
   const randomMinutes = mode === 'random'
     ? clampInteger(body.randomize_minutes, 1, 180, 30)
@@ -515,27 +604,12 @@ function buildEsmScheduleFromRequest(body) {
       expiration: clampInteger(body.expiration_minutes, 0, 1440, mode === 'random' ? randomMinutes * 2 : 120),
       start_date: normalizeDateString(body.start_date),
       end_date: normalizeDateString(body.end_date),
-      notification_title: String(body.notification_title || 'StudyTrace survey available'),
-      notification_body: String(body.notification_body || 'Please complete your scheduled study survey.'),
+      notification_title: String(body.notification_title || defaultNotificationTitle(promptType)),
+      notification_body: String(body.notification_body || defaultNotificationBody(promptType)),
       interface: 0,
       esms,
     },
   ];
-}
-
-function mergeScheduleSlot(existingSchedule, updatedSchedule) {
-  const promptType = updatedSchedule.studytrace_prompt_type;
-  const withoutSlot = existingSchedule.filter((item) => {
-    if (item.studytrace_prompt_type) return item.studytrace_prompt_type !== promptType;
-    if (promptType === 'battery_usage_screenshot') {
-      return !String(item.schedule_id || '').includes('battery_screenshot');
-    }
-    if (promptType === 'esm_survey') {
-      return !String(item.schedule_id || '').includes('esm_survey');
-    }
-    return true;
-  });
-  return [...withoutSlot, updatedSchedule];
 }
 
 function normalizePromptType(value) {
@@ -546,6 +620,16 @@ function normalizePromptType(value) {
 
 function scheduleSlugForPrompt(promptType) {
   return promptType === 'esm_survey' ? 'esm_survey' : 'battery_screenshot';
+}
+
+function defaultNotificationTitle(promptType) {
+  return promptType === 'esm_survey' ? 'StudyTrace survey available' : 'StudyTrace Battery screenshot';
+}
+
+function defaultNotificationBody(promptType) {
+  return promptType === 'esm_survey'
+    ? 'Please complete your scheduled study survey.'
+    : 'Please upload your iOS Battery usage screenshot.';
 }
 
 function parsePromptTimes(value) {
@@ -1105,4 +1189,12 @@ function decodeImageAnswer(answer) {
     return { buffer, contentType: 'image/jpeg', extension: 'jpg' };
   }
   return { buffer, contentType, extension: contentType === 'image/jpeg' ? 'jpg' : 'png' };
+}
+
+function normalizeBase64Image(answer) {
+  if (typeof answer !== 'string' || !answer.trim()) return '';
+  const trimmed = answer.trim();
+  const match = trimmed.match(/^data:image\/(?:png|jpeg);base64,(.+)$/i);
+  const base64 = (match?.[1] || trimmed).replace(/\s/g, '');
+  return decodeImageAnswer(base64) ? base64 : '';
 }

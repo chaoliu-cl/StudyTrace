@@ -147,7 +147,7 @@ try {
 
   const remoteEsmConfig = await request('GET', `${studyPath}/esm/config`);
   assert.strictEqual(remoteEsmConfig.status, 200, 'remote ESM config ok');
-  assert.strictEqual(remoteEsmConfig.json[0].schedule_id, 'studytrace_random_battery_screenshot', 'remote ESM schedule id');
+  assert.strictEqual(remoteEsmConfig.json[0].schedule_id, 'studytrace_random_esm_survey', 'remote ESM schedule id');
   assert.strictEqual(remoteEsmConfig.json[0].esms.length, 2, 'remote ESM question count');
   assert.deepStrictEqual(remoteEsmConfig.json[0].times, ['09:30', '17:15'], 'remote ESM config includes exact prompt times');
   console.log('✓ participant app can download ESM schedule config');
@@ -358,9 +358,34 @@ try {
   assert.strictEqual(batteryCsv.status, 200, 'battery usage CSV export ok');
   assert.ok(/^id,study_id,device_id,timestamp,app_name,battery_percent,battery_percent_text,extraction_method,extraction_status,ocr_confidence,ocr_text,parse_notes,screen_time_seconds,screen_time_text,source_image_url,source_row_id,source_sensor,timestamp,created_at/m.test(batteryCsv.json), 'battery usage CSV header includes OCR fields');
   assert.ok(/Instagram/.test(batteryCsv.json), 'battery usage CSV includes parsed app');
+
+  const participantBatteryUpload = await request('POST', `${apiBase}/battery-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-1',
+      timestamp: 891,
+      screenshot_base64: tinyPngBase64,
+      battery_usage_ocr_text: [
+        'Battery Usage by App',
+        'TikTok',
+        '32m On Screen',
+        '8%',
+      ].join('\n'),
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(participantBatteryUpload.status, 201, 'participant battery screenshot upload ok');
+  assert.strictEqual(participantBatteryUpload.json.inserted, 1, 'participant battery screenshot stored');
+  const badParticipantBatteryUpload = await request('POST', `${apiBase}/battery-screenshots`, {
+    body: JSON.stringify({ device_id: 'dev-1', screenshot_base64: tinyPngBase64 }),
+    headers: { 'Content-Type': 'application/json', 'x-study-password': 'wrong' },
+  });
+  assert.strictEqual(badParticipantBatteryUpload.status, 403, 'participant battery screenshot rejects wrong password');
+  const participantBatteryDiagnostics = await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: jsonAuth });
+  assert.ok(participantBatteryDiagnostics.json.appRows.some((row) => row.app_name === 'TikTok' && row.screen_time_seconds === 1920 && row.battery_percent === 8), 'participant battery upload is parsed for dashboard export');
+  console.log('✓ participant battery screenshot upload endpoint works');
   console.log('✓ battery screenshot OCR pipeline exports app usage rows');
 
-  const researcherScheduleSave = await request('PUT', `${apiBase}/esm-schedule`, {
+  const researcherScheduleSave = await request('PUT', `${apiBase}/battery-screenshot-schedule`, {
     body: JSON.stringify({
       prompt_type: 'battery_usage_screenshot',
       mode: 'fixed',
@@ -372,7 +397,8 @@ try {
     headers: jsonAuth,
   });
   assert.strictEqual(researcherScheduleSave.status, 200, 'researcher saves Battery prompt schedule');
-  const savedBatterySchedule = researcherScheduleSave.json.esm_schedule.find((item) => item.studytrace_prompt_type === 'battery_usage_screenshot');
+  const savedBatterySchedule = researcherScheduleSave.json.esm_schedule[0];
+  assert.strictEqual(savedBatterySchedule.studytrace_prompt_type, 'battery_usage_screenshot', 'Battery schedule endpoint returns Battery prompt only');
   assert.deepStrictEqual(savedBatterySchedule.times, ['08:45', '21:05'], 'researcher Battery schedule stores exact times');
   assert.strictEqual(savedBatterySchedule.esms.length, 1, 'default Battery prompt survey question saved');
   const researcherEsmScheduleSave = await request('PUT', `${apiBase}/esm-schedule`, {
@@ -388,21 +414,29 @@ try {
   });
   assert.strictEqual(researcherEsmScheduleSave.status, 200, 'researcher saves ESM survey schedule');
   assert.ok(
-    researcherEsmScheduleSave.json.esm_schedule.some((item) => item.studytrace_prompt_type === 'battery_usage_screenshot'),
-    'saving ESM schedule preserves Battery schedule'
+    researcherEsmScheduleSave.json.esm_schedule.every((item) => item.studytrace_prompt_type === 'esm_survey'),
+    'ESM schedule endpoint returns ESM schedules only'
   );
-  const savedEsmSchedule = researcherEsmScheduleSave.json.esm_schedule.find((item) => item.studytrace_prompt_type === 'esm_survey');
+  const savedEsmSchedule = researcherEsmScheduleSave.json.esm_schedule[0];
   assert.deepStrictEqual(savedEsmSchedule.times, ['10:15'], 'researcher ESM schedule stores exact times');
   const researcherScheduleGet = await request('GET', `${apiBase}/esm-schedule`, { headers: jsonAuth });
-  assert.strictEqual(researcherScheduleGet.status, 200, 'researcher gets Battery prompt schedule');
+  assert.strictEqual(researcherScheduleGet.status, 200, 'researcher gets ESM schedule');
   assert.ok(
-    researcherScheduleGet.json.schedule_summary.some((item) => item.prompt_type === 'battery_usage_screenshot' && item.times.join(',') === '08:45,21:05'),
-    'schedule summary exposes Battery prompt times'
-  );
-  assert.ok(
-    researcherScheduleGet.json.schedule_summary.some((item) => item.prompt_type === 'esm_survey' && item.times.join(',') === '10:15'),
+    researcherScheduleGet.json.schedule_summary.every((item) => item.prompt_type === 'esm_survey') &&
+      researcherScheduleGet.json.schedule_summary.some((item) => item.times.join(',') === '10:15'),
     'schedule summary exposes ESM prompt times'
   );
+  const researcherBatteryScheduleGet = await request('GET', `${apiBase}/battery-screenshot-schedule`, { headers: jsonAuth });
+  assert.strictEqual(researcherBatteryScheduleGet.status, 200, 'researcher gets Battery prompt schedule');
+  assert.ok(
+    researcherBatteryScheduleGet.json.schedule_summary.every((item) => item.prompt_type === 'battery_usage_screenshot') &&
+      researcherBatteryScheduleGet.json.schedule_summary.some((item) => item.times.join(',') === '08:45,21:05'),
+    'Battery endpoint exposes Battery prompt times'
+  );
+  const combinedRemoteEsmConfig = await request('GET', `${studyPath}/esm/config`);
+  assert.strictEqual(combinedRemoteEsmConfig.status, 200, 'combined remote ESM config ok');
+  assert.ok(combinedRemoteEsmConfig.json.some((item) => item.studytrace_prompt_type === 'esm_survey'), 'remote config includes ESM survey schedule');
+  assert.ok(combinedRemoteEsmConfig.json.some((item) => item.studytrace_prompt_type === 'battery_usage_screenshot'), 'remote config includes independent Battery screenshot schedule');
   console.log('✓ researcher saves separate ESM and Battery screenshot schedules');
 
   const dashboardBeforeLegacyRows = await request('GET', `${apiBase}/dashboard/summary`, { headers: jsonAuth });

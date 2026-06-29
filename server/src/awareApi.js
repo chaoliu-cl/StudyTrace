@@ -67,8 +67,9 @@ export function createAwareRouter(getPublicBaseUrl) {
 
   router.get(`${STUDY_PREFIX}/esm/config`, requireStudy, async (req, res) => {
     const config = req.study.config || {};
-    const schedule = Array.isArray(config.esm_schedule) ? config.esm_schedule : [];
-    res.json(schedule);
+    const esmSchedule = Array.isArray(config.esm_schedule) ? config.esm_schedule : [];
+    const batterySchedule = Array.isArray(config.battery_screenshot_schedule) ? config.battery_screenshot_schedule : [];
+    res.json([...esmSchedule, ...batterySchedule]);
   });
 
   // ---- Per-sensor actions ---------------------------------------------------

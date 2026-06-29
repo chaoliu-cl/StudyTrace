@@ -42,7 +42,7 @@ class DeviceUsageCard: ContextCard {
         summaryStack.axis = .vertical
         summaryStack.spacing = 8
 
-        instructionsButton.setTitle(" How to upload Battery screenshot", for: .normal)
+        instructionsButton.setTitle(" Upload Battery screenshot", for: .normal)
         instructionsButton.setImage(UIImage(systemName: "camera.viewfinder"), for: .normal)
         instructionsButton.tintColor = AWARETheme.accent
         instructionsButton.backgroundColor = AWARETheme.accent.withAlphaComponent(0.12)

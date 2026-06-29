@@ -9,7 +9,7 @@
 import UIKit
 import AWAREFramework
 
-class ContextCardViewController: UIViewController {
+class ContextCardViewController: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
 
     @IBOutlet weak var refreshButton: UIBarButtonItem!
     @IBOutlet weak var deleteButton:  UIBarButtonItem!
@@ -17,6 +17,7 @@ class ContextCardViewController: UIViewController {
     var contextCards = Array<ContextCard>()
 
     private let emptyStateStack = UIStackView()
+    private var isUploadingBatteryScreenshot = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -201,7 +202,7 @@ class ContextCardViewController: UIViewController {
     }
     
     @IBAction func didPushAddButton(_ sender: UIBarButtonItem) {
-        showBatteryScreenshotInstructions()
+        presentBatteryScreenshotUploader()
     }
 
     private func showBatteryScreenshotInstructions() {
@@ -210,6 +211,166 @@ class ContextCardViewController: UIViewController {
             message: "When your study sends a Battery usage screenshot survey, open iPhone Settings > Battery > View All Battery Usage, take a screenshot, return to StudyTrace, and upload it as the photo answer.",
             preferredStyle: .alert
         )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func presentBatteryScreenshotUploader() {
+        guard UIImagePickerController.isSourceTypeAvailable(.photoLibrary) else {
+            showBatteryScreenshotUploadResult(title: "Photo Library Unavailable",
+                                              message: "StudyTrace could not open the photo library on this device.")
+            return
+        }
+
+        let picker = UIImagePickerController()
+        picker.sourceType = .photoLibrary
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
+    }
+
+    func imagePickerController(_ picker: UIImagePickerController,
+                               didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+        picker.dismiss(animated: true)
+        guard let image = info[.originalImage] as? UIImage else {
+            showBatteryScreenshotUploadResult(title: "Upload Failed",
+                                              message: "StudyTrace could not read the selected screenshot.")
+            return
+        }
+        uploadBatteryScreenshot(image)
+    }
+
+    private func uploadBatteryScreenshot(_ image: UIImage) {
+        guard !isUploadingBatteryScreenshot else { return }
+        guard let studyURL = AWAREStudy.shared().getURL(), !studyURL.isEmpty else {
+            showBatteryScreenshotUploadResult(title: "Study Not Configured",
+                                              message: "Join a study before uploading a Battery screenshot.")
+            return
+        }
+        guard let imageData = image.jpegData(compressionQuality: 0.85) else {
+            showBatteryScreenshotUploadResult(title: "Upload Failed",
+                                              message: "StudyTrace could not prepare the selected screenshot.")
+            return
+        }
+
+        isUploadingBatteryScreenshot = true
+        let timestamp = Date().timeIntervalSince1970 * 1000
+        let deviceId = AWAREStudy.shared().getDeviceId() ?? ""
+        let screenshotBase64 = imageData.base64EncodedString()
+        guard let request = batteryScreenshotUploadRequest(studyURL: studyURL,
+                                                           deviceId: deviceId,
+                                                           timestamp: timestamp,
+                                                           screenshotBase64: screenshotBase64) else {
+            isUploadingBatteryScreenshot = false
+            showBatteryScreenshotUploadResult(title: "Study Not Configured",
+                                              message: "StudyTrace could not find the study upload credentials. Please rejoin the study from the QR code, then upload the screenshot again.")
+            return
+        }
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isUploadingBatteryScreenshot = false
+                if let error = error {
+                    self.showBatteryScreenshotUploadResult(title: "Upload Failed", message: error.localizedDescription)
+                    return
+                }
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+                if (200..<300).contains(statusCode) {
+                    self.showBatteryScreenshotUploadResult(title: "Battery Screenshot Uploaded",
+                                                           message: "Your screenshot was uploaded to the study server.")
+                } else {
+                    let serverMessage = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                    let detail = serverMessage.isEmpty ? "" : "\n\nServer response: \(serverMessage)"
+                    self.showBatteryScreenshotUploadResult(title: "Upload Failed",
+                                                           message: "The study server returned HTTP \(statusCode).\(detail)")
+                }
+            }
+        }.resume()
+    }
+
+    private func batteryScreenshotUploadRequest(studyURL: String,
+                                                deviceId: String,
+                                                timestamp: Double,
+                                                screenshotBase64: String) -> URLRequest? {
+        guard let target = batteryScreenshotUploadTarget(from: studyURL) else { return nil }
+        let esmJson: [String: Any] = [
+            "esm_type": 14,
+            "esm_title": "Battery usage screenshot",
+            "esm_instructions": "Open Settings > Battery > View All Battery Usage, then upload the screenshot.",
+            "esm_trigger": "battery_usage_screenshot",
+            "esm_submit": "Submit",
+            "esm_na": true
+        ]
+        let payload: [String: Any] = [
+            "device_id": deviceId,
+            "timestamp": timestamp,
+            "screenshot_base64": screenshotBase64,
+            "esm_json": jsonString(esmJson)
+        ]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let body = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
+            return nil
+        }
+
+        var request = URLRequest(url: target.url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(target.password, forHTTPHeaderField: "x-study-password")
+        request.httpBody = body
+        return request
+    }
+
+    private func batteryScreenshotUploadTarget(from studyURL: String) -> (url: URL, password: String)? {
+        guard let components = URLComponents(string: studyURL),
+              components.scheme?.lowercased() == "https",
+              components.host?.isEmpty == false else {
+            return nil
+        }
+
+        let pathParts = components.path.split(separator: "/").map(String.init)
+        var studyId: String?
+        var password: String?
+        if pathParts.count >= 5 {
+            for index in 0...(pathParts.count - 5) {
+                if pathParts[index] == "index.php",
+                   pathParts[index + 1] == "webservice",
+                   pathParts[index + 2] == "index" {
+                    studyId = pathParts[index + 3]
+                    password = pathParts[index + 4]
+                    break
+                }
+            }
+        }
+
+        guard let studyId = studyId, !studyId.isEmpty,
+              let password = password, !password.isEmpty else {
+            return nil
+        }
+
+        var uploadComponents = URLComponents()
+        uploadComponents.scheme = components.scheme
+        uploadComponents.host = components.host
+        uploadComponents.port = components.port
+        uploadComponents.path = "/api/v1/studies/\(studyId)/battery-screenshots"
+        guard let uploadURL = uploadComponents.url else { return nil }
+        return (uploadURL, password)
+    }
+
+    private func jsonString(_ value: Any) -> String {
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: []),
+              let string = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return string
+    }
+
+    private func showBatteryScreenshotUploadResult(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
@@ -386,7 +547,10 @@ class ContextCardViewController: UIViewController {
 
     func addDeviceUsageCard(){
         let contextCard = DeviceUsageCard(frame: CGRect(x:0,y:0, width: self.view.frame.width, height:280))
-        contextCard.configure(sensor: AWARESensorManager.shared().getSensor(SENSOR_PLUGIN_DEVICE_USAGE), configureHandler: {})
+        contextCard.configure(sensor: AWARESensorManager.shared().getSensor(SENSOR_PLUGIN_DEVICE_USAGE),
+                              configureHandler: { [weak self] in
+            self?.presentBatteryScreenshotUploader()
+        })
         self.contextCards.append(contextCard)
         self.mainStackView.addArrangedSubview(contextCard)
     }

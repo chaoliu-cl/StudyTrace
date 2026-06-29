@@ -203,8 +203,8 @@ function fillScheduleForm(form, schedule, promptType) {
   }
 }
 
-async function loadScheduleSection({ studyId, password, sections, message }) {
-  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/esm-schedule`, {
+async function loadScheduleSection({ studyId, password, form, result, message, promptType, endpoint }) {
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/${endpoint}`, {
     headers: { 'x-study-password': password },
   });
   const payload = await readJson(res);
@@ -212,19 +212,16 @@ async function loadScheduleSection({ studyId, password, sections, message }) {
     setMessage(message, payload.error || 'Could not load survey delivery schedule.', true);
     return;
   }
-  for (const section of sections) {
-    fillScheduleForm(section.form, payload.esm_schedule || [], section.promptType);
-    const summary = (payload.schedule_summary || []).filter((item) => item.prompt_type === section.promptType);
-    section.result.textContent = JSON.stringify(summary, null, 2);
-  }
+  fillScheduleForm(form, payload.esm_schedule || [], promptType);
+  result.textContent = JSON.stringify(payload.schedule_summary || [], null, 2);
 }
 
-async function saveScheduleSection({ studyId, password, form, result, message, promptType, label }) {
+async function saveScheduleSection({ studyId, password, form, result, message, promptType, label, endpoint }) {
   const formData = new FormData(form);
   const body = Object.fromEntries(formData.entries());
   body.prompt_type = promptType;
   if (!body.esms_json) body.esms = defaultQuestionsForPrompt(promptType);
-  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/esm-schedule`, {
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/${endpoint}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -238,8 +235,7 @@ async function saveScheduleSection({ studyId, password, form, result, message, p
     setMessage(message, payload.error || `Could not save ${label} schedule.`, true);
     return false;
   }
-  const summary = (payload.schedule_summary || []).filter((item) => item.prompt_type === promptType);
-  result.textContent = JSON.stringify(summary, null, 2);
+  result.textContent = JSON.stringify(payload.schedule_summary || [], null, 2);
   setMessage(message, `${label} schedule saved. Ask participants to open StudyTrace once so the phone refreshes the new notification schedule.`);
   return true;
 }
@@ -330,10 +326,19 @@ function initResearcher() {
     await loadScheduleSection({
       studyId,
       password,
-      sections: [
-        { promptType: 'esm_survey', form: esmScheduleForm, result: esmScheduleResult },
-        { promptType: 'battery_usage_screenshot', form: batteryScheduleForm, result: batteryScheduleResult },
-      ],
+      form: esmScheduleForm,
+      result: esmScheduleResult,
+      promptType: 'esm_survey',
+      endpoint: 'esm-schedule',
+      message,
+    });
+    await loadScheduleSection({
+      studyId,
+      password,
+      form: batteryScheduleForm,
+      result: batteryScheduleResult,
+      promptType: 'battery_usage_screenshot',
+      endpoint: 'battery-screenshot-schedule',
       message,
     });
     await loadBatteryUsageDiagnostics({
@@ -360,6 +365,7 @@ function initResearcher() {
       message,
       promptType: 'esm_survey',
       label: 'ESM survey',
+      endpoint: 'esm-schedule',
     });
   });
 
@@ -376,6 +382,7 @@ function initResearcher() {
       message,
       promptType: 'battery_usage_screenshot',
       label: 'Battery screenshot',
+      endpoint: 'battery-screenshot-schedule',
     });
   });
 
