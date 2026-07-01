@@ -10,6 +10,7 @@ import UIKit
 import CoreData
 import AWAREFramework
 import BackgroundTasks
+import CoreLocation
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -46,6 +47,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"application:didFinishLaunchingWithOptions:launchOptions:"]);
+        StudyTraceTelemetry.recordEvent("app_launch")
+        StudyTraceTelemetry.uploadDeviceState(reason: "app_launch")
 
         return true
     }
@@ -61,6 +64,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func scheduleBackgroundSync() {
         guard StudyParticipationController.hasConsent() else { return }
+        StudyTraceTelemetry.recordEvent("background_sync_scheduled")
         let request = BGProcessingTaskRequest(identifier: Self.bgSyncTaskIdentifier)
         request.requiresNetworkConnectivity = true
         request.requiresExternalPower = false
@@ -70,6 +74,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func scheduleBackgroundRefresh() {
         guard StudyParticipationController.hasConsent() else { return }
+        StudyTraceTelemetry.recordEvent("background_refresh_scheduled")
         let request = BGAppRefreshTaskRequest(identifier: Self.bgRefreshTaskIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
         try? BGTaskScheduler.shared.submit(request)
@@ -80,6 +85,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             task.setTaskCompleted(success: true)
             return
         }
+        StudyTraceTelemetry.recordEvent("background_sync_started")
         scheduleBackgroundSync()
 
         let manager = AWARESensorManager.shared()
@@ -90,22 +96,28 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 25) {
+            StudyTraceTelemetry.recordEvent("background_sync_completed")
             task.setTaskCompleted(success: true)
         }
     }
 
     private func handleBackgroundRefresh(task: BGAppRefreshTask) {
+        StudyTraceTelemetry.recordEvent("background_refresh_started")
         refreshRemoteESMScheduleIfNeeded(force: false)
         scheduleBackgroundRefresh()
+        StudyTraceTelemetry.recordEvent("background_refresh_completed")
         task.setTaskCompleted(success: true)
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
+        StudyTraceTelemetry.recordEvent("app_will_resign_active")
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationWillResignActive:"]);
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
+        StudyTraceTelemetry.recordEvent("app_enter_background")
+        StudyTraceTelemetry.uploadDeviceState(reason: "app_enter_background")
         IOSESM.setESMAppearedState(false)
         UIApplication.shared.applicationIconBadgeNumber = 0
         if StudyParticipationController.hasConsent() {
@@ -117,12 +129,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
+        StudyTraceTelemetry.recordEvent("app_will_enter_foreground")
         refreshRemoteESMScheduleIfNeeded(force: true)
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationWillEnterForeground:"]);
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
+        StudyTraceTelemetry.recordEvent("app_did_become_active")
+        StudyTraceTelemetry.uploadDeviceState(reason: "app_did_become_active")
         refreshRemoteESMScheduleIfNeeded(force: true)
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationDidBecomeActive:"]);
@@ -152,7 +167,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         UserDefaults.standard.set(now, forKey: key)
+        StudyTraceTelemetry.recordEvent("esm_schedule_refresh_started", metadata: ["force": force])
         _ = esm.startSensor(withURL: url)
+        StudyTraceTelemetry.recordEvent("esm_schedule_refresh_requested", metadata: ["force": force])
     }
     
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
@@ -181,8 +198,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 }
             }
             let study = AWAREStudy.shared()
-             study.join(withURL: studyURL) { (settings, status, error) in
+            study.join(withURL: studyURL) { (settings, status, error) in
                 if status == AwareStudyStateUpdate || status == AwareStudyStateNew {
+                    StudyTraceTelemetry.recordEvent("study_joined", metadata: ["status": "\(status)"])
                     let core = AWARECore.shared()
                     guard StudyParticipationController.hasConsent() else { return }
                     core.requestPermissionForPushNotification { (_, _) in
@@ -192,9 +210,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                                 createRemoteTables: true
                             )
                             self.refreshRemoteESMScheduleIfNeeded(force: true)
+                            StudyTraceTelemetry.uploadDeviceState(reason: "study_joined")
                         }
                     }
                 }else {
+                    StudyTraceTelemetry.recordEvent("study_join_failed", metadata: [
+                        "status": "\(status)",
+                        "error": error?.localizedDescription ?? ""
+                    ])
                     // print("Error: ")
                 }
             }
@@ -262,9 +285,12 @@ enum StudyParticipationController {
     static func recordConsentGranted() {
         UserDefaults.standard.set(true, forKey: consentKey)
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: consentTimestampKey)
+        StudyTraceTelemetry.recordEvent("consent_granted")
+        StudyTraceTelemetry.uploadDeviceState(reason: "consent_granted")
     }
 
     static func revokeParticipation(clearStudySettings: Bool) {
+        StudyTraceTelemetry.recordEvent("participation_revoked")
         UserDefaults.standard.set(false, forKey: consentKey)
         UserDefaults.standard.removeObject(forKey: consentTimestampKey)
 
@@ -324,6 +350,11 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
                 self.window?.rootViewController?.tabBarController?.selectedIndex = 2
             }
         }
+        StudyTraceTelemetry.recordEvent("notification_tapped", metadata: [
+            "identifier": response.notification.request.identifier,
+            "thread": response.notification.request.content.threadIdentifier,
+            "title": response.notification.request.content.title
+        ])
         completionHandler()
     }
     
@@ -333,6 +364,11 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
         if let userInfo = notification.request.content.userInfo as? [String:Any]{
             print(userInfo)
         }
+        StudyTraceTelemetry.recordEvent("notification_presented", metadata: [
+            "identifier": notification.request.identifier,
+            "thread": notification.request.content.threadIdentifier,
+            "title": notification.request.content.title
+        ])
         if #available(iOS 14.0, *) {
             completionHandler([.banner, .list, .sound, .badge])
         } else {
@@ -344,6 +380,7 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didReceiveRemoteNotification userInfo: [AnyHashable : Any],
                      fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        StudyTraceTelemetry.recordEvent("remote_notification_received")
         if let userInfo = userInfo as? [String:Any]{
             // SilentPushManager().executeOperations(userInfo)
             PushNotificationResponder().response(withPayload: userInfo)
@@ -362,13 +399,184 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
 
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        StudyTraceTelemetry.recordEvent("remote_notification_registered")
         let push = PushNotification(awareStudy: AWAREStudy.shared())
         push.saveDeviceToken(with: deviceToken)
         push.startSyncDB()
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        
+        StudyTraceTelemetry.recordEvent("remote_notification_registration_failed", metadata: [
+            "error": error.localizedDescription
+        ])
+    }
+}
+
+enum StudyTraceTelemetry {
+    private static let clientEventsSensor = "client_events"
+    private static let deviceStateSensor = "device_state"
+
+    static func recordEvent(_ name: String, metadata: [String: Any] = [:]) {
+        guard StudyParticipationController.hasConsent() else { return }
+        var row: [String: Any] = [
+            "timestamp": Date().timeIntervalSince1970 * 1000,
+            "event_name": name,
+            "app_state": UIApplication.shared.applicationState.studytraceTelemetryValue,
+            "app_version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+            "build_number": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        ]
+        if !metadata.isEmpty {
+            row["metadata"] = sanitize(metadata)
+        }
+        upload(sensor: clientEventsSensor, rows: [row])
+    }
+
+    static func uploadDeviceState(reason: String) {
+        guard StudyParticipationController.hasConsent() else { return }
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            var row: [String: Any] = [
+                "timestamp": Date().timeIntervalSince1970 * 1000,
+                "reason": reason,
+                "battery_level": UIDevice.current.batteryLevel >= 0 ? Double(UIDevice.current.batteryLevel) : NSNull(),
+                "battery_state": UIDevice.current.batteryState.studytraceTelemetryValue,
+                "low_power_mode_enabled": ProcessInfo.processInfo.isLowPowerModeEnabled,
+                "system_name": UIDevice.current.systemName,
+                "system_version": UIDevice.current.systemVersion,
+                "device_model": UIDevice.current.model,
+                "app_state": UIApplication.shared.applicationState.studytraceTelemetryValue,
+                "notification_authorization": settings.authorizationStatus.studytraceTelemetryValue,
+                "notification_alert": settings.alertSetting.studytraceTelemetryValue,
+                "notification_sound": settings.soundSetting.studytraceTelemetryValue,
+                "notification_badge": settings.badgeSetting.studytraceTelemetryValue,
+                "location_authorization": CLLocationManager.authorizationStatus().studytraceTelemetryValue,
+                "app_version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+                "build_number": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+            ]
+            upload(sensor: deviceStateSensor, rows: [row])
+        }
+    }
+
+    private static func upload(sensor: String, rows: [[String: Any]]) {
+        guard let context = studyContext() else { return }
+        let payload: [String: Any] = [
+            "device_id": context.deviceId,
+            "rows": rows
+        ]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let body = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
+            return
+        }
+        var request = URLRequest(url: context.baseURL
+            .appendingPathComponent("api/v1/studies")
+            .appendingPathComponent(context.studyId)
+            .appendingPathComponent("sensors")
+            .appendingPathComponent(sensor)
+            .appendingPathComponent("data"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(context.password)", forHTTPHeaderField: "Authorization")
+        request.httpBody = body
+        URLSession.shared.dataTask(with: request).resume()
+    }
+
+    private static func studyContext() -> (baseURL: URL, studyId: String, password: String, deviceId: String)? {
+        guard let studyURL = AWAREStudy.shared().getURL(),
+              let components = URLComponents(string: studyURL),
+              components.scheme?.lowercased() == "https",
+              let host = components.host,
+              !host.isEmpty else {
+            return nil
+        }
+        let parts = components.path.split(separator: "/").map(String.init)
+        guard let indexPosition = parts.lastIndex(of: "index"),
+              parts.count > indexPosition + 2 else {
+            return nil
+        }
+        var base = URLComponents()
+        base.scheme = components.scheme
+        base.host = host
+        base.port = components.port
+        guard let baseURL = base.url else { return nil }
+        return (
+            baseURL: baseURL,
+            studyId: parts[indexPosition + 1],
+            password: parts[indexPosition + 2],
+            deviceId: AWAREStudy.shared().getDeviceId()
+        )
+    }
+
+    private static func sanitize(_ value: Any) -> Any {
+        if let dict = value as? [String: Any] {
+            return dict.mapValues { sanitize($0) }
+        }
+        if let array = value as? [Any] {
+            return array.map { sanitize($0) }
+        }
+        if value is String || value is NSNumber || value is NSNull {
+            return value
+        }
+        return String(describing: value)
+    }
+}
+
+private extension UIApplication.State {
+    var studytraceTelemetryValue: String {
+        switch self {
+        case .active: return "active"
+        case .inactive: return "inactive"
+        case .background: return "background"
+        @unknown default: return "unknown"
+        }
+    }
+}
+
+private extension UIDevice.BatteryState {
+    var studytraceTelemetryValue: String {
+        switch self {
+        case .unknown: return "unknown"
+        case .unplugged: return "unplugged"
+        case .charging: return "charging"
+        case .full: return "full"
+        @unknown default: return "unknown"
+        }
+    }
+}
+
+private extension UNAuthorizationStatus {
+    var studytraceTelemetryValue: String {
+        switch self {
+        case .notDetermined: return "not_determined"
+        case .denied: return "denied"
+        case .authorized: return "authorized"
+        case .provisional: return "provisional"
+        case .ephemeral: return "ephemeral"
+        @unknown default: return "unknown"
+        }
+    }
+}
+
+private extension UNNotificationSetting {
+    var studytraceTelemetryValue: String {
+        switch self {
+        case .notSupported: return "not_supported"
+        case .disabled: return "disabled"
+        case .enabled: return "enabled"
+        @unknown default: return "unknown"
+        }
+    }
+}
+
+private extension CLAuthorizationStatus {
+    var studytraceTelemetryValue: String {
+        switch self {
+        case .notDetermined: return "not_determined"
+        case .restricted: return "restricted"
+        case .denied: return "denied"
+        case .authorizedAlways: return "authorized_always"
+        case .authorizedWhenInUse: return "authorized_when_in_use"
+        @unknown default: return "unknown"
+        }
     }
 }
 

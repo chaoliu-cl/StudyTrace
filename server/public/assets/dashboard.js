@@ -130,6 +130,8 @@ async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screen
     { label: 'Screen time', render: (row) => row.screen_time_seconds ? formatDuration(row.screen_time_seconds) : escapeHtml(row.screen_time_text || '—') },
     { label: 'Battery', render: (row) => row.battery_percent !== null && row.battery_percent !== undefined && row.battery_percent !== '' ? `${escapeHtml(row.battery_percent)}%` : '—' },
     { label: 'Status', render: (row) => escapeHtml(row.extraction_status || '—') },
+    { label: 'Needs review', render: (row) => row.needs_review ? 'Yes' : 'No' },
+    { label: 'QA reason', render: (row) => escapeHtml(row.qa_reason || '—') },
     { label: 'Method', render: (row) => escapeHtml(row.extraction_method || '—') },
     { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
     { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
@@ -146,6 +148,68 @@ async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screen
   await hydrateAuthenticatedImages(screenshotTable);
 }
 
+async function loadParticipantHealth({ studyId, password, table, message }) {
+  const headers = { 'x-study-password': password };
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/participant-health`, { headers });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load participant health.', true);
+  }
+
+  renderTable(table, [
+    { label: 'Status', render: (row) => row.health_status === 'ok' ? 'OK' : 'Needs attention' },
+    { label: 'Participant', render: (row) => escapeHtml(row.participant || row.device_id || '—') },
+    { label: 'Last seen', render: (row) => fmtDate(row.last_seen) },
+    { label: 'Notifications', render: (row) => escapeHtml(row.notification_authorization || '—') },
+    { label: 'Location', render: (row) => escapeHtml(row.location_authorization || '—') },
+    { label: 'Battery', render: (row) => row.battery_level !== '' && row.battery_level !== undefined ? `${Math.round(Number(row.battery_level) * 100)}%` : '—' },
+    { label: 'GPS rows', render: (row) => String(row.location_rows || 0) },
+    { label: 'ESM rows', render: (row) => String(row.esm_rows || 0) },
+    { label: 'Battery screenshots', render: (row) => String(row.battery_screenshot_rows || 0) },
+    { label: 'Upload failures 24h', render: (row) => String(row.upload_failures_24h || 0) },
+    { label: 'Notes', render: (row) => escapeHtml(row.notes || '—') },
+  ], payload.rows || []);
+}
+
+async function loadLocationDailySummary({ studyId, password, table, message }) {
+  const headers = { 'x-study-password': password };
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/location-daily-summary?limit=100`, { headers });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load location summaries.', true);
+  }
+
+  renderTable(table, [
+    { label: 'Date', render: (row) => escapeHtml(row.date || '—') },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Rows', render: (row) => String(row.location_rows || 0) },
+    { label: 'Coverage', render: (row) => `${escapeHtml(row.coverage_minutes ?? 0)} min` },
+    { label: 'Distance', render: (row) => `${escapeHtml(row.distance_meters ?? 0)} m` },
+    { label: 'Radius', render: (row) => `${escapeHtml(row.radius_of_gyration_meters ?? 0)} m` },
+    { label: 'Stops', render: (row) => String(row.stop_count || 0) },
+    { label: 'Mean accuracy', render: (row) => row.mean_accuracy_meters !== '' && row.mean_accuracy_meters !== undefined ? `${escapeHtml(row.mean_accuracy_meters)} m` : '—' },
+  ], payload.rows || []);
+}
+
+async function loadSurveyQuality({ studyId, password, table, message }) {
+  const headers = { 'x-study-password': password };
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/survey-quality?limit=100`, { headers });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load survey quality.', true);
+  }
+
+  renderTable(table, [
+    { label: 'Submitted', render: (row) => fmtDate(row.submitted_at || ((row.timestamp || 0) * 1000 || row.created_at)) },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Question', render: (row) => escapeHtml(row.question_title || row.question_trigger || '—') },
+    { label: 'Answered', render: (row) => row.answered ? 'Yes' : 'No' },
+    { label: 'Answer kind', render: (row) => escapeHtml(row.answer_kind || '—') },
+    { label: 'Latency', render: (row) => row.response_latency_seconds !== null && row.response_latency_seconds !== undefined ? `${escapeHtml(row.response_latency_seconds)}s` : '—' },
+    { label: 'Flags', render: (row) => escapeHtml(row.quality_flags || '—') },
+  ], payload.rows || []);
+}
+
 const defaultEsmSurveyQuestions = [
   {
     esm_type: 2,
@@ -155,6 +219,9 @@ const defaultEsmSurveyQuestions = [
     esm_trigger: 'current_activity',
     esm_submit: 'Next',
     esm_na: true,
+    studytrace_required: true,
+    studytrace_randomize_options: false,
+    studytrace_branching: {},
   },
 ];
 
@@ -166,6 +233,8 @@ const defaultBatteryScreenshotQuestions = [
     esm_trigger: 'battery_usage_screenshot',
     esm_submit: 'Submit',
     esm_na: true,
+    studytrace_required: true,
+    studytrace_quality_check: 'ocr_review',
   },
 ];
 
@@ -271,8 +340,11 @@ function initResearcher() {
   const dashboard = document.querySelector('#researcher-dashboard');
   const metrics = document.querySelector('#researcher-metrics');
   const devices = document.querySelector('#researcher-devices');
+  const participantHealth = document.querySelector('#researcher-participant-health');
   const sensors = document.querySelector('#researcher-sensors');
   const esmResponses = document.querySelector('#researcher-esm-responses');
+  const surveyQuality = document.querySelector('#researcher-survey-quality');
+  const locationDailySummary = document.querySelector('#researcher-location-daily-summary');
   const batteryUsageCleaned = document.querySelector('#researcher-battery-usage-cleaned');
   const batteryUsageScreenshots = document.querySelector('#researcher-battery-usage-screenshots');
   const esmScheduleForm = document.querySelector('#researcher-esm-schedule');
@@ -349,6 +421,9 @@ function initResearcher() {
       message,
     });
     await loadEsmResponses({ studyId, password, sensors: payload.sensors, table: esmResponses, message });
+    await loadParticipantHealth({ studyId, password, table: participantHealth, message });
+    await loadSurveyQuality({ studyId, password, table: surveyQuality, message });
+    await loadLocationDailySummary({ studyId, password, table: locationDailySummary, message });
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
   });
 

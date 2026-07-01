@@ -54,8 +54,20 @@
       <section class="panel">
         <div class="section-head">
           <div>
+            <h2>Participant health</h2>
+            <p class="section-note">Operational data-quality checks from client events, device state, uploads, permissions, and recent study rows.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-participant-health"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
             <h2>Sensor coverage</h2>
-            <p class="section-note"><code>battery_usage_apps</code> exports app usage extracted from participant-uploaded iOS Battery screenshots.</p>
+            <p class="section-note"><code>battery_usage_apps</code>, <code>location_daily_summary</code>, <code>survey_quality</code>, and <code>participant_health</code> are derived research exports.</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -90,6 +102,7 @@
             <span>Survey questions JSON</span>
             <textarea name="esms_json" rows="16" spellcheck="false"></textarea>
           </label>
+          <p class="section-note">Optional quality fields such as <code>studytrace_required</code>, <code>studytrace_branching</code>, and <code>studytrace_randomize_options</code> are preserved in the schedule JSON for analysis and future client support.</p>
           <button class="button button-primary" type="submit">Save ESM survey schedule</button>
         </form>
         <pre id="researcher-esm-schedule-result" class="result-box"></pre>
@@ -142,8 +155,32 @@
       <section class="panel">
         <div class="section-head">
           <div>
+            <h2>Survey quality</h2>
+            <p class="section-note">Derived response metadata for missing answers, photo answers, latency, and required-question gaps.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-survey-quality"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Location daily mobility</h2>
+            <p class="section-note">Derived daily GPS summaries: coverage, distance, radius of gyration, stops, and accuracy.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-location-daily-summary"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
             <h2>Battery screenshot app usage</h2>
-            <p class="section-note">Participants upload screenshots from Settings → Battery → View All Battery Usage. The server OCR pipeline extracts app names, screen-time text, and battery percentages into structured rows.</p>
+            <p class="section-note">Participants upload screenshots from Settings → Battery → View All Battery Usage. The OCR pipeline extracts app rows and flags screenshots that need review.</p>
           </div>
         </div>
         <div class="table-wrap">

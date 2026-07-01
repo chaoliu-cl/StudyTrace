@@ -287,6 +287,9 @@ class ESMViewController: UIViewController, UIImagePickerControllerDelegate, UINa
         }
 
         isUploadingBatteryScreenshot = true
+        StudyTraceTelemetry.recordEvent("battery_screenshot_upload_started", metadata: [
+            "image_bytes": imageData.count
+        ])
         let timestamp = Date().timeIntervalSince1970 * 1000
         let deviceId = AWAREStudy.shared().getDeviceId()
         guard let request = batteryScreenshotUploadRequest(studyURL: studyURL,
@@ -294,6 +297,9 @@ class ESMViewController: UIViewController, UIImagePickerControllerDelegate, UINa
                                                            timestamp: timestamp,
                                                            screenshotBase64: imageData.base64EncodedString()) else {
             isUploadingBatteryScreenshot = false
+            StudyTraceTelemetry.recordEvent("battery_screenshot_upload_failed", metadata: [
+                "reason": "invalid_upload_url"
+            ])
             showBatteryScreenshotUploadResult(title: "Study Not Configured",
                                               message: "StudyTrace could not prepare the Battery screenshot upload URL. Please rejoin the study, then try again.")
             return
@@ -304,11 +310,17 @@ class ESMViewController: UIViewController, UIImagePickerControllerDelegate, UINa
                 guard let self = self else { return }
                 self.isUploadingBatteryScreenshot = false
                 if let error = error {
+                    StudyTraceTelemetry.recordEvent("battery_screenshot_upload_failed", metadata: [
+                        "transport_error": error.localizedDescription
+                    ])
                     self.showBatteryScreenshotUploadResult(title: "Upload Failed", message: error.localizedDescription)
                     return
                 }
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
                 if (200..<300).contains(statusCode) {
+                    StudyTraceTelemetry.recordEvent("battery_screenshot_upload_succeeded", metadata: [
+                        "http_status": statusCode
+                    ])
                     if let schedule = self.activeBatterySchedule {
                         self.markBatteryScheduleCompleted(schedule)
                     }
@@ -318,6 +330,10 @@ class ESMViewController: UIViewController, UIImagePickerControllerDelegate, UINa
                                                            message: "Your screenshot was uploaded to the study server.")
                 } else {
                     let serverMessage = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                    StudyTraceTelemetry.recordEvent("battery_screenshot_upload_failed", metadata: [
+                        "http_status": statusCode,
+                        "server_response": serverMessage
+                    ])
                     let detail = serverMessage.isEmpty ? "" : "\n\nServer response: \(serverMessage)"
                     self.showBatteryScreenshotUploadResult(title: "Upload Failed",
                                                            message: "The study server returned HTTP \(statusCode).\(detail)")
@@ -346,6 +362,9 @@ class ESMViewController: UIViewController, UIImagePickerControllerDelegate, UINa
         ]
         guard JSONSerialization.isValidJSONObject(payload),
               let body = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
+            StudyTraceTelemetry.recordEvent("battery_screenshot_upload_failed", metadata: [
+                "reason": "invalid_payload"
+            ])
             return nil
         }
 

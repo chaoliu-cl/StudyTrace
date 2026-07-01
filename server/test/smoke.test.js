@@ -356,7 +356,9 @@ try {
   assert.ok(batteryDiagnostics.json.appRows.some((row) => row.app_name === 'YouTube' && row.screen_time_seconds === 2700 && row.battery_percent === 10), 'battery OCR parser extracts YouTube row');
   const batteryCsv = await request('GET', `${apiBase}/export/battery_usage_apps?format=csv`, { headers: jsonAuth });
   assert.strictEqual(batteryCsv.status, 200, 'battery usage CSV export ok');
-  assert.ok(/^id,study_id,device_id,timestamp,app_name,battery_percent,battery_percent_text,extraction_method,extraction_status,ocr_confidence,ocr_text,parse_notes,screen_time_seconds,screen_time_text,source_image_url,source_row_id,source_sensor,timestamp,created_at/m.test(batteryCsv.json), 'battery usage CSV header includes OCR fields');
+  for (const column of ['app_name', 'ocr_confidence', 'needs_review', 'qa_reason', 'ocr_text', 'parse_notes', 'source_image_url']) {
+    assert.ok(batteryCsv.json.split('\r\n')[0].split(',').includes(column), `battery usage CSV header includes ${column}`);
+  }
   assert.ok(/Instagram/.test(batteryCsv.json), 'battery usage CSV includes parsed app');
 
   const participantBatteryUpload = await request('POST', `${apiBase}/battery-screenshots`, {
@@ -531,6 +533,55 @@ try {
     'researcher dashboard omits retired app-usage export'
   );
   console.log('✓ researcher dashboard summary');
+
+  const nowMs = Date.now();
+  await request('POST', `${apiBase}/sensors/client_events/data`, {
+    body: JSON.stringify({
+      device_id: 'dev-1',
+      rows: [
+        { timestamp: nowMs, event_name: 'notification_tapped' },
+        { timestamp: nowMs + 1, event_name: 'battery_screenshot_upload_failed' },
+      ],
+    }),
+    headers: jsonAuth,
+  });
+  await request('POST', `${apiBase}/sensors/device_state/data`, {
+    body: JSON.stringify({
+      device_id: 'dev-1',
+      rows: [{
+        timestamp: nowMs,
+        notification_authorization: 'authorized',
+        location_authorization: 'authorized_always',
+        battery_level: 0.77,
+        low_power_mode_enabled: false,
+      }],
+    }),
+    headers: jsonAuth,
+  });
+  await request('POST', `${apiBase}/sensors/locations/data`, {
+    body: JSON.stringify({
+      device_id: 'dev-1',
+      rows: [
+        { timestamp: nowMs, double_latitude: 35.6, double_longitude: 139.7, double_accuracy: 20 },
+        { timestamp: nowMs + 30 * 60 * 1000, double_latitude: 35.61, double_longitude: 139.71, double_accuracy: 25 },
+      ],
+    }),
+    headers: jsonAuth,
+  });
+
+  const participantHealth = await request('GET', `${apiBase}/dashboard/participant-health`, { headers: jsonAuth });
+  assert.strictEqual(participantHealth.status, 200, 'participant health dashboard ok');
+  assert.ok(participantHealth.json.rows.some((row) => row.device_id === 'dev-1' && row.notification_authorization === 'authorized'), 'participant health includes device state');
+  const locationSummary = await request('GET', `${apiBase}/dashboard/location-daily-summary`, { headers: jsonAuth });
+  assert.strictEqual(locationSummary.status, 200, 'location daily summary dashboard ok');
+  assert.ok(locationSummary.json.rows.some((row) => row.device_id === 'dev-1' && row.location_rows >= 2), 'location summary includes daily mobility rows');
+  const surveyQuality = await request('GET', `${apiBase}/dashboard/survey-quality`, { headers: jsonAuth });
+  assert.strictEqual(surveyQuality.status, 200, 'survey quality dashboard ok');
+  assert.ok(surveyQuality.json.rows.some((row) => row.question_trigger === 'battery_usage_screenshot'), 'survey quality includes Battery screenshot response metadata');
+  const healthCsv = await request('GET', `${apiBase}/export/participant_health?format=csv`, { headers: jsonAuth });
+  assert.strictEqual(healthCsv.status, 200, 'participant health CSV export ok');
+  assert.ok(healthCsv.json.split('\r\n')[0].split(',').includes('health_status'), 'participant health CSV includes health_status');
+  console.log('✓ researcher derived quality dashboards');
 
   // 21. JSON export returns the stored rows.
   const expJson = await request('GET', `/admin/export/steps?format=json`, { headers: adminHdr });

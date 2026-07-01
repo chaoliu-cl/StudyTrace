@@ -36,6 +36,11 @@ import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 
 const BATTERY_USAGE_EXPORT_SENSOR = 'battery_usage_apps';
+const LOCATION_DAILY_SUMMARY_SENSOR = 'location_daily_summary';
+const SURVEY_QUALITY_SENSOR = 'survey_quality';
+const PARTICIPANT_HEALTH_SENSOR = 'participant_health';
+const CLIENT_EVENTS_SENSOR = 'client_events';
+const DEVICE_STATE_SENSOR = 'device_state';
 const LEGACY_SCREEN_TIME_SENSORS = new Set([
   'screentime_apps',
   'screentime_raw_log',
@@ -53,8 +58,53 @@ const BATTERY_USAGE_EXPORT_COLUMNS = [
   'extraction_status',
   'extraction_method',
   'ocr_confidence',
+  'needs_review',
+  'qa_reason',
   'parse_notes',
   'ocr_text',
+];
+const LOCATION_DAILY_SUMMARY_COLUMNS = [
+  'date',
+  'location_rows',
+  'first_location_at',
+  'last_location_at',
+  'coverage_minutes',
+  'distance_meters',
+  'radius_of_gyration_meters',
+  'stop_count',
+  'mean_accuracy_meters',
+  'max_accuracy_meters',
+];
+const SURVEY_QUALITY_COLUMNS = [
+  'source_sensor',
+  'source_row_id',
+  'question_title',
+  'question_trigger',
+  'question_type',
+  'answered',
+  'answer_kind',
+  'answer_length',
+  'response_latency_seconds',
+  'submitted_at',
+  'quality_flags',
+];
+const PARTICIPANT_HEALTH_COLUMNS = [
+  'participant',
+  'last_seen',
+  'last_client_event',
+  'last_device_state',
+  'notification_authorization',
+  'location_authorization',
+  'battery_level',
+  'low_power_mode_enabled',
+  'location_rows',
+  'esm_rows',
+  'battery_screenshot_rows',
+  'battery_app_rows',
+  'upload_failures_24h',
+  'notification_taps_24h',
+  'health_status',
+  'notes',
 ];
 const BATTERY_USAGE_EXPORT_LIMIT = 10000;
 
@@ -383,6 +433,42 @@ export function createApp() {
     }
   });
 
+  app.get('/api/v1/studies/:studyId/dashboard/participant-health', requireStudyPassword, async (req, res) => {
+    try {
+      const rows = await deriveParticipantHealthRows({ studyId: req.params.studyId });
+      return res.json({ ok: true, count: rows.length, rows: rows.map(rowForDashboard) });
+    } catch (err) {
+      console.error(`[dashboard participant health ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  app.get('/api/v1/studies/:studyId/dashboard/location-daily-summary', requireStudyPassword, async (req, res) => {
+    try {
+      const rows = await deriveLocationDailySummaries({
+        studyId: req.params.studyId,
+        limit: req.query.limit,
+      });
+      return res.json({ ok: true, count: rows.length, rows: rows.map(rowForDashboard) });
+    } catch (err) {
+      console.error(`[dashboard location summary ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  app.get('/api/v1/studies/:studyId/dashboard/survey-quality', requireStudyPassword, async (req, res) => {
+    try {
+      const rows = await deriveSurveyQualityRows({
+        studyId: req.params.studyId,
+        limit: req.query.limit,
+      });
+      return res.json({ ok: true, count: rows.length, rows: rows.map(rowForDashboard) });
+    } catch (err) {
+      console.error(`[dashboard survey quality ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
   app.get('/api/v1/studies/:studyId/media/:sensor/:rowId/image', requireStudyPassword, async (req, res) => {
     try {
       const image = await imageFromEsmRow(req.params.studyId, req.params.sensor, req.params.rowId);
@@ -420,14 +506,26 @@ async function listAdminSensorsForDashboard() {
   const sensors = filterLegacyScreenTimeSensors(await listSensorTables());
   const batteryDiagnostics = await findBatteryUsageDiagnostics({ limit: BATTERY_USAGE_EXPORT_LIMIT });
   upsertVirtualSensor(sensors, BATTERY_USAGE_EXPORT_SENSOR, batteryDiagnostics.appRows.length, 'derived_from_battery_screenshot_esm');
+  const locationRows = await deriveLocationDailySummaries({ limit: BATTERY_USAGE_EXPORT_LIMIT });
+  const surveyRows = await deriveSurveyQualityRows({ limit: BATTERY_USAGE_EXPORT_LIMIT });
+  const healthRows = await deriveParticipantHealthRows({});
+  upsertVirtualSensor(sensors, LOCATION_DAILY_SUMMARY_SENSOR, locationRows.length, 'virtual_derived_sensor');
+  upsertVirtualSensor(sensors, SURVEY_QUALITY_SENSOR, surveyRows.length, 'virtual_derived_sensor');
+  upsertVirtualSensor(sensors, PARTICIPANT_HEALTH_SENSOR, healthRows.length, 'virtual_derived_sensor');
   return sensors.sort((a, b) => String(a.sensor).localeCompare(String(b.sensor)));
 }
 
 async function attachStudyDerivedSensors(overview, studyId) {
   const batteryDiagnostics = await findBatteryUsageDiagnostics({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  const locationRows = await deriveLocationDailySummaries({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  const surveyRows = await deriveSurveyQualityRows({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  const healthRows = await deriveParticipantHealthRows({ studyId });
 
   overview.sensors = filterLegacyScreenTimeSensors(overview.sensors || []);
   upsertVirtualSensor(overview.sensors, BATTERY_USAGE_EXPORT_SENSOR, batteryDiagnostics.appRows.length, 'derived_from_battery_screenshot_esm');
+  upsertVirtualSensor(overview.sensors, LOCATION_DAILY_SUMMARY_SENSOR, locationRows.length, 'virtual_derived_sensor');
+  upsertVirtualSensor(overview.sensors, SURVEY_QUALITY_SENSOR, surveyRows.length, 'virtual_derived_sensor');
+  upsertVirtualSensor(overview.sensors, PARTICIPANT_HEALTH_SENSOR, healthRows.length, 'virtual_derived_sensor');
   overview.sensors.sort((a, b) => Number(b.rows || 0) - Number(a.rows || 0) || String(a.sensor).localeCompare(String(b.sensor)));
   const totalRows = overview.sensors.reduce((sum, sensor) => sum + Number(sensor.rows || 0), 0);
   overview.summary = {
@@ -462,6 +560,9 @@ function upsertVirtualSensor(sensors, sensorName, rows, tableName = 'virtual_der
 
 function exportColumnsForSensor(sensor) {
   if (sensor === BATTERY_USAGE_EXPORT_SENSOR) return BATTERY_USAGE_EXPORT_COLUMNS;
+  if (sensor === LOCATION_DAILY_SUMMARY_SENSOR) return LOCATION_DAILY_SUMMARY_COLUMNS;
+  if (sensor === SURVEY_QUALITY_SENSOR) return SURVEY_QUALITY_COLUMNS;
+  if (sensor === PARTICIPANT_HEALTH_SENSOR) return PARTICIPANT_HEALTH_COLUMNS;
   return [];
 }
 
@@ -477,9 +578,349 @@ async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, off
     return exportRows(table, { studyId, deviceId, limit, offset });
   }
 
+  if (sensor === LOCATION_DAILY_SUMMARY_SENSOR) {
+    return derivedRowsForExport(await deriveLocationDailySummaries({ studyId, deviceId, limit }), { studyId, deviceId, offset });
+  }
+
+  if (sensor === SURVEY_QUALITY_SENSOR) {
+    return derivedRowsForExport(await deriveSurveyQualityRows({ studyId, deviceId, limit }), { studyId, deviceId, offset });
+  }
+
+  if (sensor === PARTICIPANT_HEALTH_SENSOR) {
+    return derivedRowsForExport(await deriveParticipantHealthRows({ studyId, deviceId }), { studyId, deviceId, offset });
+  }
+
   const table = safeTableName(sensor);
   if (!table) throw httpError(400, 'invalid sensor name');
   return exportRows(table, { studyId, deviceId, limit, offset });
+}
+
+function derivedRowsForExport(rows, { studyId, deviceId, offset } = {}) {
+  const start = Math.max(Number(offset) || 0, 0);
+  return rows
+    .filter((row) => !studyId || row.study_id === studyId)
+    .filter((row) => !deviceId || row.device_id === deviceId)
+    .slice(start)
+    .map((row, index) => ({
+      id: index + 1 + start,
+      study_id: row.study_id,
+      device_id: row.device_id,
+      timestamp: row.timestamp || null,
+      data: { ...(row.data || {}) },
+      created_at: row.created_at || new Date().toISOString(),
+    }));
+}
+
+function rowForDashboard(row) {
+  return {
+    id: row.id,
+    study_id: row.study_id,
+    device_id: row.device_id,
+    timestamp: row.timestamp,
+    created_at: row.created_at,
+    ...(row.data || {}),
+  };
+}
+
+async function deriveLocationDailySummaries({ studyId, deviceId, limit: rawLimit } = {}) {
+  const limit = Math.min(Math.max(Number(rawLimit) || 1000, 1), BATTERY_USAGE_EXPORT_LIMIT);
+  const sourceRows = await rowsForSensorCandidates(['locations', 'fused_locations', 'google_fused_location'], { studyId, deviceId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  const points = sourceRows
+    .map(locationPointFromRow)
+    .filter(Boolean)
+    .sort((a, b) => a.timestampMs - b.timestampMs);
+  const groups = new Map();
+
+  for (const point of points) {
+    const key = `${point.study_id}::${point.device_id || ''}::${point.date}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(point);
+  }
+
+  const summaries = [];
+  for (const groupPoints of groups.values()) {
+    summaries.push(locationDailySummaryFromPoints(groupPoints));
+  }
+
+  return summaries
+    .sort((a, b) => String(b.data.date).localeCompare(String(a.data.date)) || String(a.device_id).localeCompare(String(b.device_id)))
+    .slice(0, limit);
+}
+
+async function deriveSurveyQualityRows({ studyId, deviceId, limit: rawLimit } = {}) {
+  const limit = Math.min(Math.max(Number(rawLimit) || 200, 1), BATTERY_USAGE_EXPORT_LIMIT);
+  const rows = studyId
+    ? await findEsmResponseRows(studyId, limit)
+    : await allEsmResponseRows(limit);
+
+  return rows
+    .filter((row) => !deviceId || row.device_id === deviceId)
+    .map((row) => {
+      const esmJson = parseEsmJson(row.data?.esm_json);
+      const answer = row.data?.esm_user_answer;
+      const answered = answer !== null && answer !== undefined && String(answer).trim() !== '';
+      const answerKind = answerKindFor(answer, esmJson);
+      const answerLength = answer === null || answer === undefined
+        ? 0
+        : (typeof answer === 'string' ? answer.length : JSON.stringify(answer).length);
+      const responseLatency = responseLatencySeconds(row);
+      const flags = [];
+      if (!answered) flags.push('missing_answer');
+      if (answerKind === 'photo') flags.push('photo_response');
+      if (responseLatency !== null && responseLatency > 60 * 60) flags.push('long_latency');
+      if (esmJson.studytrace_required === true && !answered) flags.push('required_missing');
+
+      return {
+        study_id: row.study_id,
+        device_id: row.device_id,
+        timestamp: row.timestamp,
+        created_at: row.created_at,
+        data: {
+          source_sensor: row.sensor || '',
+          source_row_id: String(row.id),
+          question_title: esmJson.esm_title || '',
+          question_trigger: row.data?.esm_trigger || esmJson.esm_trigger || '',
+          question_type: Number(esmJson.esm_type || 0) || '',
+          answered,
+          answer_kind: answerKind,
+          answer_length: answerLength,
+          response_latency_seconds: responseLatency,
+          submitted_at: submittedAt(row),
+          quality_flags: flags.join(';'),
+        },
+      };
+    })
+    .sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0))
+    .slice(0, limit);
+}
+
+async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
+  const studies = studyId
+    ? [{ study_id: studyId }]
+    : await listStudies();
+  const rows = [];
+
+  for (const study of studies) {
+    const overview = await getStudyOverview(study.study_id);
+    if (!overview) continue;
+    const batteryDiagnostics = await findBatteryUsageDiagnostics({ studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
+    const surveyRows = await deriveSurveyQualityRows({ studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
+    const locationRows = await rowsForSensorCandidates(['locations', 'fused_locations', 'google_fused_location'], { studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
+    const clientEvents = await rowsForSensorCandidates([CLIENT_EVENTS_SENSOR], { studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
+    const deviceStates = await rowsForSensorCandidates([DEVICE_STATE_SENSOR], { studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
+
+    for (const device of overview.devices || []) {
+      if (deviceId && device.device_id !== deviceId) continue;
+      const latestEvent = latestForDevice(clientEvents, device.device_id);
+      const latestState = latestForDevice(deviceStates, device.device_id);
+      const recentEvents = rowsInLastHours(clientEvents.filter((row) => row.device_id === device.device_id), 24);
+      const locationCount = locationRows.filter((row) => row.device_id === device.device_id).length;
+      const esmCount = surveyRows.filter((row) => row.device_id === device.device_id).length;
+      const screenshotCount = batteryDiagnostics.screenshotRows.filter((row) => row.device_id === device.device_id).length;
+      const appRowsCount = batteryDiagnostics.appRows.filter((row) => row.device_id === device.device_id).length;
+      const uploadFailures = recentEvents.filter((row) => String(row.data?.event_name || '').includes('upload_failed')).length;
+      const notificationTaps = recentEvents.filter((row) => row.data?.event_name === 'notification_tapped').length;
+      const state = latestState?.data || {};
+      const notes = healthNotes({ device, state, locationCount, esmCount, screenshotCount, uploadFailures });
+
+      rows.push({
+        study_id: study.study_id,
+        device_id: device.device_id,
+        timestamp: toEpochMs(device.last_seen) || null,
+        created_at: new Date().toISOString(),
+        data: {
+          participant: device.participant || '',
+          last_seen: device.last_seen || '',
+          last_client_event: latestEvent ? submittedAt(latestEvent) : '',
+          last_device_state: latestState ? submittedAt(latestState) : '',
+          notification_authorization: state.notification_authorization || '',
+          location_authorization: state.location_authorization || '',
+          battery_level: state.battery_level ?? '',
+          low_power_mode_enabled: state.low_power_mode_enabled ?? '',
+          location_rows: locationCount,
+          esm_rows: esmCount,
+          battery_screenshot_rows: screenshotCount,
+          battery_app_rows: appRowsCount,
+          upload_failures_24h: uploadFailures,
+          notification_taps_24h: notificationTaps,
+          health_status: notes.length ? 'needs_attention' : 'ok',
+          notes: notes.join('; '),
+        },
+      });
+    }
+  }
+
+  return rows.sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+}
+
+async function rowsForSensorCandidates(sensors, { studyId, deviceId, limit } = {}) {
+  const rows = [];
+  for (const sensor of sensors) {
+    const table = safeTableName(sensor);
+    if (!table || !(await tableExists(table))) continue;
+    const sensorRows = await exportRows(table, { studyId, deviceId, limit });
+    rows.push(...sensorRows.map((row) => ({ ...row, sensor })));
+  }
+  return rows;
+}
+
+async function allEsmResponseRows(limit) {
+  const sensors = await listSensorTables();
+  const rows = [];
+  for (const sensor of sensors) {
+    if (!isKnownEsmSensor(sensor.sensor)) continue;
+    const table = safeTableName(sensor.sensor);
+    if (!table) continue;
+    const sensorRows = await exportRows(table, { limit });
+    for (const row of sensorRows) {
+      if (isEsmDataRow(row.data)) rows.push({ ...row, sensor: sensor.sensor });
+    }
+  }
+  return rows;
+}
+
+function locationPointFromRow(row) {
+  const data = row.data || {};
+  const latitude = numberFrom(data.double_latitude ?? data.latitude ?? data.lat);
+  const longitude = numberFrom(data.double_longitude ?? data.longitude ?? data.lon ?? data.lng);
+  if (latitude === null || longitude === null) return null;
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  const timestampMs = toEpochMs(row.timestamp ?? data.timestamp ?? row.created_at);
+  if (!timestampMs) return null;
+  return {
+    study_id: row.study_id,
+    device_id: row.device_id,
+    timestampMs,
+    date: new Date(timestampMs).toISOString().slice(0, 10),
+    latitude,
+    longitude,
+    accuracy: numberFrom(data.double_accuracy ?? data.accuracy ?? data.horizontal_accuracy),
+  };
+}
+
+function locationDailySummaryFromPoints(points) {
+  const sorted = [...points].sort((a, b) => a.timestampMs - b.timestampMs);
+  let distanceMeters = 0;
+  for (let i = 1; i < sorted.length; i += 1) {
+    const distance = haversineMeters(sorted[i - 1], sorted[i]);
+    if (distance < 10000) distanceMeters += distance;
+  }
+  const centroid = sorted.reduce((acc, point) => ({
+    latitude: acc.latitude + point.latitude / sorted.length,
+    longitude: acc.longitude + point.longitude / sorted.length,
+  }), { latitude: 0, longitude: 0 });
+  const radius = Math.sqrt(sorted.reduce((sum, point) => {
+    const distance = haversineMeters(point, centroid);
+    return sum + distance * distance;
+  }, 0) / sorted.length);
+  const accuracies = sorted.map((point) => point.accuracy).filter((value) => value !== null);
+  return {
+    study_id: sorted[0].study_id,
+    device_id: sorted[0].device_id,
+    timestamp: sorted[0].timestampMs,
+    created_at: new Date().toISOString(),
+    data: {
+      date: sorted[0].date,
+      location_rows: sorted.length,
+      first_location_at: new Date(sorted[0].timestampMs).toISOString(),
+      last_location_at: new Date(sorted[sorted.length - 1].timestampMs).toISOString(),
+      coverage_minutes: Math.round((sorted[sorted.length - 1].timestampMs - sorted[0].timestampMs) / 60000),
+      distance_meters: Math.round(distanceMeters),
+      radius_of_gyration_meters: Math.round(radius),
+      stop_count: estimateStopCount(sorted),
+      mean_accuracy_meters: accuracies.length ? Math.round(accuracies.reduce((sum, value) => sum + value, 0) / accuracies.length) : '',
+      max_accuracy_meters: accuracies.length ? Math.round(Math.max(...accuracies)) : '',
+    },
+  };
+}
+
+function estimateStopCount(points) {
+  if (points.length < 3) return 0;
+  let stops = 0;
+  let clusterStart = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    if (haversineMeters(points[clusterStart], points[i]) > 100) {
+      const dwellMinutes = (points[i - 1].timestampMs - points[clusterStart].timestampMs) / 60000;
+      if (dwellMinutes >= 15) stops += 1;
+      clusterStart = i;
+    }
+  }
+  const finalDwell = (points[points.length - 1].timestampMs - points[clusterStart].timestampMs) / 60000;
+  if (finalDwell >= 15) stops += 1;
+  return stops;
+}
+
+function haversineMeters(a, b) {
+  const radius = 6371000;
+  const lat1 = toRadians(a.latitude);
+  const lat2 = toRadians(b.latitude);
+  const dLat = toRadians(b.latitude - a.latitude);
+  const dLon = toRadians(b.longitude - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * radius * Math.asin(Math.sqrt(h));
+}
+
+function toRadians(value) {
+  return Number(value) * Math.PI / 180;
+}
+
+function numberFrom(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function toEpochMs(value) {
+  if (value instanceof Date) return value.getTime();
+  const number = Number(value);
+  if (Number.isFinite(number) && number > 0) {
+    return number < 100000000000 ? number * 1000 : number;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function submittedAt(row) {
+  const timestamp = toEpochMs(row.data?.double_esm_user_answer_timestamp ?? row.timestamp ?? row.created_at);
+  return timestamp ? new Date(timestamp).toISOString() : '';
+}
+
+function responseLatencySeconds(row) {
+  const submitted = toEpochMs(row.data?.double_esm_user_answer_timestamp);
+  const prompted = toEpochMs(row.timestamp);
+  if (!submitted || !prompted || submitted < prompted) return null;
+  return Math.round((submitted - prompted) / 1000);
+}
+
+function answerKindFor(answer, esmJson) {
+  if (answer === null || answer === undefined || String(answer).trim() === '') return 'empty';
+  if (Number(esmJson?.esm_type) === 14 || decodeImageAnswer(answer)) return 'photo';
+  if (typeof answer === 'object') return 'json';
+  return 'text';
+}
+
+function latestForDevice(rows, deviceId) {
+  return rows
+    .filter((row) => row.device_id === deviceId)
+    .sort((a, b) => (toEpochMs(b.timestamp ?? b.created_at) || 0) - (toEpochMs(a.timestamp ?? a.created_at) || 0))[0] || null;
+}
+
+function rowsInLastHours(rows, hours) {
+  const cutoff = Date.now() - hours * 60 * 60 * 1000;
+  return rows.filter((row) => (toEpochMs(row.timestamp ?? row.created_at) || 0) >= cutoff);
+}
+
+function healthNotes({ device, state, locationCount, esmCount, screenshotCount, uploadFailures }) {
+  const notes = [];
+  const lastSeen = toEpochMs(device.last_seen);
+  if (!lastSeen || Date.now() - lastSeen > 48 * 60 * 60 * 1000) notes.push('device not seen in 48h');
+  if (state.notification_authorization && !['authorized', 'provisional', 'ephemeral'].includes(state.notification_authorization)) notes.push('notifications not authorized');
+  if (state.location_authorization && state.location_authorization !== 'authorized_always') notes.push('location not always authorized');
+  if (locationCount === 0) notes.push('no location rows');
+  if (esmCount === 0) notes.push('no ESM responses');
+  if (screenshotCount === 0) notes.push('no Battery screenshots');
+  if (uploadFailures > 0) notes.push(`${uploadFailures} upload failure(s) in 24h`);
+  return notes;
 }
 
 // Flatten exported rows into CSV. Columns are id, study_id, device_id,
@@ -693,6 +1134,9 @@ function defaultEsmQuestions(promptType = 'battery_usage_screenshot') {
         esm_trigger: 'current_activity',
         esm_submit: 'Submit',
         esm_na: true,
+        studytrace_required: true,
+        studytrace_randomize_options: false,
+        studytrace_branching: {},
       },
     ];
   }
@@ -704,6 +1148,8 @@ function defaultEsmQuestions(promptType = 'battery_usage_screenshot') {
       esm_trigger: 'battery_usage_screenshot',
       esm_submit: 'Submit',
       esm_na: true,
+      studytrace_required: true,
+      studytrace_quality_check: 'ocr_review',
     },
   ];
 }
@@ -852,12 +1298,15 @@ async function processBatteryScreenshotUploads({ studyId, limit: rawLimit } = {}
       : { text: '', confidence: null, method: 'none', status: 'no_image' };
     const parsedRows = parseBatteryUsageOcrText(ocr.text);
     const sourceImageUrl = `/api/v1/studies/${encodeURIComponent(source.study_id)}/media/${encodeURIComponent(source.sensor)}/${encodeURIComponent(source.id)}/image`;
+    const qa = batteryOcrQa({ ocr, parsedRows });
     const base = {
       source_sensor: source.sensor,
       source_row_id: String(source.id),
       source_image_url: sourceImageUrl,
       extraction_method: ocr.method,
       ocr_confidence: ocr.confidence,
+      needs_review: qa.needsReview,
+      qa_reason: qa.reason,
       ocr_text: ocr.text,
     };
 
@@ -991,6 +1440,18 @@ async function extractBatteryUsageOcrText(data, imageBuffer) {
       error: err?.message || String(err),
     };
   }
+}
+
+function batteryOcrQa({ ocr, parsedRows }) {
+  const reasons = [];
+  if (!ocr?.text) reasons.push('no OCR text');
+  if (!parsedRows.length) reasons.push('no parsed app rows');
+  if (Number.isFinite(Number(ocr?.confidence)) && Number(ocr.confidence) < 60) reasons.push('low OCR confidence');
+  if (ocr?.status && !['parsed'].includes(ocr.status)) reasons.push(ocr.status);
+  return {
+    needsReview: reasons.length > 0,
+    reason: reasons.join('; '),
+  };
 }
 
 function parseBatteryUsageOcrText(text) {
