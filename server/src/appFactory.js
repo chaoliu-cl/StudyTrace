@@ -1213,8 +1213,67 @@ async function handleBatteryScreenshotUpload(req, res, studyId) {
   const table = safeTableName('plugin_ios_esm');
   await createSensorTable(table);
   const inserted = await insertRows(table, studyId, deviceId, [row]);
+  const source = await findLatestBatteryScreenshotSource(table, { studyId, deviceId, timestamp });
   const processed = await processBatteryScreenshotUploads({ studyId, limit: 25 });
-  return res.status(201).json({ ok: true, inserted, processed });
+  const feedback = source
+    ? await batteryScreenshotUploadFeedback(source)
+    : {
+        app_rows_detected: 0,
+        needs_review: true,
+        qa_reason: 'uploaded screenshot could not be located for OCR feedback',
+        message: 'Screenshot uploaded, but StudyTrace could not confirm OCR quality yet.',
+      };
+  return res.status(201).json({ ok: true, inserted, processed, feedback });
+}
+
+async function findLatestBatteryScreenshotSource(table, { studyId, deviceId, timestamp }) {
+  const { rows } = await getPool().query(
+    `SELECT id, study_id, device_id, timestamp, data, created_at
+     FROM ${table}
+     WHERE study_id = $1
+       AND device_id = $2
+       AND timestamp = $3
+     ORDER BY id DESC
+     LIMIT 1`,
+    [studyId, deviceId, timestamp]
+  );
+  if (rows.length) return { ...rows[0], sensor: 'plugin_ios_esm' };
+  return null;
+}
+
+async function batteryScreenshotUploadFeedback(source) {
+  const table = safeTableName(BATTERY_USAGE_EXPORT_SENSOR);
+  if (!table || !(await tableExists(table))) {
+    return {
+      app_rows_detected: 0,
+      needs_review: true,
+      qa_reason: 'OCR output table unavailable',
+      message: 'Screenshot uploaded, but OCR feedback is not available yet.',
+    };
+  }
+  const { rows } = await getPool().query(
+    `SELECT data
+     FROM ${table}
+     WHERE study_id = $1
+       AND data->>'source_sensor' = $2
+       AND data->>'source_row_id' = $3
+     ORDER BY id ASC`,
+    [source.study_id, source.sensor, String(source.id)]
+  );
+  const parsedRows = rows
+    .map((row) => row.data || {})
+    .filter((row) => row.extraction_status === 'parsed' && row.app_name);
+  const needsReview = rows.some((row) => row.data?.needs_review === true || row.data?.needs_review === 'true') ||
+    parsedRows.length === 0;
+  const qaReason = [...new Set(rows.map((row) => row.data?.qa_reason).filter(Boolean))].join('; ');
+  return {
+    app_rows_detected: parsedRows.length,
+    needs_review: needsReview,
+    qa_reason: qaReason,
+    message: needsReview
+      ? 'Screenshot uploaded, but StudyTrace could not confidently read app usage. Please retake it if possible.'
+      : `Screenshot uploaded. StudyTrace detected ${parsedRows.length} app usage row${parsedRows.length === 1 ? '' : 's'}.`,
+  };
 }
 
 async function findEsmResponseRows(studyId, rawLimit) {

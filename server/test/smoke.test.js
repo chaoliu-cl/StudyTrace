@@ -377,11 +377,25 @@ try {
   });
   assert.strictEqual(participantBatteryUpload.status, 201, 'participant battery screenshot upload ok');
   assert.strictEqual(participantBatteryUpload.json.inserted, 1, 'participant battery screenshot stored');
+  assert.ok(participantBatteryUpload.json.feedback.app_rows_detected >= 1, 'participant upload feedback reports parsed app rows');
+  assert.strictEqual(participantBatteryUpload.json.feedback.needs_review, false, 'participant upload feedback accepts readable screenshot');
   const badParticipantBatteryUpload = await request('POST', `${apiBase}/battery-screenshots`, {
     body: JSON.stringify({ device_id: 'dev-1', screenshot_base64: tinyPngBase64 }),
     headers: { 'Content-Type': 'application/json', 'x-study-password': 'wrong' },
   });
   assert.strictEqual(badParticipantBatteryUpload.status, 403, 'participant battery screenshot rejects wrong password');
+  const unreadableParticipantBatteryUpload = await request('POST', `${apiBase}/battery-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-1',
+      timestamp: 891.5,
+      screenshot_base64: tinyPngBase64,
+      battery_usage_ocr_text: 'not a battery screen',
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(unreadableParticipantBatteryUpload.status, 201, 'unreadable participant battery screenshot upload stored');
+  assert.strictEqual(unreadableParticipantBatteryUpload.json.feedback.app_rows_detected, 0, 'unreadable upload feedback reports zero app rows');
+  assert.strictEqual(unreadableParticipantBatteryUpload.json.feedback.needs_review, true, 'unreadable upload feedback requests review');
   const participantBatteryDiagnostics = await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: jsonAuth });
   assert.ok(participantBatteryDiagnostics.json.appRows.some((row) => row.app_name === 'TikTok' && row.screen_time_seconds === 1920 && row.battery_percent === 8), 'participant battery upload is parsed for dashboard export');
 
