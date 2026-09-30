@@ -115,7 +115,7 @@ export function createGenericApiRouter() {
       await createSensorTable(table);
       const n = await insertRows(table, req.params.studyId, deviceId, rows);
       if (deviceId) await upsertDevice(deviceId, req.params.studyId, req.query.participant);
-      return res.status(201).json({ ok: true, inserted: n });
+      return res.status(201).json({ ok: true, inserted: n, duplicates: rows.length - n });
     } catch (err) {
       console.error(`[api insert ${req.params.sensor}]`, err);
       return res.status(500).json({ error: 'server error' });

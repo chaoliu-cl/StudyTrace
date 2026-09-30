@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import UserNotifications
 @testable import StudyTrace
 
 class StudyTraceTests: XCTestCase {
@@ -116,6 +117,16 @@ class StudyTraceTests: XCTestCase {
             QRCodeReaderViewController.normalizedURLCandidate(" https://studytrace-production.up.railway.app/index.php/webservice/index/pilot/secret "),
             "https://studytrace-production.up.railway.app/index.php/webservice/index/pilot/secret"
         )
+    }
+
+    func testNotificationAuditRecognizesSurveyPrompts() {
+        let prompt = UNMutableNotificationContent()
+        prompt.userInfo = ["schedule_id": "studytrace_random_esm_survey"]
+        XCTAssertTrue(StudyTraceNotificationAudit.isSurveyPrompt(prompt))
+
+        let reminder = UNMutableNotificationContent()
+        reminder.title = "StudyTrace stopped"
+        XCTAssertFalse(StudyTraceNotificationAudit.isSurveyPrompt(reminder))
     }
 
 }

@@ -763,6 +763,125 @@ try {
   assert.strictEqual(otherDevice.json.count, 1, 'other participants untouched');
   console.log('✓ researcher deletes a participant across all sensor tables');
 
+  // 29. Deduplication: retried uploads never create duplicate rows.
+  const dupRows = [{ timestamp: 111, double_latitude: 1, double_longitude: 1 }];
+  const firstSend = await post(`${studyPath}/locations/insert`, form({ device_id: 'dev-dup', data: JSON.stringify(dupRows) }), formHeaders);
+  assert.strictEqual(firstSend.json.inserted, 1, 'first AWARE batch stored');
+  const resend = await post(`${studyPath}/locations/insert`, form({ device_id: 'dev-dup', data: JSON.stringify(dupRows) }), formHeaders);
+  assert.strictEqual(resend.json.inserted, 0, 'identical AWARE re-send skipped');
+  assert.strictEqual(resend.json.duplicates, 1, 'duplicate reported');
+  const eventBody = JSON.stringify({ device_id: 'dev-dup', rows: [{ timestamp: 5, event_id: 'evt-1', event_name: 'app_launch' }] });
+  await request('POST', `${apiBase}/sensors/client_events/data`, { body: eventBody, headers: jsonAuth });
+  const eventRetry = await request('POST', `${apiBase}/sensors/client_events/data`, { body: eventBody, headers: jsonAuth });
+  assert.strictEqual(eventRetry.json.inserted, 0, 'event_id retry skipped');
+  const withinBatch = await request('POST', `${apiBase}/sensors/client_events/data`, {
+    body: JSON.stringify({ device_id: 'dev-dup', rows: [
+      { timestamp: 6, event_id: 'evt-2' }, { timestamp: 6, event_id: 'evt-2' }, { timestamp: 7, event_id: 'evt-3' },
+    ] }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(withinBatch.json.inserted, 2, 'duplicates within one batch collapse');
+  const bigBatch = Array.from({ length: 2500 }, (_, index) => ({ timestamp: 10000 + index, value: index }));
+  const bigInsert = await request('POST', `${apiBase}/sensors/big_sensor/data`, {
+    body: JSON.stringify({ device_id: 'dev-dup', rows: bigBatch }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(bigInsert.json.inserted, 2500, 'large batch inserted in chunks');
+  const screenshotBody = JSON.stringify({
+    device_id: 'dev-dup',
+    timestamp: 7777,
+    upload_id: 'sha256-of-image-abc',
+    screenshot_base64: tinyPngBase64,
+    battery_usage_ocr_text: ['Battery Usage by App', 'Notes', '5m On Screen', '1%'].join('\n'),
+  });
+  const shotFirst = await request('POST', `${apiBase}/battery-screenshots`, { body: screenshotBody, headers: jsonAuth });
+  assert.strictEqual(shotFirst.status, 201, 'first screenshot upload stored');
+  const shotRetry = await request('POST', `${apiBase}/battery-screenshots`, { body: screenshotBody, headers: jsonAuth });
+  assert.strictEqual(shotRetry.status, 200, 'screenshot retry acknowledged');
+  assert.strictEqual(shotRetry.json.duplicate, true, 'screenshot retry flagged as duplicate');
+  assert.ok(shotRetry.json.feedback.app_rows_detected >= 1, 'retry still returns OCR feedback');
+  const dupShotRows = await request('GET', `${apiBase}/sensors/plugin_ios_esm/count?device_id=dev-dup`, { headers: jsonAuth });
+  assert.strictEqual(dupShotRows.json.count, 1, 'one screenshot row stored');
+  await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: researcherAuth });
+  const dupAppRows = await request('GET', `${apiBase}/sensors/battery_usage_apps/count?device_id=dev-dup`, { headers: jsonAuth });
+  assert.strictEqual(dupAppRows.json.count, 1, 'OCR rows not duplicated by repeated processing');
+  console.log('✓ retries and re-sends are deduplicated (AWARE, generic, screenshots, OCR)');
+
+  // 30. Location days follow the participant's local time zone.
+  const badZone = await post('/admin/studies', JSON.stringify({ study_id: 'demo', timezone: 'Mars/Olympus' }), adminJson);
+  assert.strictEqual(badZone.status, 400, 'invalid study time zone rejected');
+  const setZone = await post('/admin/studies', JSON.stringify({ study_id: 'demo', timezone: 'Asia/Tokyo' }), adminJson);
+  assert.strictEqual(setZone.json.timezone, 'Asia/Tokyo', 'study default time zone saved');
+  await request('POST', `${apiBase}/sensors/device_state/data`, {
+    body: JSON.stringify({ device_id: 'dev-tz', rows: [{ timestamp: Date.UTC(2026, 0, 15, 12), timezone: 'America/New_York' }] }),
+    headers: jsonAuth,
+  });
+  await request('POST', `${apiBase}/sensors/locations/data`, {
+    body: JSON.stringify({ device_id: 'dev-tz', rows: [
+      { timestamp: Date.UTC(2026, 0, 15, 14), double_latitude: 40.7, double_longitude: -74.0 },
+      { timestamp: Date.UTC(2026, 0, 16, 2, 30), double_latitude: 40.71, double_longitude: -74.01 },
+    ] }),
+    headers: jsonAuth,
+  });
+  await request('POST', `${apiBase}/sensors/locations/data`, {
+    body: JSON.stringify({ device_id: 'dev-notz', rows: [
+      { timestamp: Date.UTC(2026, 0, 15, 20), double_latitude: 35.6, double_longitude: 139.7 },
+    ] }),
+    headers: jsonAuth,
+  });
+  const zoned = await request('GET', `${apiBase}/dashboard/location-daily-summary?limit=1000`, { headers: researcherAuth });
+  const nyDays = zoned.json.rows.filter((row) => row.device_id === 'dev-tz');
+  assert.strictEqual(nyDays.length, 1, '21:30 New York time stays on the same local day');
+  assert.strictEqual(nyDays[0].date, '2026-01-15', 'New York local date used');
+  assert.strictEqual(nyDays[0].timezone, 'America/New_York', 'summary reports the zone used');
+  assert.strictEqual(nyDays[0].location_rows, 2, 'both fixes grouped into one local day');
+  const tokyoDay = zoned.json.rows.find((row) => row.device_id === 'dev-notz');
+  assert.strictEqual(tokyoDay.date, '2026-01-16', 'study default zone used when the device has not reported one');
+  console.log('✓ location summaries use the participant local day');
+
+  // 31. Participant health: heartbeat, gaps, compliance, telemetry loss.
+  const t0 = Date.now();
+  const promptMeta = (id, deliveredAt) => ({ notification_id: id, delivered_at: deliveredAt, is_survey_prompt: true });
+  await request('POST', `${apiBase}/sensors/client_events/data`, {
+    body: JSON.stringify({ device_id: 'dev-health', rows: [
+      { timestamp: t0 - 5 * 3600000, seq: 1, event_id: 'h1', event_name: 'app_launch', metadata: { launch_reason: 'location' } },
+      { timestamp: t0 - 3 * 3600000, seq: 2, event_id: 'h2', event_name: 'notification_delivered', metadata: promptMeta('n1', t0 - 3 * 3600000) },
+      { timestamp: t0 - 3 * 3600000 + 30000, seq: 3, event_id: 'h3', event_name: 'notification_tapped', metadata: promptMeta('n1', t0 - 3 * 3600000) },
+      { timestamp: t0 - 2 * 3600000, seq: 5, event_id: 'h5', event_name: 'notification_delivered', metadata: promptMeta('n2', t0 - 2 * 3600000) },
+      { timestamp: t0 - 2 * 3600000, seq: 6, event_id: 'h6', event_name: 'notification_delivered', metadata: { notification_id: 'other', is_survey_prompt: false } },
+      { timestamp: t0 - 90 * 60000, seq: 7, event_id: 'h7', event_name: 'permission_changed', metadata: { permission: 'location_authorization', from: 'authorized_always', to: 'authorized_when_in_use' } },
+      { timestamp: t0 - 60 * 60000, seq: 8, event_id: 'h8', event_name: 'heartbeat' },
+    ] }),
+    headers: jsonAuth,
+  });
+  const answered = (offset, trigger) => ({
+    timestamp: t0 - 3 * 3600000,
+    esm_trigger: trigger,
+    esm_json: JSON.stringify({ esm_type: 1, esm_title: trigger }),
+    esm_user_answer: 'fine',
+    double_esm_user_answer_timestamp: t0 - 3 * 3600000 + offset,
+  });
+  await post(`${studyPath}/esms/insert`, form({
+    device_id: 'dev-health',
+    data: JSON.stringify([answered(60000, 'mood'), answered(120000, 'stress')]),
+  }), formHeaders);
+  const health = await request('GET', `${apiBase}/dashboard/participant-health`, { headers: researcherAuth });
+  const hRow = health.json.rows.find((row) => row.device_id === 'dev-health');
+  assert.ok(hRow, 'health row for telemetry device');
+  assert.strictEqual(hRow.prompts_delivered_7d, 2, 'distinct survey prompts counted once each');
+  assert.strictEqual(hRow.survey_sessions_7d, 1, 'answers within 15 min form one session');
+  assert.strictEqual(hRow.compliance_rate_7d, 0.5, 'compliance = sessions / prompts');
+  assert.strictEqual(hRow.telemetry_missing_7d, 1, 'sequence gap detected as a lost row');
+  assert.strictEqual(hRow.permission_changes_7d, 1, 'permission change counted');
+  assert.strictEqual(hRow.last_launch_reason, 'location', 'launch reason reported');
+  assert.ok(hRow.last_heartbeat, 'last heartbeat reported');
+  assert.ok(hRow.max_telemetry_gap_hours_24h >= 18 && hRow.max_telemetry_gap_hours_24h <= 20, 'longest 24h gap measured');
+  assert.match(hRow.notes, /telemetry row\(s\) missing/, 'loss surfaced in notes');
+  const quality = await request('GET', `${apiBase}/dashboard/survey-quality?limit=1000`, { headers: researcherAuth });
+  const qRow = quality.json.rows.find((row) => row.device_id === 'dev-health');
+  assert.ok(qRow.local_date && qRow.timezone, 'survey quality rows include local date and zone');
+  console.log('✓ participant health reports heartbeat, gaps, compliance, and telemetry loss');
+
   // 28. Repeated failed logins are throttled (run last: it blocks this IP).
   let limited = null;
   for (let attempt = 0; attempt < 40 && !limited; attempt += 1) {

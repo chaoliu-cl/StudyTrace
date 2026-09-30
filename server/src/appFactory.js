@@ -36,7 +36,14 @@ import {
   getDeviceParticipant,
   recordWithdrawal,
   listWithdrawals,
+  rowsSince,
 } from './db.js';
+import {
+  buildTimeZoneResolver,
+  defaultTimeZoneForStudy,
+  isValidTimeZone,
+  localDateFor,
+} from './localTime.js';
 import {
   isRateLimited,
   MIN_RESEARCHER_PASSWORD_LENGTH,
@@ -81,6 +88,7 @@ const BATTERY_USAGE_EXPORT_COLUMNS = [
 ];
 const LOCATION_DAILY_SUMMARY_COLUMNS = [
   'date',
+  'timezone',
   'location_rows',
   'first_location_at',
   'last_location_at',
@@ -102,17 +110,30 @@ const SURVEY_QUALITY_COLUMNS = [
   'answer_length',
   'response_latency_seconds',
   'submitted_at',
+  'local_date',
+  'timezone',
   'quality_flags',
 ];
 const PARTICIPANT_HEALTH_COLUMNS = [
   'participant',
   'last_seen',
   'last_client_event',
+  'last_heartbeat',
+  'max_telemetry_gap_hours_24h',
+  'last_launch_reason',
   'last_device_state',
+  'timezone',
   'notification_authorization',
   'location_authorization',
+  'location_accuracy_authorization',
+  'background_refresh_status',
   'battery_level',
   'low_power_mode_enabled',
+  'prompts_delivered_7d',
+  'survey_sessions_7d',
+  'compliance_rate_7d',
+  'telemetry_missing_7d',
+  'permission_changes_7d',
   'location_rows',
   'esm_rows',
   'battery_screenshot_rows',
@@ -254,7 +275,7 @@ export function createApp() {
   //   participant password (which would break every enrolled phone).
   app.post('/admin/studies', requireAdmin, async (req, res, next) => {
     try {
-      const { study_id, password, researcher_password: researcherPassword, name } = req.body || {};
+      const { study_id, password, researcher_password: researcherPassword, name, timezone } = req.body || {};
       if (!study_id) {
         return res.status(400).json({ error: 'study_id is required' });
       }
@@ -263,6 +284,9 @@ export function createApp() {
       }
       if (researcherPassword && String(researcherPassword).length < MIN_RESEARCHER_PASSWORD_LENGTH) {
         return res.status(400).json({ error: `researcher_password must be at least ${MIN_RESEARCHER_PASSWORD_LENGTH} characters` });
+      }
+      if (timezone && !isValidTimeZone(timezone)) {
+        return res.status(400).json({ error: 'timezone must be an IANA time zone such as America/New_York' });
       }
       if (password && researcherPassword && password === researcherPassword) {
         return res.status(400).json({ error: 'researcher_password must differ from the participant study password' });
@@ -283,12 +307,14 @@ export function createApp() {
         researcherPassword,
         name: name || (existing ? undefined : 'StudyTrace Study'),
       });
+      if (timezone) await updateStudyConfig(study_id, { timezone });
       const base = publicBaseUrl || `${req.protocol}://${req.get('host')}`;
       const response = {
         status: true,
         created,
         study_id,
         researcher_password_set: Boolean(study.researcher_password_hash),
+        timezone: timezone || study.config?.timezone || null,
         // Generic-API base for any other client.
         api_base: `${base}/api/v1/studies/${encodeURIComponent(study_id)}`,
       };
@@ -759,14 +785,15 @@ function rowForDashboard(row) {
 async function deriveLocationDailySummaries({ studyId, deviceId, limit: rawLimit } = {}) {
   const limit = Math.min(Math.max(Number(rawLimit) || 1000, 1), BATTERY_USAGE_EXPORT_LIMIT);
   const sourceRows = await rowsForSensorCandidates(['locations', 'fused_locations', 'google_fused_location'], { studyId, deviceId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  const resolveZone = await timeZoneResolverFor({ studyId, deviceId });
   const points = sourceRows
-    .map(locationPointFromRow)
+    .map((row) => locationPointFromRow(row, resolveZone))
     .filter(Boolean)
     .sort((a, b) => a.timestampMs - b.timestampMs);
   const groups = new Map();
 
   for (const point of points) {
-    const key = `${point.study_id}::${point.device_id || ''}::${point.date}`;
+    const key = `${point.study_id}::${point.device_id || ''}::${point.date}::${point.timezone}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(point);
   }
@@ -786,6 +813,7 @@ async function deriveSurveyQualityRows({ studyId, deviceId, limit: rawLimit } = 
   const rows = studyId
     ? await findEsmResponseRows(studyId, limit)
     : await allEsmResponseRows(limit);
+  const resolveZone = await timeZoneResolverFor({ studyId, deviceId });
 
   return rows
     .filter((row) => !deviceId || row.device_id === deviceId)
@@ -820,6 +848,7 @@ async function deriveSurveyQualityRows({ studyId, deviceId, limit: rawLimit } = 
           answer_length: answerLength,
           response_latency_seconds: responseLatency,
           submitted_at: submittedAt(row),
+          ...localDateFields(row, resolveZone),
           quality_flags: flags.join(';'),
         },
       };
@@ -840,7 +869,12 @@ async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
     const batteryDiagnostics = await findBatteryUsageDiagnostics({ studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
     const surveyRows = await deriveSurveyQualityRows({ studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
     const locationRows = await rowsForSensorCandidates(['locations', 'fused_locations', 'google_fused_location'], { studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
-    const clientEvents = await rowsForSensorCandidates([CLIENT_EVENTS_SENSOR], { studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
+    // Windowed read (not a row cap) so busy studies keep accurate 7-day metrics.
+    const clientEventsTable = safeTableName(CLIENT_EVENTS_SENSOR);
+    const clientEvents = (await tableExists(clientEventsTable))
+      ? (await rowsSince(clientEventsTable, { studyId: study.study_id, sinceMs: Date.now() - SEVEN_DAYS_MS }))
+          .map((row) => ({ ...row, sensor: CLIENT_EVENTS_SENSOR }))
+      : [];
     const deviceStates = await rowsForSensorCandidates([DEVICE_STATE_SENSOR], { studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
 
     for (const device of overview.devices || []) {
@@ -855,7 +889,13 @@ async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
       const uploadFailures = recentEvents.filter((row) => String(row.data?.event_name || '').includes('upload_failed')).length;
       const notificationTaps = recentEvents.filter((row) => row.data?.event_name === 'notification_tapped').length;
       const state = latestState?.data || {};
-      const notes = healthNotes({ device, state, locationCount, esmCount, screenshotCount, uploadFailures });
+      const deviceEvents = clientEvents.filter((row) => row.device_id === device.device_id);
+      const telemetry = telemetryQuality(deviceEvents);
+      const compliance = complianceFor({
+        events: deviceEvents,
+        surveyRows: surveyRows.filter((row) => row.device_id === device.device_id),
+      });
+      const notes = healthNotes({ device, state, locationCount, esmCount, screenshotCount, uploadFailures, telemetry, compliance });
 
       rows.push({
         study_id: study.study_id,
@@ -866,11 +906,22 @@ async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
           participant: device.participant || '',
           last_seen: device.last_seen || '',
           last_client_event: latestEvent ? submittedAt(latestEvent) : '',
+          last_heartbeat: telemetry.lastHeartbeat ? new Date(telemetry.lastHeartbeat).toISOString() : '',
+          max_telemetry_gap_hours_24h: telemetry.maxGapHours24h,
+          last_launch_reason: telemetry.lastLaunchReason,
           last_device_state: latestState ? submittedAt(latestState) : '',
+          timezone: state.timezone || '',
           notification_authorization: state.notification_authorization || '',
           location_authorization: state.location_authorization || '',
+          location_accuracy_authorization: state.location_accuracy_authorization || '',
+          background_refresh_status: state.background_refresh_status || '',
           battery_level: state.battery_level ?? '',
           low_power_mode_enabled: state.low_power_mode_enabled ?? '',
+          prompts_delivered_7d: compliance.promptsDelivered,
+          survey_sessions_7d: compliance.surveySessions,
+          compliance_rate_7d: compliance.rate,
+          telemetry_missing_7d: telemetry.missingRows,
+          permission_changes_7d: telemetry.permissionChanges,
           location_rows: locationCount,
           esm_rows: esmCount,
           battery_screenshot_rows: screenshotCount,
@@ -913,7 +964,7 @@ async function allEsmResponseRows(limit) {
   return rows;
 }
 
-function locationPointFromRow(row) {
+function locationPointFromRow(row, resolveZone = () => 'UTC') {
   const data = row.data || {};
   const latitude = numberFrom(data.double_latitude ?? data.latitude ?? data.lat);
   const longitude = numberFrom(data.double_longitude ?? data.longitude ?? data.lon ?? data.lng);
@@ -921,11 +972,13 @@ function locationPointFromRow(row) {
   if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
   const timestampMs = toEpochMs(row.timestamp ?? data.timestamp ?? row.created_at);
   if (!timestampMs) return null;
+  const timezone = resolveZone(row.study_id, row.device_id, timestampMs);
   return {
     study_id: row.study_id,
     device_id: row.device_id,
     timestampMs,
-    date: new Date(timestampMs).toISOString().slice(0, 10),
+    timezone,
+    date: localDateFor(timestampMs, timezone),
     latitude,
     longitude,
     accuracy: numberFrom(data.double_accuracy ?? data.accuracy ?? data.horizontal_accuracy),
@@ -955,6 +1008,7 @@ function locationDailySummaryFromPoints(points) {
     created_at: new Date().toISOString(),
     data: {
       date: sorted[0].date,
+      timezone: sorted[0].timezone,
       location_rows: sorted.length,
       first_location_at: new Date(sorted[0].timestampMs).toISOString(),
       last_location_at: new Date(sorted[sorted.length - 1].timestampMs).toISOString(),
@@ -1044,7 +1098,7 @@ function rowsInLastHours(rows, hours) {
   return rows.filter((row) => (toEpochMs(row.timestamp ?? row.created_at) || 0) >= cutoff);
 }
 
-function healthNotes({ device, state, locationCount, esmCount, screenshotCount, uploadFailures }) {
+function healthNotes({ device, state, locationCount, esmCount, screenshotCount, uploadFailures, telemetry = {}, compliance = {} }) {
   const notes = [];
   const lastSeen = toEpochMs(device.last_seen);
   if (!lastSeen || Date.now() - lastSeen > 48 * 60 * 60 * 1000) notes.push('device not seen in 48h');
@@ -1054,7 +1108,110 @@ function healthNotes({ device, state, locationCount, esmCount, screenshotCount, 
   if (esmCount === 0) notes.push('no ESM responses');
   if (screenshotCount === 0) notes.push('no Battery screenshots');
   if (uploadFailures > 0) notes.push(`${uploadFailures} upload failure(s) in 24h`);
+  if (telemetry.lastHeartbeat && Date.now() - telemetry.lastHeartbeat > 6 * 60 * 60 * 1000) notes.push('no heartbeat in 6h (app may have been killed)');
+  if (telemetry.maxGapHours24h !== '' && telemetry.maxGapHours24h >= 12) notes.push(`telemetry gap of ${telemetry.maxGapHours24h}h in last 24h`);
+  if (telemetry.missingRows > 0) notes.push(`${telemetry.missingRows} telemetry row(s) missing in 7d`);
+  if (state.background_refresh_status && state.background_refresh_status !== 'available') notes.push(`background refresh ${state.background_refresh_status}`);
+  if (state.location_accuracy_authorization === 'reduced') notes.push('precise location off');
+  if (compliance.rate !== '' && compliance.promptsDelivered >= 4 && compliance.rate < 0.5) notes.push(`survey compliance ${Math.round(compliance.rate * 100)}% (7d)`);
   return notes;
+}
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const PROMPT_EVENTS = new Set(['notification_delivered', 'notification_presented', 'notification_tapped']);
+
+function eventMetadata(row) {
+  const metadata = row?.data?.metadata;
+  return metadata && typeof metadata === 'object' ? metadata : {};
+}
+
+// Heartbeat recency, the longest silence in the last 24h, and rows lost in
+// transit (the client numbers every telemetry row with a sequence number).
+function telemetryQuality(events) {
+  const now = Date.now();
+  const times = events
+    .map((row) => toEpochMs(row.timestamp ?? row.created_at))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+  const heartbeats = events
+    .filter((row) => row.data?.event_name === 'heartbeat')
+    .map((row) => toEpochMs(row.timestamp))
+    .filter(Boolean);
+  const dayAgo = now - 24 * 60 * 60 * 1000;
+  let maxGapMs = null;
+  if (times.length) {
+    const windowTimes = [dayAgo, ...times.filter((t) => t >= dayAgo), now];
+    maxGapMs = 0;
+    for (let i = 1; i < windowTimes.length; i += 1) {
+      maxGapMs = Math.max(maxGapMs, windowTimes[i] - windowTimes[i - 1]);
+    }
+  }
+  const seqs = [...new Set(events.map((row) => Number(row.data?.seq)).filter(Number.isInteger))].sort((a, b) => a - b);
+  const missingRows = seqs.length > 1 ? (seqs[seqs.length - 1] - seqs[0] + 1) - seqs.length : 0;
+  const launches = events
+    .filter((row) => row.data?.event_name === 'app_launch')
+    .sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+  return {
+    lastHeartbeat: heartbeats.length ? Math.max(...heartbeats) : null,
+    maxGapHours24h: maxGapMs === null ? '' : Math.round((maxGapMs / 3600000) * 10) / 10,
+    missingRows,
+    permissionChanges: events.filter((row) => row.data?.event_name === 'permission_changed').length,
+    lastLaunchReason: launches.length ? String(eventMetadata(launches[0]).launch_reason || '') : '',
+  };
+}
+
+// Survey compliance over 7 days: distinct survey prompts the phone reported
+// as delivered/presented/tapped vs. survey sessions answered (ESM answers
+// submitted within 15 minutes of each other count as one session).
+function complianceFor({ events, surveyRows }) {
+  const since = Date.now() - SEVEN_DAYS_MS;
+  const prompts = new Set();
+  for (const row of events) {
+    if (!PROMPT_EVENTS.has(row.data?.event_name)) continue;
+    const metadata = eventMetadata(row);
+    if (metadata.is_survey_prompt !== true && metadata.is_survey_prompt !== 'true') continue;
+    const deliveredAt = toEpochMs(metadata.delivered_at) || toEpochMs(row.timestamp);
+    if (!deliveredAt || deliveredAt < since) continue;
+    prompts.add(`${metadata.notification_id || ''}|${Math.round(deliveredAt / 60000)}`);
+  }
+  const answerTimes = surveyRows
+    .filter((row) => row.data?.answered)
+    .map((row) => toEpochMs(row.data?.submitted_at))
+    .filter((t) => t && t >= since)
+    .sort((a, b) => a - b);
+  let sessions = 0;
+  let lastAnswer = -Infinity;
+  for (const t of answerTimes) {
+    if (t - lastAnswer > 15 * 60 * 1000) sessions += 1;
+    lastAnswer = t;
+  }
+  return {
+    promptsDelivered: prompts.size,
+    surveySessions: sessions,
+    rate: prompts.size ? Math.round(Math.min(1, sessions / prompts.size) * 100) / 100 : '',
+  };
+}
+
+// Time-zone resolver for a study (or all studies), fed by the zone the iOS
+// client stamps on every telemetry row.
+async function timeZoneResolverFor({ studyId, deviceId } = {}) {
+  const telemetry = await rowsForSensorCandidates([CLIENT_EVENTS_SENSOR, DEVICE_STATE_SENSOR], {
+    studyId,
+    deviceId,
+    limit: BATTERY_USAGE_EXPORT_LIMIT,
+  });
+  const defaults = new Map();
+  for (const id of new Set([studyId, ...telemetry.map((row) => row.study_id)].filter(Boolean))) {
+    defaults.set(id, defaultTimeZoneForStudy(await getStudy(id)));
+  }
+  return buildTimeZoneResolver(telemetry, (id) => defaults.get(id) || defaultTimeZoneForStudy(null));
+}
+
+function localDateFields(row, resolveZone) {
+  const at = toEpochMs(row.data?.double_esm_user_answer_timestamp ?? row.timestamp ?? row.created_at);
+  if (!at) return { local_date: '', timezone: '' };
+  const timezone = resolveZone(row.study_id, row.device_id, at);
+  return { local_date: localDateFor(at, timezone), timezone };
 }
 
 // Flatten exported rows into CSV. Columns are id, study_id, device_id,
@@ -1343,6 +1500,11 @@ async function handleBatteryScreenshotUpload(req, res, studyId) {
   if (payload.battery_usage_ocr_text || payload.ocr_text) {
     row.battery_usage_ocr_text = String(payload.battery_usage_ocr_text || payload.ocr_text);
   }
+  // The app's upload queue retries with the same upload_id (a hash of the
+  // image), so a retry after a lost response does not store a second copy.
+  const uploadId = typeof payload.upload_id === 'string' ? payload.upload_id.trim().slice(0, 128) : '';
+  if (uploadId) row.upload_id = uploadId;
+  if (isValidTimeZone(payload.timezone)) row.timezone = payload.timezone;
 
   const table = safeTableName('plugin_ios_esm');
   await createSensorTable(table);
@@ -1357,7 +1519,7 @@ async function handleBatteryScreenshotUpload(req, res, studyId) {
         qa_reason: 'uploaded screenshot could not be located for OCR feedback',
         message: 'Screenshot uploaded, but StudyTrace could not confirm OCR quality yet.',
       };
-  return res.status(201).json({ ok: true, inserted, processed, feedback });
+  return res.status(inserted ? 201 : 200).json({ ok: true, inserted, duplicate: inserted === 0, processed, feedback });
 }
 
 async function findLatestBatteryScreenshotSource(table, { studyId, deviceId, timestamp }) {
@@ -1527,8 +1689,9 @@ async function processBatteryScreenshotUploads({ studyId, limit: rawLimit } = {}
             : 'No OCR text was available for this screenshot.',
         }];
 
-    inserted += await insertRows(table, source.study_id, source.device_id, rowsToInsert.map((row) => ({
+    inserted += await insertRows(table, source.study_id, source.device_id, rowsToInsert.map((row, index) => ({
       timestamp: source.timestamp,
+      dedupe_key: `battery:${source.sensor}:${source.id}:${index}`,
       ...row,
     })));
   }
@@ -1796,6 +1959,12 @@ function isUsableAppName(value) {
     'screen off',
     'activity',
     'usage by app',
+    // iOS section headings; without these the heading was parsed as an app
+    // and credited with the next app's time and percentage.
+    'battery usage by app',
+    'activity by app',
+    'battery level',
+    'insights and suggestions',
     'show activity',
     'show battery usage',
   ].includes(lower);

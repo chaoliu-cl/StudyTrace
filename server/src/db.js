@@ -6,6 +6,7 @@
 // identifying columns plus the full original row as JSONB. This preserves every
 // field the client sends without brittle per-sensor schemas.
 
+import crypto from 'node:crypto';
 import pg from 'pg';
 import { hashSecret } from './auth.js';
 
@@ -17,6 +18,7 @@ let pool;
 
 export function setPool(injectedPool) {
   pool = injectedPool;
+  ensuredTables.clear();
 }
 
 export class DatabaseNotConfiguredError extends Error {
@@ -120,8 +122,14 @@ export async function migratePlaintextStudyPasswords() {
   }
 }
 
+// Tables whose DDL has already run in this process, mapped to whether the
+// dedupe index exists. createSensorTable is called on every insert, so the
+// schema statements (which take locks) run once per table, not per request.
+const ensuredTables = new Map();
+
 // Create a sensor data table on demand. Idempotent.
 export async function createSensorTable(table) {
+  if (ensuredTables.has(table)) return;
   await getPool().query(`
     CREATE TABLE IF NOT EXISTS ${table} (
       id         BIGSERIAL,
@@ -129,11 +137,13 @@ export async function createSensorTable(table) {
       device_id  TEXT,
       timestamp  DOUBLE PRECISION,
       data       JSONB,
-      created_at TIMESTAMPTZ
+      created_at TIMESTAMPTZ,
+      dedupe_key TEXT
     );
   `);
-  // Migrate older installs that created sensor tables before study_id existed.
+  // Migrate older installs that created sensor tables before these columns.
   await getPool().query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS study_id TEXT`);
+  await getPool().query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS dedupe_key TEXT`);
   // Index creation is a non-essential optimization; ignore failures so a
   // re-create on an existing table never blocks an insert.
   try {
@@ -143,25 +153,97 @@ export async function createSensorTable(table) {
   } catch {
     // Index already present (or backend rejected a redundant IF NOT EXISTS).
   }
+  // Retried uploads carry the same dedupe_key, so the unique index turns a
+  // retry into a no-op. Rows stored before this column existed keep NULL,
+  // which never conflicts.
+  let dedupe = true;
+  try {
+    await getPool().query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS ${table}_dedupe_idx ON ${table} (study_id, device_id, dedupe_key);`
+    );
+  } catch (err) {
+    dedupe = false;
+    console.warn(`[db] dedupe index unavailable for ${table}; duplicates will not be suppressed`, err.message);
+  }
+  ensuredTables.set(table, dedupe);
 }
 
-// Bulk-insert an array of JSON rows into a sensor table.
+// Idempotency key for a row. Clients that retry (the StudyTrace upload queue)
+// send a stable event_id / upload_id; otherwise identical rows hash to the
+// same key, which collapses AWARE batch re-sends.
+export function dedupeKeyForRow(row) {
+  for (const field of ['dedupe_key', 'event_id', 'upload_id']) {
+    const value = row?.[field];
+    if ((typeof value === 'string' && value.trim()) || typeof value === 'number') {
+      return `${field}:${String(value).trim().slice(0, 200)}`;
+    }
+  }
+  return `sha256:${crypto.createHash('sha256').update(canonicalJson(row)).digest('hex')}`;
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+// Postgres caps a statement at 65,535 bind parameters (6 per row here).
+const INSERT_CHUNK_ROWS = 1000;
+
+// Bulk-insert an array of JSON rows into a sensor table. Returns the number
+// of rows actually stored; duplicates of already-stored rows are skipped.
 export async function insertRows(table, studyId, deviceId, rows) {
   if (!Array.isArray(rows) || rows.length === 0) return 0;
-  const values = [];
-  const placeholders = rows.map((row, i) => {
-    const ts = typeof row.timestamp === 'number'
-      ? row.timestamp
-      : Number(row.timestamp) || null;
-    const base = i * 5;
-    values.push(studyId, deviceId, ts, JSON.stringify(row), new Date().toISOString());
-    return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`;
-  });
-  await getPool().query(
-    `INSERT INTO ${table} (study_id, device_id, timestamp, data, created_at) VALUES ${placeholders.join(',')}`,
-    values
-  );
-  return rows.length;
+  if (!ensuredTables.has(table)) await createSensorTable(table);
+  const dedupe = ensuredTables.get(table);
+
+  const seen = new Set();
+  const unique = [];
+  for (const row of rows) {
+    const key = dedupeKeyForRow(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push({ row, key });
+  }
+
+  let inserted = 0;
+  for (let offset = 0; offset < unique.length; offset += INSERT_CHUNK_ROWS) {
+    let chunk = unique.slice(offset, offset + INSERT_CHUNK_ROWS);
+    if (dedupe && deviceId) {
+      // Skip keys already stored so the returned count is exact; ON CONFLICT
+      // below still covers two requests racing on the same key. (NULL
+      // device_ids never conflict in a unique index, so they are not deduped.)
+      const keyParams = chunk.map(({ key }, i) => `$${i + 3}`);
+      const { rows: existing } = await getPool().query(
+        `SELECT dedupe_key FROM ${table}
+         WHERE study_id = $1 AND device_id = $2 AND dedupe_key IN (${keyParams.join(',')})`,
+        [studyId, deviceId, ...chunk.map(({ key }) => key)]
+      );
+      const stored = new Set(existing.map((row) => row.dedupe_key));
+      chunk = chunk.filter(({ key }) => !stored.has(key));
+      if (!chunk.length) continue;
+    }
+    const values = [];
+    const now = new Date().toISOString();
+    const placeholders = chunk.map(({ row, key }, i) => {
+      const ts = typeof row.timestamp === 'number'
+        ? row.timestamp
+        : Number(row.timestamp) || null;
+      const base = i * 6;
+      values.push(studyId, deviceId, ts, JSON.stringify(row), now, key);
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+    });
+    const result = await getPool().query(
+      `INSERT INTO ${table} (study_id, device_id, timestamp, data, created_at, dedupe_key)
+       VALUES ${placeholders.join(',')}
+       ${dedupe ? 'ON CONFLICT (study_id, device_id, dedupe_key) DO NOTHING' : ''}`,
+      values
+    );
+    inserted += Math.min(chunk.length, Number.isFinite(result.rowCount) ? result.rowCount : chunk.length);
+  }
+  return inserted;
 }
 
 // Latest row for a device/table, used by the client for incremental sync.
@@ -437,6 +519,34 @@ export async function getStudyOverview(studyId) {
     devices,
     sensors,
   };
+}
+
+// Rows received for a study since `sinceMs` (epoch ms, by row timestamp),
+// newest first. Used for windowed metrics such as 7-day compliance, where a
+// fixed row cap would silently truncate busy studies.
+export async function rowsSince(table, { studyId, deviceId, sinceMs, limit = 100000 } = {}) {
+  const params = [Number(sinceMs) || 0];
+  const where = ['timestamp >= $1'];
+  if (studyId) {
+    params.push(studyId);
+    where.push(`study_id = $${params.length}`);
+  }
+  if (deviceId) {
+    params.push(deviceId);
+    where.push(`device_id = $${params.length}`);
+  }
+  params.push(Math.min(Math.max(Number(limit) || 100000, 1), 500000));
+  try {
+    const { rows } = await getPool().query(
+      `SELECT id, study_id, device_id, timestamp, data, created_at
+       FROM ${table} WHERE ${where.join(' AND ')}
+       ORDER BY timestamp DESC LIMIT $${params.length}`,
+      params
+    );
+    return rows;
+  } catch {
+    return [];
+  }
 }
 
 // Page through rows of a sensor table for export. Returns the stored JSON rows
