@@ -3,6 +3,7 @@
 // the deployed server; run with `node test/smoke.test.js`.
 
 import assert from 'node:assert';
+import zlib from 'node:zlib';
 import { newDb } from 'pg-mem';
 import * as db from '../src/db.js';
 
@@ -67,6 +68,33 @@ async function postWithoutContentType(path, body) {
   let json;
   try { json = JSON.parse(text); } catch { json = text; }
   return { status: res.status, json };
+}
+
+// Reads a ZIP (stored/deflated entries) into Map<name, Buffer> via its
+// central directory, to check the study export.
+function readZip(buffer) {
+  const entries = new Map();
+  const end = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  assert.ok(end >= 0, 'zip end record present');
+  const count = buffer.readUInt16LE(end + 10);
+  let at = buffer.readUInt32LE(end + 16);
+  for (let i = 0; i < count; i += 1) {
+    assert.strictEqual(buffer.readUInt32LE(at), 0x02014b50, 'central directory record');
+    const method = buffer.readUInt16LE(at + 10);
+    const compressedSize = buffer.readUInt32LE(at + 20);
+    const nameLength = buffer.readUInt16LE(at + 28);
+    const extraLength = buffer.readUInt16LE(at + 30);
+    const commentLength = buffer.readUInt16LE(at + 32);
+    const localOffset = buffer.readUInt32LE(at + 42);
+    const name = buffer.toString('utf8', at + 46, at + 46 + nameLength);
+    const localNameLength = buffer.readUInt16LE(localOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    const raw = buffer.subarray(dataStart, dataStart + compressedSize);
+    entries.set(name, method === 8 ? zlib.inflateRawSync(raw) : raw);
+    at += 46 + nameLength + extraLength + commentLength;
+  }
+  return entries;
 }
 
 const form = (obj) =>
@@ -1067,6 +1095,67 @@ try {
   });
   assert.strictEqual(templateSave.status, 200, 'all templates are accepted by the schedule validator');
   console.log('✓ survey status labels, dismissal/expiry counts, and question templates');
+
+  // 37. Telemetry loss counts gaps across client_events AND device_state
+  //     (one shared counter), and Android devices get Android-specific checks.
+  await request('POST', `${apiBase}/sensors/client_events/data`, {
+    body: JSON.stringify({ device_id: 'dev-seq', rows: [
+      { timestamp: Date.now() - 60000, seq: 1, event_id: 's1', event_name: 'app_launch' },
+      { timestamp: Date.now() - 30000, seq: 3, event_id: 's3', event_name: 'heartbeat' },
+    ] }),
+    headers: jsonAuth,
+  });
+  await request('POST', `${apiBase}/sensors/device_state/data`, {
+    body: JSON.stringify({ device_id: 'dev-seq', rows: [
+      { timestamp: Date.now() - 45000, seq: 2, event_id: 's2', platform: 'android', usage_access: 'denied', timezone: 'UTC' },
+    ] }),
+    headers: jsonAuth,
+  });
+  await request('POST', `${apiBase}/sensors/android_app_usage/data`, {
+    body: JSON.stringify({ device_id: 'dev-seq', rows: [
+      { timestamp: Date.UTC(2026, 0, 16), date: '2026-01-16', timezone: 'UTC', package_name: 'com.example.chat', app_label: 'Chat', foreground_seconds: 1234, platform: 'android', construct: 'foreground_time', dedupe_key: 'android_usage:2026-01-16:com.example.chat' },
+    ] }),
+    headers: jsonAuth,
+  });
+  const seqHealth = await request('GET', `${apiBase}/dashboard/participant-health`, { headers: researcherAuth });
+  const seqRow = seqHealth.json.rows.find((row) => row.device_id === 'dev-seq');
+  assert.strictEqual(seqRow.telemetry_missing_7d, 0, 'device_state seq fills the client_events gap');
+  assert.strictEqual(seqRow.platform, 'android', 'platform from device state');
+  assert.ok(!seqRow.notes.includes('Battery screenshots'), 'Android is not asked for Battery screenshots');
+  assert.ok(seqRow.notes.includes('usage access not granted'), 'Android usage access checked');
+  assert.strictEqual(seqRow.android_app_usage_rows, 1, 'Android app usage rows counted');
+  const combined = await request('GET', `${apiBase}/export/app_usage_combined?format=json`, { headers: researcherAuth });
+  const constructs = new Set(combined.json.rows.map((row) => row.data.construct));
+  assert.ok(constructs.has('foreground_time') && constructs.has('battery_on_screen_time') && constructs.has('screen_time_app_total'), 'combined usage covers all three constructs');
+  const chat = combined.json.rows.find((row) => row.data.app_name === 'Chat');
+  assert.strictEqual(chat.data.seconds, 1234, 'Android foreground seconds');
+  assert.strictEqual(chat.data.usage_window, 'day', 'Android window');
+  console.log('✓ seq gaps span both telemetry tables; Android health checks; combined app usage');
+
+  // 38. Whole-study ZIP export with codebook.
+  const zipRes = await fetch(`${base}${apiBase}/export.zip`, { headers: { 'x-researcher-password': researcherAuth['x-researcher-password'] } });
+  assert.strictEqual(zipRes.status, 200, 'zip export ok');
+  assert.strictEqual(zipRes.headers.get('content-type'), 'application/zip', 'zip content type');
+  const zipBytes = Buffer.from(await zipRes.arrayBuffer());
+  const zipEntries = readZip(zipBytes);
+  for (const name of ['README.txt', 'codebook.csv', 'devices.csv', 'withdrawals.csv', 'raw/locations.csv', 'raw/plugin_ios_esm.csv',
+    'battery_usage_apps.csv', 'screen_time_activity.csv', 'phone_use_daily.csv', 'app_usage_combined.csv', 'participant_health.csv']) {
+    assert.ok(zipEntries.has(name), `zip contains ${name}`);
+  }
+  assert.ok(!zipEntries.has('raw/battery_usage_apps.csv'), 'derived tables are not duplicated under raw/');
+  const esmCsv = zipEntries.get('raw/plugin_ios_esm.csv').toString('utf8');
+  assert.ok(esmCsv.includes('image:media/plugin_ios_esm-'), 'photo answers replaced by image references');
+  assert.ok(!esmCsv.includes('iVBORw0KGgo'), 'no base64 images inside CSVs');
+  const codebookCsv = zipEntries.get('codebook.csv').toString('utf8');
+  assert.ok(/phone_use_daily\.csv,night_use_seconds,/.test(codebookCsv), 'codebook documents derived columns');
+  assert.ok(/raw\/locations\.csv,double_latitude,Latitude/.test(codebookCsv), 'codebook documents raw columns');
+  const withImages = readZip(Buffer.from(await (await fetch(`${base}${apiBase}/export.zip?images=1`, {
+    headers: { 'x-researcher-password': researcherAuth['x-researcher-password'] },
+  })).arrayBuffer()));
+  assert.ok([...withImages.keys()].some((name) => name.startsWith('media/') && name.endsWith('.png')), 'images included on request');
+  const zipAsParticipant = await fetch(`${base}${apiBase}/export.zip`, { headers: { Authorization: 'Bearer secret' } });
+  assert.strictEqual(zipAsParticipant.status, 403, 'participant password cannot download the study export');
+  console.log('✓ whole-study ZIP export with codebook, README, and image references');
 
   // 28. Repeated failed logins are throttled (run last: it blocks this IP).
   let limited = null;

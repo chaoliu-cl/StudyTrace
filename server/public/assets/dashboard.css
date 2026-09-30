@@ -352,3 +352,17 @@ pre {
   border: 1px dashed var(--line, #d7dde5);
   border-radius: 12px;
 }
+
+.export-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

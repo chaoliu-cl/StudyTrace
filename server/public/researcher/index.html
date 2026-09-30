@@ -80,8 +80,13 @@
         <div class="section-head">
           <div>
             <h2>Sensor coverage</h2>
-            <p class="section-note"><code>battery_usage_apps</code>, <code>location_daily_summary</code>, <code>survey_quality</code>, and <code>participant_health</code> are derived research exports.</p>
+            <p class="section-note"><code>battery_usage_apps</code>, <code>screen_time_activity</code>, <code>app_usage_combined</code>, <code>phone_use_daily</code>, <code>location_daily_summary</code>, <code>survey_quality</code>, and <code>participant_health</code> are derived research exports.</p>
           </div>
+        </div>
+        <div class="export-bar">
+          <button class="button button-primary" type="button" id="researcher-export-zip">Download full study export (ZIP)</button>
+          <label class="inline-check"><input type="checkbox" id="researcher-export-images"> Include screenshot and photo images</label>
+          <p class="section-note">Every raw table and derived export as CSV, plus devices, withdrawals, a codebook describing every column, and a README. Images can make the file large.</p>
         </div>
         <div class="table-wrap">
           <table id="researcher-sensors"></table>

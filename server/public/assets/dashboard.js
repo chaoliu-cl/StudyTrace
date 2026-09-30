@@ -624,6 +624,32 @@ function initResearcher() {
     });
   });
 
+  document.querySelector('#researcher-export-zip').addEventListener('click', async (event) => {
+    if (!currentStudyId || !currentPassword) {
+      return setMessage(message, 'Load a study before downloading the export.', true);
+    }
+    const button = event.currentTarget;
+    const images = document.querySelector('#researcher-export-images').checked;
+    button.disabled = true;
+    setMessage(message, 'Preparing the study export. Large studies can take a minute...');
+    try {
+      const url = await downloadUrl(
+        `/api/v1/studies/${encodeURIComponent(currentStudyId)}/export.zip${images ? '?images=1' : ''}`,
+        { 'x-researcher-password': currentPassword },
+      );
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${currentStudyId}-export.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage(message, 'Study export downloaded.');
+    } catch (error) {
+      setMessage(message, error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
   document.addEventListener('click', async (event) => {
     const button = event.target.closest('[data-delete-device]');
     if (!button) return;
