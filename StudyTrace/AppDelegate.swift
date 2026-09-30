@@ -26,6 +26,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let launchInfo = StudyTraceSessionTracker.launchMetadata(launchOptions: launchOptions)
         StudyTraceTelemetry.updateCachedAppState()
         StudyTraceUploadQueue.shared.activate()
+        LegacyScreenTimeCleanup.purgeIfNeeded()
         let study = AWAREStudy.shared()
         StudyParticipationController.refreshCollectionState(
             fitbitPresenter: window?.rootViewController,
@@ -309,6 +310,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
+}
+
+/// Older builds shipped Screen Time extensions that stored app selections,
+/// resolved app names, and pending usage events in the shared app group.
+/// Those extensions are gone; remove what they left on existing installs.
+enum LegacyScreenTimeCleanup {
+    private static let appGroupID = "group.com.liuchao.studytrace"
+    private static let purgedKey = "com.studytrace.legacy-screen-time-purged"
+
+    static func purgeIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: purgedKey) else { return }
+        UserDefaults(suiteName: appGroupID)?.removePersistentDomain(forName: appGroupID)
+        UserDefaults.standard.set(true, forKey: purgedKey)
+    }
 }
 
 enum StudyParticipationController {
