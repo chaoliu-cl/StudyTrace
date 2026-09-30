@@ -1,0 +1,42 @@
+<resources>
+    <string name="app_name">StudyTrace</string>
+    <string name="location_channel_name">StudyTrace location collection</string>
+    <string name="sync_channel_name">StudyTrace study prompts</string>
+
+    <string name="location_notification_title">StudyTrace collection active</string>
+    <string name="location_notification_body">Location and study telemetry are being collected for your enrolled study.</string>
+    <string name="survey_notification_default_title">StudyTrace survey available</string>
+    <string name="survey_notification_default_body">Open StudyTrace to complete your study prompt.</string>
+
+    <string name="button_refresh_surveys">Refresh Surveys</string>
+    <string name="button_leave_study">Leave Study</string>
+
+    <string name="status_pending_uploads">Pending uploads: %1$d</string>
+    <string name="status_withdrawal_pending">Withdrawal: waiting to reach the server</string>
+
+    <string name="upload_complete">Upload complete.</string>
+    <string name="upload_pending">Some data could not be uploaded yet. StudyTrace will retry automatically.</string>
+
+    <string name="surveys_none_open">No survey prompts are currently open.</string>
+    <string name="surveys_open_until">%1$s (open until %2$s)</string>
+    <string name="survey_no_questions">This survey has no questions.</string>
+    <string name="survey_no_longer_available">This survey is no longer available.</string>
+    <string name="survey_submit">Submit</string>
+    <string name="survey_later">Later</string>
+    <string name="survey_dismiss">Dismiss survey</string>
+    <string name="survey_submitted">Survey submitted.</string>
+    <string name="survey_saved_offline">Survey saved. It will upload when the phone is online.</string>
+    <string name="survey_already_closed">This survey was already closed.</string>
+    <string name="survey_dismissed">Survey dismissed.</string>
+
+    <string name="leave_study_not_joined">This phone is not enrolled in a study.</string>
+    <string name="leave_study_title">Leave this study?</string>
+    <string name="leave_study_message">StudyTrace will stop collecting data on this phone, cancel study prompts, and delete study data stored on this phone.\n\nDo you also want the research team\'s server to delete the data this phone has already uploaded?</string>
+    <string name="leave_study_delete">Leave and delete uploaded data</string>
+    <string name="leave_study_keep">Leave and keep uploaded data</string>
+    <string name="leave_study_cancel">Cancel</string>
+    <string name="leave_study_done_local">You have left the study.</string>
+    <string name="leave_study_done_sent">You have left the study. The research team\'s server recorded your withdrawal.</string>
+    <string name="leave_study_done_pending">You have left the study. StudyTrace will notify the research team\'s server when this phone is back online.</string>
+    <string name="leave_study_done_rejected">You have left the study, but the server did not accept the withdrawal request. Please contact the research team.</string>
+</resources>
