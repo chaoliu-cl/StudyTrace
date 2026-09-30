@@ -212,6 +212,18 @@
       <section class="panel">
         <div class="section-head">
           <div>
+            <h2>Daily phone use</h2>
+            <p class="section-note"><code>phone_use_daily</code>, derived from lock/unlock events (iOS <code>plugin_device_usage</code>, Android <code>android_screen_events</code>) and split at the participant's local midnight. Night use is 00:00–05:00 local. On iOS these events are only recorded while StudyTrace is running, so check participant health for gaps.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-phone-use-daily"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
             <h2>Location daily mobility</h2>
             <p class="section-note">Derived daily GPS summaries: coverage, distance, radius of gyration, stops, and accuracy.</p>
           </div>

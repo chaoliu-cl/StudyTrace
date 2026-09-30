@@ -993,6 +993,53 @@ try {
   assert.ok(activityCsv.json.split('\r\n')[0].includes('pickups'), 'screen_time_activity CSV export');
   console.log('✓ Screen Time activity screenshots: schedule, confirmed values, and OCR parsing');
 
+  // 35. Phone use from lock/unlock events, split at local midnight.
+  await request('POST', `${apiBase}/sensors/device_state/data`, {
+    body: JSON.stringify({ device_id: 'dev-use', rows: [{ timestamp: Date.UTC(2026, 0, 15, 12), timezone: 'America/New_York' }] }),
+    headers: jsonAuth,
+  });
+  const minute = 60000;
+  await request('POST', `${apiBase}/sensors/plugin_device_usage/data`, {
+    body: JSON.stringify({ device_id: 'dev-use', rows: [
+      // Unlock 23:50 New York, lock 00:20: a 30-minute session across midnight.
+      { timestamp: Date.UTC(2026, 0, 16, 4, 50), elapsed_device_on: 0, elapsed_device_off: 60 * minute },
+      { timestamp: Date.UTC(2026, 0, 16, 5, 20), elapsed_device_on: 30 * minute, elapsed_device_off: 0 },
+      // Unlock 08:00, lock 30 s later: a short session.
+      { timestamp: Date.UTC(2026, 0, 16, 13, 0), elapsed_device_on: 0, elapsed_device_off: 460 * minute },
+      { timestamp: Date.UTC(2026, 0, 16, 13, 0, 30), elapsed_device_on: 30000, elapsed_device_off: 0 },
+      // Stale reading after the app was not running: not a real session.
+      { timestamp: Date.UTC(2026, 0, 16, 23, 0), elapsed_device_on: 10 * 60 * minute, elapsed_device_off: 0 },
+    ] }),
+    headers: jsonAuth,
+  });
+  await request('POST', `${apiBase}/sensors/android_screen_events/data`, {
+    body: JSON.stringify({ device_id: 'dev-android', rows: [
+      { timestamp: Date.UTC(2026, 0, 16, 15, 0), event: 'screen_on', timezone: 'UTC' },
+      { timestamp: Date.UTC(2026, 0, 16, 15, 0, 5), event: 'unlock', timezone: 'UTC' },
+      { timestamp: Date.UTC(2026, 0, 16, 15, 5, 5), event: 'lock', timezone: 'UTC' },
+    ] }),
+    headers: jsonAuth,
+  });
+  const phoneUse = await request('GET', `${apiBase}/dashboard/phone-use-daily?limit=1000`, { headers: researcherAuth });
+  assert.strictEqual(phoneUse.status, 200, 'phone use dashboard ok');
+  const jan15 = phoneUse.json.rows.find((row) => row.device_id === 'dev-use' && row.date === '2026-01-15');
+  const jan16 = phoneUse.json.rows.find((row) => row.device_id === 'dev-use' && row.date === '2026-01-16');
+  assert.strictEqual(jan15.pickups, 1, 'late-evening pickup on its local day');
+  assert.strictEqual(jan15.total_use_seconds, 600, 'use before midnight counted on the first day');
+  assert.strictEqual(jan15.session_count, 1, 'session counted on the day it started');
+  assert.strictEqual(jan16.total_use_seconds, 1230, 'use after midnight plus the short session');
+  assert.strictEqual(jan16.night_use_seconds, 1200, 'night use = 00:00-00:20 local');
+  assert.strictEqual(jan16.session_count, 1, 'stale 10-hour reading excluded');
+  assert.strictEqual(jan16.short_session_share, 1, 'short session share');
+  assert.strictEqual(jan16.timezone, 'America/New_York', 'local zone reported');
+  const androidDay = phoneUse.json.rows.find((row) => row.device_id === 'dev-android');
+  assert.strictEqual(androidDay.platform, 'android', 'Android platform');
+  assert.strictEqual(androidDay.pickups, 1, 'Android unlock counted once (screen_on ignored when keyguard events exist)');
+  assert.strictEqual(androidDay.total_use_seconds, 300, 'Android unlock-to-lock session');
+  const phoneUseCsv = await request('GET', `${apiBase}/export/phone_use_daily?format=csv`, { headers: researcherAuth });
+  assert.ok(phoneUseCsv.json.split('\r\n')[0].includes('night_use_seconds'), 'phone_use_daily CSV export');
+  console.log('✓ phone use (pickups, sessions, night use) derived from lock/unlock events');
+
   // 28. Repeated failed logins are throttled (run last: it blocks this IP).
   let limited = null;
   for (let attempt = 0; attempt < 40 && !limited; attempt += 1) {

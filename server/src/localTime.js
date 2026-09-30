@@ -80,3 +80,36 @@ export function buildTimeZoneResolver(telemetryRows, defaultForStudy = () => 'UT
     return timeline[found >= 0 ? found : 0].zone;
   };
 }
+
+// Minutes the zone is ahead of UTC at `timestampMs` (e.g. -240 for EDT).
+export function utcOffsetMinutes(timestampMs, timeZone) {
+  const zone = isValidTimeZone(timeZone) ? timeZone : 'UTC';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: zone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(timestampMs));
+  const get = (type) => Number(parts.find((part) => part.type === type)?.value);
+  const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+  return Math.round((asUtc - Math.floor(timestampMs / 1000) * 1000) / 60000);
+}
+
+// Epoch ms of local midnight starting `date` (YYYY-MM-DD) in `timeZone`.
+export function localMidnight(date, timeZone) {
+  const [year, month, day] = String(date).split('-').map(Number);
+  const utcMidnight = Date.UTC(year, month - 1, day);
+  let guess = utcMidnight - utcOffsetMinutes(utcMidnight, timeZone) * 60000;
+  // Re-check once in case the offset differs at the guessed instant (DST).
+  guess = utcMidnight - utcOffsetMinutes(guess, timeZone) * 60000;
+  return guess;
+}
+
+export function nextDate(date) {
+  const [year, month, day] = String(date).split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+}

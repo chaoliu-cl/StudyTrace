@@ -196,6 +196,27 @@ async function loadParticipantHealth({ studyId, password, table, message }) {
   ], payload.rows || []);
 }
 
+async function loadPhoneUseDaily({ studyId, password, table, message }) {
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/phone-use-daily?limit=200`, {
+    headers: { 'x-researcher-password': password },
+  });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load daily phone use.', true);
+  }
+  renderTable(table, [
+    { label: 'Date', render: (row) => escapeHtml(row.date || '—') },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Platform', render: (row) => escapeHtml(row.platform || '—') },
+    { label: 'Pickups', render: (row) => escapeHtml(row.pickups ?? 0) },
+    { label: 'Use', render: (row) => formatDuration(row.total_use_seconds) },
+    { label: 'Sessions', render: (row) => escapeHtml(row.session_count ?? 0) },
+    { label: 'Median session', render: (row) => row.median_session_seconds === '' ? '—' : `${escapeHtml(row.median_session_seconds)} s` },
+    { label: 'Under 1 min', render: (row) => row.short_session_share === '' ? '—' : `${Math.round(Number(row.short_session_share) * 100)}%` },
+    { label: 'Night use', render: (row) => formatDuration(row.night_use_seconds) },
+  ], payload.rows || []);
+}
+
 async function loadLocationDailySummary({ studyId, password, table, message }) {
   const headers = { 'x-researcher-password': password };
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/location-daily-summary?limit=100`, { headers });
@@ -393,6 +414,7 @@ function initResearcher() {
   const esmResponses = document.querySelector('#researcher-esm-responses');
   const surveyQuality = document.querySelector('#researcher-survey-quality');
   const locationDailySummary = document.querySelector('#researcher-location-daily-summary');
+  const phoneUseDaily = document.querySelector('#researcher-phone-use-daily');
   const batteryUsageCleaned = document.querySelector('#researcher-battery-usage-cleaned');
   const batteryUsageScreenshots = document.querySelector('#researcher-battery-usage-screenshots');
   const esmScheduleForm = document.querySelector('#researcher-esm-schedule');
@@ -497,6 +519,7 @@ function initResearcher() {
     await loadParticipantHealth({ studyId, password, table: participantHealth, message });
     await loadSurveyQuality({ studyId, password, table: surveyQuality, message });
     await loadLocationDailySummary({ studyId, password, table: locationDailySummary, message });
+    await loadPhoneUseDaily({ studyId, password, table: phoneUseDaily, message });
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
   });
 

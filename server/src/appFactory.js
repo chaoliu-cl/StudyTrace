@@ -43,6 +43,8 @@ import {
   defaultTimeZoneForStudy,
   isValidTimeZone,
   localDateFor,
+  localMidnight,
+  nextDate,
 } from './localTime.js';
 import {
   isRateLimited,
@@ -60,6 +62,29 @@ import { createGenericApiRouter } from './genericApi.js';
 
 const BATTERY_USAGE_EXPORT_SENSOR = 'battery_usage_apps';
 const SCREEN_TIME_ACTIVITY_SENSOR = 'screen_time_activity';
+const PHONE_USE_DAILY_SENSOR = 'phone_use_daily';
+const PHONE_USE_DAILY_COLUMNS = [
+  'date',
+  'timezone',
+  'platform',
+  'pickups',
+  'total_use_seconds',
+  'session_count',
+  'median_session_seconds',
+  'short_session_share',
+  'long_session_count',
+  'night_use_seconds',
+  'first_use_at',
+  'last_use_at',
+  'source_rows',
+];
+// Night-time use window, local time: [00:00, 05:00).
+const NIGHT_END_HOUR = 5;
+const SHORT_SESSION_SECONDS = 60;
+const LONG_SESSION_SECONDS = 15 * 60;
+// iOS measures a session from the previous lock-state change; a value this
+// long means the app was not running in between, not a real session.
+const MAX_SESSION_SECONDS = 6 * 60 * 60;
 const BATTERY_PROMPT = 'battery_usage_screenshot';
 const ACTIVITY_PROMPT = 'screen_time_activity_screenshot';
 const LOCATION_DAILY_SUMMARY_SENSOR = 'location_daily_summary';
@@ -654,6 +679,15 @@ export function createApp() {
     }
   });
 
+  app.get('/api/v1/studies/:studyId/dashboard/phone-use-daily', requireResearcher, async (req, res, next) => {
+    try {
+      const rows = await derivePhoneUseDaily({ studyId: req.params.studyId, limit: req.query.limit });
+      res.json({ ok: true, count: rows.length, rows: rows.map(rowForDashboard) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.get('/api/v1/studies/:studyId/dashboard/survey-quality', requireResearcher, async (req, res) => {
     try {
       const rows = await deriveSurveyQualityRows({
@@ -735,6 +769,7 @@ async function listAdminSensorsForDashboard() {
   const locationRows = await deriveLocationDailySummaries({ limit: BATTERY_USAGE_EXPORT_LIMIT });
   const surveyRows = await deriveSurveyQualityRows({ limit: BATTERY_USAGE_EXPORT_LIMIT });
   const healthRows = await deriveParticipantHealthRows({});
+  upsertVirtualSensor(sensors, PHONE_USE_DAILY_SENSOR, (await derivePhoneUseDaily({ limit: BATTERY_USAGE_EXPORT_LIMIT })).length, 'virtual_derived_sensor');
   upsertVirtualSensor(sensors, SCREEN_TIME_ACTIVITY_SENSOR, await countDerivedActivityRows({}), 'derived_from_screen_time_screenshot_esm');
   upsertVirtualSensor(sensors, LOCATION_DAILY_SUMMARY_SENSOR, locationRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(sensors, SURVEY_QUALITY_SENSOR, surveyRows.length, 'virtual_derived_sensor');
@@ -751,6 +786,7 @@ async function attachStudyDerivedSensors(overview, studyId) {
   overview.sensors = filterLegacyScreenTimeSensors(overview.sensors || []);
   upsertVirtualSensor(overview.sensors, BATTERY_USAGE_EXPORT_SENSOR, batteryDiagnostics.appRows.length, 'derived_from_battery_screenshot_esm');
   upsertVirtualSensor(overview.sensors, SCREEN_TIME_ACTIVITY_SENSOR, await countDerivedActivityRows({ studyId }), 'derived_from_screen_time_screenshot_esm');
+  upsertVirtualSensor(overview.sensors, PHONE_USE_DAILY_SENSOR, (await derivePhoneUseDaily({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT })).length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, LOCATION_DAILY_SUMMARY_SENSOR, locationRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, SURVEY_QUALITY_SENSOR, surveyRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, PARTICIPANT_HEALTH_SENSOR, healthRows.length, 'virtual_derived_sensor');
@@ -789,6 +825,7 @@ function upsertVirtualSensor(sensors, sensorName, rows, tableName = 'virtual_der
 function exportColumnsForSensor(sensor) {
   if (sensor === BATTERY_USAGE_EXPORT_SENSOR) return BATTERY_USAGE_EXPORT_COLUMNS;
   if (sensor === SCREEN_TIME_ACTIVITY_SENSOR) return SCREEN_TIME_ACTIVITY_COLUMNS;
+  if (sensor === PHONE_USE_DAILY_SENSOR) return PHONE_USE_DAILY_COLUMNS;
   if (sensor === LOCATION_DAILY_SUMMARY_SENSOR) return LOCATION_DAILY_SUMMARY_COLUMNS;
   if (sensor === SURVEY_QUALITY_SENSOR) return SURVEY_QUALITY_COLUMNS;
   if (sensor === PARTICIPANT_HEALTH_SENSOR) return PARTICIPANT_HEALTH_COLUMNS;
@@ -812,6 +849,10 @@ async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, off
     const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
     if (!(await tableExists(table))) return [];
     return exportRows(table, { studyId, deviceId, limit, offset });
+  }
+
+  if (sensor === PHONE_USE_DAILY_SENSOR) {
+    return derivedRowsForExport(await derivePhoneUseDaily({ studyId, deviceId, limit }), { studyId, deviceId, offset });
   }
 
   if (sensor === LOCATION_DAILY_SUMMARY_SENSOR) {
@@ -1012,6 +1053,147 @@ async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
   }
 
   return rows.sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+}
+
+// ---- Phone use from lock/unlock events --------------------------------------
+//
+// iOS (AWARE plugin_device_usage): each lock-state change writes one row.
+// elapsed_device_off > 0 marks an unlock (a pickup) after that many ms locked;
+// elapsed_device_on > 0 marks a lock ending a session of that many ms.
+// Android (android_screen_events): explicit unlock/lock (or screen_on/off)
+// events. Both become sessions, split at the participant's local midnight.
+async function derivePhoneUseDaily({ studyId, deviceId, limit: rawLimit } = {}) {
+  const limit = Math.min(Math.max(Number(rawLimit) || 1000, 1), BATTERY_USAGE_EXPORT_LIMIT);
+  const iosRows = await rowsForSensorCandidates(['plugin_device_usage'], { studyId, deviceId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  const androidRows = await rowsForSensorCandidates(['android_screen_events'], { studyId, deviceId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  if (!iosRows.length && !androidRows.length) return [];
+  const resolveZone = await timeZoneResolverFor({ studyId, deviceId });
+
+  const byDevice = new Map();
+  const deviceEntry = (row, platform) => {
+    const key = `${row.study_id}::${row.device_id}`;
+    if (!byDevice.has(key)) {
+      byDevice.set(key, { study_id: row.study_id, device_id: row.device_id, platform, sessions: [], pickups: [], rows: 0 });
+    }
+    const entry = byDevice.get(key);
+    entry.rows += 1;
+    return entry;
+  };
+
+  for (const row of iosRows) {
+    const at = toEpochMs(row.timestamp ?? row.data?.timestamp);
+    if (!at) continue;
+    const entry = deviceEntry(row, 'ios');
+    const onMs = Number(row.data?.elapsed_device_on ?? row.data?.double_elapsed_device_on) || 0;
+    const offMs = Number(row.data?.elapsed_device_off ?? row.data?.double_elapsed_device_off) || 0;
+    if (offMs > 0) entry.pickups.push(at);
+    if (onMs > 0 && onMs <= MAX_SESSION_SECONDS * 1000) entry.sessions.push([at - onMs, at]);
+  }
+
+  const androidByDevice = new Map();
+  for (const row of androidRows) {
+    const at = toEpochMs(row.timestamp ?? row.data?.timestamp);
+    if (!at) continue;
+    const key = `${row.study_id}::${row.device_id}`;
+    if (!androidByDevice.has(key)) androidByDevice.set(key, []);
+    androidByDevice.get(key).push({ row, at, event: String(row.data?.event || '') });
+  }
+  for (const events of androidByDevice.values()) {
+    events.sort((a, b) => a.at - b.at);
+    // Prefer keyguard events; fall back to screen on/off on phones with no lock screen.
+    const hasKeyguard = events.some((item) => item.event === 'unlock' || item.event === 'lock');
+    const startEvent = hasKeyguard ? 'unlock' : 'screen_on';
+    const endEvents = hasKeyguard ? ['lock', 'screen_off'] : ['screen_off'];
+    let openAt = null;
+    for (const item of events) {
+      const entry = deviceEntry(item.row, 'android');
+      if (item.event === startEvent) {
+        entry.pickups.push(item.at);
+        openAt = item.at;
+      } else if (endEvents.includes(item.event) && openAt !== null) {
+        if (item.at - openAt <= MAX_SESSION_SECONDS * 1000) entry.sessions.push([openAt, item.at]);
+        openAt = null;
+      }
+    }
+  }
+
+  const days = new Map();
+  const dayEntry = (device, timestamp) => {
+    const timezone = resolveZone(device.study_id, device.device_id, timestamp);
+    const date = localDateFor(timestamp, timezone);
+    const key = `${device.study_id}::${device.device_id}::${date}`;
+    if (!days.has(key)) {
+      days.set(key, {
+        study_id: device.study_id,
+        device_id: device.device_id,
+        platform: device.platform,
+        date,
+        timezone,
+        pickups: 0,
+        sessions: [],
+        useMs: 0,
+        nightMs: 0,
+        first: null,
+        last: null,
+        rows: device.rows,
+      });
+    }
+    return days.get(key);
+  };
+
+  for (const device of byDevice.values()) {
+    for (const at of device.pickups) dayEntry(device, at).pickups += 1;
+    for (const [start, end] of device.sessions) {
+      // A session belongs to the day it started for counts and lengths...
+      dayEntry(device, start).sessions.push(end - start);
+      // ...while use time is split at local midnight.
+      let cursor = start;
+      while (cursor < end) {
+        const day = dayEntry(device, cursor);
+        const dayStart = localMidnight(day.date, day.timezone);
+        const dayEnd = localMidnight(nextDate(day.date), day.timezone);
+        const segmentEnd = Math.min(end, dayEnd);
+        day.useMs += segmentEnd - cursor;
+        const nightEnd = dayStart + NIGHT_END_HOUR * 3600000;
+        day.nightMs += Math.max(0, Math.min(segmentEnd, nightEnd) - Math.max(cursor, dayStart));
+        day.first = day.first === null ? cursor : Math.min(day.first, cursor);
+        day.last = day.last === null ? segmentEnd : Math.max(day.last, segmentEnd);
+        if (segmentEnd <= cursor) break;
+        cursor = segmentEnd;
+      }
+    }
+  }
+
+  return [...days.values()]
+    .map((day) => {
+      const lengths = day.sessions.map((ms) => ms / 1000).sort((a, b) => a - b);
+      const median = lengths.length
+        ? (lengths.length % 2 ? lengths[(lengths.length - 1) / 2] : (lengths[lengths.length / 2 - 1] + lengths[lengths.length / 2]) / 2)
+        : null;
+      return {
+        study_id: day.study_id,
+        device_id: day.device_id,
+        timestamp: localMidnight(day.date, day.timezone),
+        created_at: new Date().toISOString(),
+        data: {
+          date: day.date,
+          timezone: day.timezone,
+          platform: day.platform,
+          pickups: day.pickups,
+          total_use_seconds: Math.round(day.useMs / 1000),
+          session_count: lengths.length,
+          median_session_seconds: median === null ? '' : Math.round(median),
+          short_session_share: lengths.length ? Math.round((lengths.filter((l) => l < SHORT_SESSION_SECONDS).length / lengths.length) * 100) / 100 : '',
+          long_session_count: lengths.filter((l) => l >= LONG_SESSION_SECONDS).length,
+          night_use_seconds: Math.round(day.nightMs / 1000),
+          first_use_at: day.first === null ? '' : new Date(day.first).toISOString(),
+          last_use_at: day.last === null ? '' : new Date(day.last).toISOString(),
+          source_rows: day.rows,
+        },
+      };
+    })
+    .sort((a, b) => String(b.data.date).localeCompare(String(a.data.date)) || String(a.device_id).localeCompare(String(b.device_id)))
+    .slice(0, limit);
 }
 
 async function rowsForSensorCandidates(sensors, { studyId, deviceId, limit } = {}) {
