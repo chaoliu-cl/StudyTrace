@@ -38,7 +38,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # The app icon is an Icon Composer (.icon) file, which needs Xcode 26+.
       - name: Select newest Xcode

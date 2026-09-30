@@ -256,7 +256,9 @@ final class StudyTraceUploadQueue: NSObject {
             items = decoded
         }
         if let data = try? Data(contentsOf: telemetryBufferURL),
-           let decoded = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: [[String: Any]]] {
+           // Parenthesized: the app builds in Swift 4.2 mode, where try? does
+           // not flatten the optional produced by as?.
+           let decoded = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: [[String: Any]]] {
             telemetryBuffer = decoded
         }
     }
