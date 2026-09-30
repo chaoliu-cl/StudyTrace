@@ -257,10 +257,14 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
             self.present(alert, animated: true, completion: nil)
         // quit
         case AdvancedSettingsIdentifiers.quit.rawValue:
-            let alert = UIAlertController(title: row.title, message: "Are you sure to quit this study? If you quit this study, all of the study settings will be removed.", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "Quit", style: .destructive, handler: { (action) in
-                StudyParticipationController.revokeParticipation(clearStudySettings: true)
-                self.refresh()
+            let alert = UIAlertController(title: row.title,
+                                          message: NSLocalizedString("quit_study_message", comment: ""),
+                                          preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: NSLocalizedString("quit_study_delete_uploaded", comment: ""), style: .destructive, handler: { _ in
+                self.quitStudy(deleteUploadedData: true)
+            }))
+            alert.addAction(UIAlertAction(title: NSLocalizedString("quit_study_keep_uploaded", comment: ""), style: .default, handler: { _ in
+                self.quitStudy(deleteUploadedData: false)
             }))
             alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel, handler: nil))
             self.present(alert, animated: true, completion: nil)
@@ -473,7 +477,28 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
         AWAREStudy.shared().refreshStudySettings()
         self.viewDidAppear(false)
     }
-    
+
+    private func quitStudy(deleteUploadedData: Bool) {
+        StudyParticipationController.revokeParticipation(
+            clearStudySettings: true,
+            notifyServer: true,
+            deleteUploadedData: deleteUploadedData
+        ) { [weak self] result in
+            guard let self = self else { return }
+            self.refresh()
+            let message: String
+            switch result {
+            case .notApplicable:
+                message = NSLocalizedString("quit_study_done_local", comment: "")
+            case .recorded:
+                message = NSLocalizedString(deleteUploadedData ? "quit_study_done_deleted" : "quit_study_done_kept", comment: "")
+            case .pending(let deviceId):
+                message = String(format: NSLocalizedString("quit_study_pending", comment: ""), deviceId)
+            }
+            self.showInfoAlert(title: NSLocalizedString("quit_study_done_title", comment: ""), message: message)
+        }
+    }
+
     func getFilePathOnDocument(with fileName:String) -> String {
         let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
         return path.appending(fileName)

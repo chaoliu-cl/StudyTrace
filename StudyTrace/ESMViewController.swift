@@ -44,7 +44,7 @@ class ESMViewController: UIViewController, PHPickerViewControllerDelegate {
         setupEmptyState()
         setupBatteryScreenshotPrompt()
 
-        if OnboardingManager.isFirstTime() {
+        if OnboardingManager.needsOnboarding() {
             OnboardingManager().startOnboarding(with: self)
         }
     }
@@ -206,8 +206,11 @@ class ESMViewController: UIViewController, PHPickerViewControllerDelegate {
 
         let totalCount = regularSchedules.count + batterySchedules.count
         emptyStateStack.isHidden = totalCount > 0
-        tabBarController?.tabBar.items?[2].badgeValue = totalCount > 0 ? "\(totalCount)" : nil
-        tabBarController?.tabBar.items?[2].badgeColor = AWARETheme.warmAccent
+        // The tab bar item belongs to this screen's navigation controller, so
+        // the badge lands on the Surveys tab regardless of tab order.
+        let tabHost: UIViewController = navigationController ?? self
+        tabHost.tabBarItem.badgeValue = totalCount > 0 ? "\(totalCount)" : nil
+        tabHost.tabBarItem.badgeColor = AWARETheme.warmAccent
         IOSESM.setESMAppearedState(true)
     }
     

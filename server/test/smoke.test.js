@@ -82,13 +82,35 @@ async function request(method, path, { body, headers } = {}) {
   return { status: res.status, json };
 }
 
+const RESEARCHER_PASSWORD = 'researcher-secret-123';
+const researcherAuth = {
+  'Content-Type': 'application/json',
+  'x-researcher-password': RESEARCHER_PASSWORD,
+};
+const adminJson = { 'Content-Type': 'application/json', 'x-admin-token': 'test-admin-token' };
+
 try {
+  // 0. Security headers on every response.
+  const statusRes = await fetch(`${base}/status`);
+  assert.match(statusRes.headers.get('content-security-policy') || '', /default-src 'self'/, 'CSP header set');
+  assert.strictEqual(statusRes.headers.get('x-content-type-options'), 'nosniff', 'nosniff header set');
+  assert.strictEqual(statusRes.headers.get('x-powered-by'), null, 'x-powered-by removed');
+  console.log('✓ security headers present');
+
   // 1. Provision a study via admin.
+  const missingResearcher = await post('/admin/studies',
+    JSON.stringify({ study_id: 'demo', password: 'secret', name: 'Demo' }), adminJson);
+  assert.strictEqual(missingResearcher.status, 400, 'new study requires a researcher password');
   const admin = await post('/admin/studies',
-    JSON.stringify({ study_id: 'demo', password: 'secret', name: 'Demo' }),
-    { 'Content-Type': 'application/json', 'x-admin-token': 'test-admin-token' });
+    JSON.stringify({ study_id: 'demo', password: 'secret', researcher_password: RESEARCHER_PASSWORD, name: 'Demo' }),
+    adminJson);
   assert.strictEqual(admin.status, 200, 'admin create study');
   assert.ok(admin.json.study_url.includes('/index.php/webservice/index/demo/secret'), 'study url shape');
+  const storedStudy = await db.getStudy('demo');
+  assert.ok(storedStudy.password_hash.startsWith('scrypt$'), 'participant password stored hashed');
+  assert.ok(storedStudy.researcher_password_hash.startsWith('scrypt$'), 'researcher password stored hashed');
+  const { rows: plainRows } = await pool.query(`SELECT password FROM studies WHERE study_id = 'demo'`);
+  assert.strictEqual(plainRows[0].password, '', 'no plaintext password persisted');
   console.log('✓ admin provision study:', admin.json.study_url);
 
   const studyPath = '/index.php/webservice/index/demo/secret';
@@ -181,12 +203,12 @@ try {
   assert.strictEqual(badtbl.status, 400, 'invalid table rejected');
   console.log('✓ invalid table name rejected');
 
-  // 8. clear_table empties device rows.
+  // 8. clear_table is disabled: the shared study password cannot delete data.
   const clear = await post(`${studyPath}/locations/clear_table`, form({ device_id: 'dev-1' }), formHeaders);
-  assert.strictEqual(clear.status, 200, 'clear ok');
+  assert.strictEqual(clear.status, 403, 'clear_table refused');
   const afterClear = await post(`${studyPath}/locations/latest`, form({ device_id: 'dev-1' }), formHeaders);
-  assert.deepStrictEqual(afterClear.json, [], 'empty after clear');
-  console.log('✓ clear_table empties rows');
+  assert.strictEqual(afterClear.json[0].timestamp, 2000, 'rows survive clear_table attempt');
+  console.log('✓ clear_table is disabled for participants');
 
   // ---- Generic JSON API (protocol-neutral front-end) ------------------------
   const apiBase = `/api/v1/studies/demo`;
@@ -241,8 +263,10 @@ try {
   assert.strictEqual(gBad.status, 400, 'generic invalid sensor rejected');
   console.log('✓ generic API rejects invalid sensor name');
 
-  // 16. delete clears device rows.
-  const gDel = await request('DELETE', `${apiBase}/sensors/heartrate/data?device_id=dev-1`, { headers: jsonAuth });
+  // 16. delete requires the researcher password, then clears device rows.
+  const gDelParticipant = await request('DELETE', `${apiBase}/sensors/heartrate/data?device_id=dev-1`, { headers: jsonAuth });
+  assert.strictEqual(gDelParticipant.status, 403, 'participant password cannot delete');
+  const gDel = await request('DELETE', `${apiBase}/sensors/heartrate/data?device_id=dev-1`, { headers: researcherAuth });
   assert.strictEqual(gDel.status, 200, 'generic delete ok');
   const gCount2 = await request('GET', `${apiBase}/sensors/heartrate/count?device_id=dev-1`, { headers: jsonAuth });
   assert.strictEqual(gCount2.json.count, 0, 'empty after delete');
@@ -270,14 +294,27 @@ try {
     form({ device_id: 'dev-1', data: JSON.stringify(esmRows) }), formHeaders);
   assert.strictEqual(esmIns.status, 200, 'picture ESM insert ok');
 
-  const esmExport = await request('GET', `${apiBase}/export/esms?format=json`, { headers: jsonAuth });
+  for (const path of ['dashboard/summary', 'export/locations?format=json', 'esm-schedule', 'dashboard/esm-responses']) {
+    const asParticipant = await request('GET', `${apiBase}/${path}`, { headers: jsonAuth });
+    assert.strictEqual(asParticipant.status, 403, `participant password rejected on ${path}`);
+    const asParticipantHeader = await request('GET', `${apiBase}/${path}`, { headers: { 'x-study-password': 'secret' } });
+    assert.strictEqual(asParticipantHeader.status, 401, `x-study-password is not a researcher credential on ${path}`);
+  }
+  const scheduleHijack = await request('PUT', `${apiBase}/esm-schedule`, {
+    body: JSON.stringify({ mode: 'fixed', times: '03:00' }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(scheduleHijack.status, 403, 'participant password cannot rewrite the survey schedule');
+  console.log('✓ participant password cannot read exports, dashboards, or edit schedules');
+
+  const esmExport = await request('GET', `${apiBase}/export/esms?format=json`, { headers: researcherAuth });
   assert.strictEqual(esmExport.status, 200, 'picture ESM export ok');
   const photoRow = esmExport.json.rows.find((row) => row.data.esm_trigger === 'pilot_context_photo');
   assert.ok(photoRow, 'picture ESM row found');
   assert.strictEqual(photoRow.data.esm_user_answer, tinyPngBase64, 'raw picture base64 preserved');
 
   const imageRes = await fetch(`${base}${apiBase}/media/esms/${photoRow.id}/image`, {
-    headers: { 'x-study-password': 'secret' },
+    headers: { 'x-researcher-password': RESEARCHER_PASSWORD },
   });
   assert.strictEqual(imageRes.status, 200, 'picture ESM image endpoint ok');
   assert.strictEqual(imageRes.headers.get('content-type'), 'image/png', 'picture ESM served as PNG');
@@ -309,7 +346,7 @@ try {
   assert.strictEqual(quickSyncIns.json.inserted, 1, 'quick sync inserted row');
   console.log('✓ AWARE quick sync form body works without content-type');
 
-  const esmDashboard = await request('GET', `${apiBase}/dashboard/esm-responses`, { headers: jsonAuth });
+  const esmDashboard = await request('GET', `${apiBase}/dashboard/esm-responses`, { headers: researcherAuth });
   assert.strictEqual(esmDashboard.status, 200, 'dashboard ESM response list ok');
   const pluginPhotoRow = esmDashboard.json.rows.find((row) =>
     row.sensor === 'plugin_ios_esm' &&
@@ -319,7 +356,7 @@ try {
   assert.strictEqual(pluginPhotoRow.data.esm_trigger, 'pilot_plugin_context_photo', 'dashboard preserves plugin ESM row data');
 
   const pluginImageRes = await fetch(`${base}${apiBase}/media/plugin_ios_esm/${pluginPhotoRow.id}/image`, {
-    headers: { 'x-study-password': 'secret' },
+    headers: { 'x-researcher-password': RESEARCHER_PASSWORD },
   });
   assert.strictEqual(pluginImageRes.status, 200, 'plugin_ios_esm image endpoint ok');
   assert.strictEqual(pluginImageRes.headers.get('content-type'), 'image/png', 'plugin_ios_esm served as PNG');
@@ -349,12 +386,12 @@ try {
     form({ device_id: 'dev-1', data: JSON.stringify(batteryScreenshotRows) }), formHeaders);
   assert.strictEqual(batteryScreenshotIns.status, 200, 'battery screenshot ESM insert ok');
 
-  const batteryDiagnostics = await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: jsonAuth });
+  const batteryDiagnostics = await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: researcherAuth });
   assert.strictEqual(batteryDiagnostics.status, 200, 'battery screenshot diagnostics ok');
   assert.ok(batteryDiagnostics.json.screenshotRows.length >= 1, 'battery diagnostics lists source screenshots');
   assert.ok(batteryDiagnostics.json.appRows.some((row) => row.app_name === 'Instagram' && row.screen_time_seconds === 4320 && row.battery_percent === 21), 'battery OCR parser extracts Instagram row');
   assert.ok(batteryDiagnostics.json.appRows.some((row) => row.app_name === 'YouTube' && row.screen_time_seconds === 2700 && row.battery_percent === 10), 'battery OCR parser extracts YouTube row');
-  const batteryCsv = await request('GET', `${apiBase}/export/battery_usage_apps?format=csv`, { headers: jsonAuth });
+  const batteryCsv = await request('GET', `${apiBase}/export/battery_usage_apps?format=csv`, { headers: researcherAuth });
   assert.strictEqual(batteryCsv.status, 200, 'battery usage CSV export ok');
   for (const column of ['app_name', 'ocr_confidence', 'needs_review', 'qa_reason', 'ocr_text', 'parse_notes', 'source_image_url']) {
     assert.ok(batteryCsv.json.split('\r\n')[0].split(',').includes(column), `battery usage CSV header includes ${column}`);
@@ -396,7 +433,7 @@ try {
   assert.strictEqual(unreadableParticipantBatteryUpload.status, 201, 'unreadable participant battery screenshot upload stored');
   assert.strictEqual(unreadableParticipantBatteryUpload.json.feedback.app_rows_detected, 0, 'unreadable upload feedback reports zero app rows');
   assert.strictEqual(unreadableParticipantBatteryUpload.json.feedback.needs_review, true, 'unreadable upload feedback requests review');
-  const participantBatteryDiagnostics = await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: jsonAuth });
+  const participantBatteryDiagnostics = await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: researcherAuth });
   assert.ok(participantBatteryDiagnostics.json.appRows.some((row) => row.app_name === 'TikTok' && row.screen_time_seconds === 1920 && row.battery_percent === 8), 'participant battery upload is parsed for dashboard export');
 
   const awarePathBatteryUpload = await request('POST', `${studyPath}/battery-screenshots`, {
@@ -419,7 +456,7 @@ try {
     headers: { 'Content-Type': 'application/json' },
   });
   assert.strictEqual(badAwarePathBatteryUpload.status, 403, 'AWARE-path battery screenshot rejects wrong password');
-  const awarePathBatteryDiagnostics = await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: jsonAuth });
+  const awarePathBatteryDiagnostics = await request('GET', `${apiBase}/dashboard/battery-usage`, { headers: researcherAuth });
   assert.ok(awarePathBatteryDiagnostics.json.appRows.some((row) => row.app_name === 'Safari' && row.screen_time_seconds === 840 && row.battery_percent === 4), 'AWARE-path battery upload is parsed for dashboard export');
   console.log('✓ participant battery screenshot upload endpoint works');
   console.log('✓ battery screenshot OCR pipeline exports app usage rows');
@@ -433,7 +470,7 @@ try {
       notification_title: 'Battery check',
       notification_body: 'Upload your Battery usage screenshot.',
     }),
-    headers: jsonAuth,
+    headers: researcherAuth,
   });
   assert.strictEqual(researcherScheduleSave.status, 200, 'researcher saves Battery prompt schedule');
   const savedBatterySchedule = researcherScheduleSave.json.esm_schedule[0];
@@ -449,7 +486,7 @@ try {
       notification_title: 'ESM check',
       notification_body: 'Please answer the scheduled ESM survey.',
     }),
-    headers: jsonAuth,
+    headers: researcherAuth,
   });
   assert.strictEqual(researcherEsmScheduleSave.status, 200, 'researcher saves ESM survey schedule');
   assert.ok(
@@ -458,14 +495,14 @@ try {
   );
   const savedEsmSchedule = researcherEsmScheduleSave.json.esm_schedule[0];
   assert.deepStrictEqual(savedEsmSchedule.times, ['10:15'], 'researcher ESM schedule stores exact times');
-  const researcherScheduleGet = await request('GET', `${apiBase}/esm-schedule`, { headers: jsonAuth });
+  const researcherScheduleGet = await request('GET', `${apiBase}/esm-schedule`, { headers: researcherAuth });
   assert.strictEqual(researcherScheduleGet.status, 200, 'researcher gets ESM schedule');
   assert.ok(
     researcherScheduleGet.json.schedule_summary.every((item) => item.prompt_type === 'esm_survey') &&
       researcherScheduleGet.json.schedule_summary.some((item) => item.times.join(',') === '10:15'),
     'schedule summary exposes ESM prompt times'
   );
-  const researcherBatteryScheduleGet = await request('GET', `${apiBase}/battery-screenshot-schedule`, { headers: jsonAuth });
+  const researcherBatteryScheduleGet = await request('GET', `${apiBase}/battery-screenshot-schedule`, { headers: researcherAuth });
   assert.strictEqual(researcherBatteryScheduleGet.status, 200, 'researcher gets Battery prompt schedule');
   assert.ok(
     researcherBatteryScheduleGet.json.schedule_summary.every((item) => item.prompt_type === 'battery_usage_screenshot') &&
@@ -478,7 +515,7 @@ try {
   assert.ok(combinedRemoteEsmConfig.json.some((item) => item.studytrace_prompt_type === 'battery_usage_screenshot'), 'remote config includes independent Battery screenshot schedule');
   console.log('✓ researcher saves separate ESM and Battery screenshot schedules');
 
-  const dashboardBeforeLegacyRows = await request('GET', `${apiBase}/dashboard/summary`, { headers: jsonAuth });
+  const dashboardBeforeLegacyRows = await request('GET', `${apiBase}/dashboard/summary`, { headers: researcherAuth });
   assert.strictEqual(dashboardBeforeLegacyRows.status, 200, 'dashboard summary before legacy rows ok');
   assert.ok(
     dashboardBeforeLegacyRows.json.sensors.some((row) => row.sensor === 'battery_usage_apps'),
@@ -488,7 +525,7 @@ try {
     !dashboardBeforeLegacyRows.json.sensors.some((row) => row.sensor === 'screentime_apps'),
     'researcher dashboard does not list retired app-usage export'
   );
-  const removedScreenTimeCsv = await request('GET', `${apiBase}/export/screentime_apps?format=csv`, { headers: jsonAuth });
+  const removedScreenTimeCsv = await request('GET', `${apiBase}/export/screentime_apps?format=csv`, { headers: researcherAuth });
   assert.strictEqual(removedScreenTimeCsv.status, 404, 'retired app-usage CSV export removed');
   assert.match(removedScreenTimeCsv.json.error, /battery_usage_apps/, 'removed app-usage export points to Battery workflow');
   const legacyScreenTimeTable = db.safeTableName('screentime_apps');
@@ -500,7 +537,7 @@ try {
       duration_seconds: 60,
     },
   ]);
-  const dashboardWithLegacyRows = await request('GET', `${apiBase}/dashboard/summary`, { headers: jsonAuth });
+  const dashboardWithLegacyRows = await request('GET', `${apiBase}/dashboard/summary`, { headers: researcherAuth });
   assert.strictEqual(dashboardWithLegacyRows.status, 200, 'dashboard summary with legacy rows ok');
   assert.ok(
     !dashboardWithLegacyRows.json.sensors.some((row) => row.sensor === 'screentime_apps'),
@@ -534,7 +571,7 @@ try {
   console.log('✓ admin lists studies');
 
   // 20.6. researcher dashboard summary is study-scoped and authenticated.
-  const dashboard = await request('GET', `/api/v1/studies/demo/dashboard/summary`, { headers: jsonAuth });
+  const dashboard = await request('GET', `/api/v1/studies/demo/dashboard/summary`, { headers: researcherAuth });
   assert.strictEqual(dashboard.status, 200, 'researcher dashboard ok');
   assert.strictEqual(dashboard.json.study.study_id, 'demo', 'dashboard study id');
   assert.ok(Array.isArray(dashboard.json.devices), 'dashboard devices array');
@@ -583,16 +620,16 @@ try {
     headers: jsonAuth,
   });
 
-  const participantHealth = await request('GET', `${apiBase}/dashboard/participant-health`, { headers: jsonAuth });
+  const participantHealth = await request('GET', `${apiBase}/dashboard/participant-health`, { headers: researcherAuth });
   assert.strictEqual(participantHealth.status, 200, 'participant health dashboard ok');
   assert.ok(participantHealth.json.rows.some((row) => row.device_id === 'dev-1' && row.notification_authorization === 'authorized'), 'participant health includes device state');
-  const locationSummary = await request('GET', `${apiBase}/dashboard/location-daily-summary`, { headers: jsonAuth });
+  const locationSummary = await request('GET', `${apiBase}/dashboard/location-daily-summary`, { headers: researcherAuth });
   assert.strictEqual(locationSummary.status, 200, 'location daily summary dashboard ok');
   assert.ok(locationSummary.json.rows.some((row) => row.device_id === 'dev-1' && row.location_rows >= 2), 'location summary includes daily mobility rows');
-  const surveyQuality = await request('GET', `${apiBase}/dashboard/survey-quality`, { headers: jsonAuth });
+  const surveyQuality = await request('GET', `${apiBase}/dashboard/survey-quality`, { headers: researcherAuth });
   assert.strictEqual(surveyQuality.status, 200, 'survey quality dashboard ok');
   assert.ok(surveyQuality.json.rows.some((row) => row.question_trigger === 'battery_usage_screenshot'), 'survey quality includes Battery screenshot response metadata');
-  const healthCsv = await request('GET', `${apiBase}/export/participant_health?format=csv`, { headers: jsonAuth });
+  const healthCsv = await request('GET', `${apiBase}/export/participant_health?format=csv`, { headers: researcherAuth });
   assert.strictEqual(healthCsv.status, 200, 'participant health CSV export ok');
   assert.ok(healthCsv.json.split('\r\n')[0].split(',').includes('health_status'), 'participant health CSV includes health_status');
   console.log('✓ researcher derived quality dashboards');
@@ -611,6 +648,129 @@ try {
   assert.ok(/^id,study_id,device_id,timestamp,.*created_at/m.test(expCsv.json), 'csv header present');
   assert.ok(/\b1200\b/.test(expCsv.json), 'csv contains the value');
   console.log('✓ admin CSV export header + values present');
+
+  // 23. Newest rows are processed even when a study has many older ESM rows.
+  const fillerRows = Array.from({ length: 260 }, (_, index) => ({
+    timestamp: 1000 + index,
+    esm_trigger: 'filler_question',
+    esm_json: JSON.stringify({ esm_type: 1, esm_title: 'Filler' }),
+    esm_user_answer: `answer ${index}`,
+  }));
+  await db.insertRows(db.safeTableName('plugin_ios_esm'), 'demo', 'dev-1', fillerRows);
+  const lateUpload = await request('POST', `${apiBase}/battery-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-1',
+      timestamp: 5000,
+      screenshot_base64: tinyPngBase64,
+      battery_usage_ocr_text: ['Battery Usage by App', 'Maps', '9m On Screen', '3%'].join('\n'),
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(lateUpload.status, 201, 'late battery screenshot upload ok');
+  assert.ok(lateUpload.json.feedback.app_rows_detected >= 1, 'newest screenshot is OCR-processed despite >200 older ESM rows');
+  const latestEsm = await request('GET', `${apiBase}/dashboard/esm-responses?limit=5`, { headers: researcherAuth });
+  assert.ok(latestEsm.json.rows.some((row) => Number(row.timestamp) === 5000), 'dashboard ESM list shows newest responses');
+  console.log('✓ dashboards and OCR read newest rows first');
+
+  // 24. Updating a study only changes the fields provided.
+  const rotateResearcher = await post('/admin/studies',
+    JSON.stringify({ study_id: 'demo', researcher_password: 'another-researcher-pw' }), adminJson);
+  assert.strictEqual(rotateResearcher.status, 200, 'researcher password update ok');
+  assert.strictEqual(rotateResearcher.json.study_url, undefined, 'no study url when participant password unchanged');
+  const stillJoins = await post(studyPath, form({ device_id: 'dev-1' }), formHeaders);
+  assert.strictEqual(stillJoins.status, 200, 'participant password untouched by researcher update');
+  const oldResearcher = await request('GET', `${apiBase}/dashboard/summary`, { headers: researcherAuth });
+  assert.strictEqual(oldResearcher.status, 403, 'old researcher password revoked');
+  researcherAuth['x-researcher-password'] = 'another-researcher-pw';
+  const rotateAgain = await post('/admin/studies',
+    JSON.stringify({ study_id: 'demo', researcher_password: 'secret-but-long-enough' }), adminJson);
+  assert.strictEqual(rotateAgain.status, 200, 'distinct researcher password accepted');
+  researcherAuth['x-researcher-password'] = 'secret-but-long-enough';
+  const reuse = await post('/admin/studies',
+    JSON.stringify({ study_id: 'demo', password: 'secret-but-long-enough' }), adminJson);
+  assert.strictEqual(reuse.status, 400, 'participant password may not equal researcher password');
+  console.log('✓ admin study update changes only the provided credentials');
+
+  // 25. Legacy plaintext studies are hashed at boot and locked until a
+  //     researcher password is set.
+  await pool.query(`INSERT INTO studies (study_id, password, name) VALUES ('legacy', 'legacy-pw', 'Legacy')`);
+  await db.migratePlaintextStudyPasswords();
+  const legacy = await db.getStudy('legacy');
+  assert.ok(legacy.password_hash.startsWith('scrypt$'), 'legacy password migrated to hash');
+  const legacyJoin = await post('/index.php/webservice/index/legacy/legacy-pw', form({ device_id: 'legacy-dev' }), formHeaders);
+  assert.strictEqual(legacyJoin.status, 200, 'legacy participants keep working after migration');
+  const legacyDashboard = await request('GET', '/api/v1/studies/legacy/dashboard/summary', {
+    headers: { 'x-researcher-password': 'legacy-pw' },
+  });
+  assert.strictEqual(legacyDashboard.status, 403, 'legacy researcher dashboard locked');
+  assert.strictEqual(legacyDashboard.json.error, 'researcher_password_not_set', 'lock reason reported');
+  console.log('✓ legacy plaintext passwords migrated; dashboard locked until researcher password set');
+
+  // 26. Participant withdrawal: log-only, then with deletion.
+  await request('POST', `${apiBase}/sensors/locations/data`, {
+    body: JSON.stringify({ device_id: 'dev-withdraw', rows: [{ timestamp: 1, double_latitude: 1, double_longitude: 1 }] }),
+    headers: jsonAuth,
+  });
+  await post(`${studyPath}?participant=P-W`, form({ device_id: 'dev-withdraw' }), formHeaders);
+  const keepWithdrawal = await request('POST', `${apiBase}/withdrawal`, {
+    body: JSON.stringify({ device_id: 'dev-withdraw', delete_data: false }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(keepWithdrawal.status, 200, 'withdrawal without deletion ok');
+  assert.strictEqual(keepWithdrawal.json.rows_deleted, 0, 'no rows deleted when not requested');
+  const deleteWithdrawal = await request('POST', `${apiBase}/withdrawal`, {
+    body: JSON.stringify({ device_id: 'dev-withdraw', delete_data: true }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(deleteWithdrawal.status, 200, 'withdrawal with deletion ok');
+  assert.ok(deleteWithdrawal.json.rows_deleted >= 1, 'withdrawn device rows deleted');
+  const withdrawnCount = await request('GET', `${apiBase}/sensors/locations/count?device_id=dev-withdraw`, { headers: jsonAuth });
+  assert.strictEqual(withdrawnCount.json.count, 0, 'no rows remain for withdrawn device');
+
+  // A queued withdrawal retried after the participant re-joined only deletes
+  // rows received before the original withdrawal time.
+  const earlyWithdrawalAt = Date.now();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await request('POST', `${apiBase}/sensors/locations/data`, {
+    body: JSON.stringify({ device_id: 'dev-rejoin', rows: [{ timestamp: 2, double_latitude: 2, double_longitude: 2 }] }),
+    headers: jsonAuth,
+  });
+  const lateRetry = await request('POST', `${apiBase}/withdrawal`, {
+    body: JSON.stringify({ device_id: 'dev-rejoin', delete_data: true, withdrawn_at: earlyWithdrawalAt }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(lateRetry.status, 200, 'late withdrawal retry ok');
+  assert.strictEqual(lateRetry.json.rows_deleted, 0, 'rows uploaded after withdrawn_at are kept');
+  const rejoinCount = await request('GET', `${apiBase}/sensors/locations/count?device_id=dev-rejoin`, { headers: jsonAuth });
+  assert.strictEqual(rejoinCount.json.count, 1, 're-joined participant data survives a stale retry');
+  const summaryAfterWithdrawal = await request('GET', `${apiBase}/dashboard/summary`, { headers: researcherAuth });
+  assert.ok(!summaryAfterWithdrawal.json.devices.some((row) => row.device_id === 'dev-withdraw'), 'withdrawn device unregistered');
+  assert.strictEqual(summaryAfterWithdrawal.json.withdrawals.filter((row) => row.device_id === 'dev-withdraw').length, 2, 'both withdrawals logged');
+  assert.ok(summaryAfterWithdrawal.json.withdrawals.some((row) => row.participant === 'P-W'), 'withdrawal log keeps participant label');
+  console.log('✓ participant withdrawal logs and optionally deletes uploaded data');
+
+  // 27. Researcher deletes a participant across every table.
+  const researcherDeleteAsParticipant = await request('DELETE', `${apiBase}/participants/dev-2`, { headers: jsonAuth });
+  assert.strictEqual(researcherDeleteAsParticipant.status, 403, 'participant password cannot delete a participant');
+  const researcherDelete = await request('DELETE', `${apiBase}/participants/dev-1`, { headers: researcherAuth });
+  assert.strictEqual(researcherDelete.status, 200, 'researcher deletes participant');
+  assert.ok(researcherDelete.json.rows_deleted > 0, 'researcher delete removed rows');
+  for (const sensor of ['locations', 'plugin_ios_esm', 'esms', 'battery_usage_apps', 'client_events']) {
+    const count = await request('GET', `${apiBase}/sensors/${sensor}/count?device_id=dev-1`, { headers: jsonAuth });
+    assert.strictEqual(count.json.count, 0, `no ${sensor} rows remain for deleted participant`);
+  }
+  const otherDevice = await request('GET', `${apiBase}/sensors/steps/count?device_id=dev-2`, { headers: jsonAuth });
+  assert.strictEqual(otherDevice.json.count, 1, 'other participants untouched');
+  console.log('✓ researcher deletes a participant across all sensor tables');
+
+  // 28. Repeated failed logins are throttled (run last: it blocks this IP).
+  let limited = null;
+  for (let attempt = 0; attempt < 40 && !limited; attempt += 1) {
+    const res = await request('GET', `${apiBase}/dashboard/summary`, { headers: { 'x-researcher-password': `guess-${attempt}` } });
+    if (res.status === 429) limited = res;
+  }
+  assert.ok(limited, 'failed researcher logins are rate limited');
+  console.log('✓ failed credential attempts are rate limited');
 
   console.log('\nALL SMOKE TESTS PASSED');
   server.close();
