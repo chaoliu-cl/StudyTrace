@@ -111,6 +111,16 @@
           <label><span>Notification body</span><input name="notification_body" value="Please complete your scheduled study survey."></label>
           <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
           <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
+          <div class="template-picker">
+            <label>
+              <span>Question templates (optional)</span>
+              <select id="researcher-template-select">
+                <option value="">Choose a template…</option>
+              </select>
+            </label>
+            <button class="button" type="button" id="researcher-template-add">Add to survey</button>
+            <p class="section-note" id="researcher-template-source">Templates are appended to the questions below; nothing changes for participants until you save. Confirm wording with your IRB and cite the listed source.</p>
+          </div>
           <label>
             <span>Survey questions JSON</span>
             <textarea name="esms_json" rows="16" spellcheck="false"></textarea>

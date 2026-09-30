@@ -402,6 +402,48 @@ async function hydrateAuthenticatedImages(container, password) {
   }));
 }
 
+// Optional question templates (assets/survey-templates.json), appended to
+// the ESM survey question JSON on request.
+async function setupTemplatePicker({ select, button, source, textarea, message }) {
+  let templates = [];
+  try {
+    const res = await fetch('/assets/survey-templates.json');
+    templates = (await res.json()).templates || [];
+  } catch {
+    select.disabled = true;
+    button.disabled = true;
+    return;
+  }
+  for (const template of templates) {
+    const option = document.createElement('option');
+    option.value = template.id;
+    option.textContent = `${template.label} (${template.questions.length} question${template.questions.length === 1 ? '' : 's'})`;
+    select.appendChild(option);
+  }
+  const defaultNote = source.textContent;
+  select.addEventListener('change', () => {
+    const template = templates.find((item) => item.id === select.value);
+    source.textContent = template ? `Source: ${template.source}` : defaultNote;
+  });
+  button.addEventListener('click', () => {
+    const template = templates.find((item) => item.id === select.value);
+    if (!template) return setMessage(message, 'Choose a question template first.', true);
+    let questions = [];
+    try {
+      questions = textarea.value.trim() ? JSON.parse(textarea.value) : [];
+      if (!Array.isArray(questions)) throw new Error('not an array');
+    } catch {
+      return setMessage(message, 'Fix the survey questions JSON (it must be an array) before adding a template.', true);
+    }
+    const triggers = new Set(questions.map((item) => (item?.esm || item)?.esm_trigger));
+    const added = template.questions.filter((item) => !triggers.has(item.esm_trigger));
+    textarea.value = JSON.stringify([...questions, ...added], null, 2);
+    setMessage(message, added.length
+      ? `Added ${added.length} question${added.length === 1 ? '' : 's'} from "${template.label}". Save the schedule to send it to participants.`
+      : `"${template.label}" is already in this survey.`);
+  });
+}
+
 function initResearcher() {
   const form = document.querySelector('#researcher-auth');
   const message = document.querySelector('#researcher-auth-message');
@@ -521,6 +563,14 @@ function initResearcher() {
     await loadLocationDailySummary({ studyId, password, table: locationDailySummary, message });
     await loadPhoneUseDaily({ studyId, password, table: phoneUseDaily, message });
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
+  });
+
+  setupTemplatePicker({
+    select: document.querySelector('#researcher-template-select'),
+    button: document.querySelector('#researcher-template-add'),
+    source: document.querySelector('#researcher-template-source'),
+    textarea: esmScheduleForm.elements.esms_json,
+    message,
   });
 
   esmScheduleForm.addEventListener('submit', async (event) => {

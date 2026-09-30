@@ -1040,6 +1040,34 @@ try {
   assert.ok(phoneUseCsv.json.split('\r\n')[0].includes('night_use_seconds'), 'phone_use_daily CSV export');
   console.log('✓ phone use (pickups, sessions, night use) derived from lock/unlock events');
 
+  // 36. Survey status: dismissed and expired prompts are labelled and counted.
+  const statusBase = Date.now() - 3600000;
+  await post(`${studyPath}/esms/insert`, form({
+    device_id: 'dev-status',
+    data: JSON.stringify([
+      { timestamp: statusBase, esm_trigger: 'stress_now', esm_json: JSON.stringify({ esm_type: 4 }), esm_user_answer: '', esm_status: 1, double_esm_user_answer_timestamp: statusBase + 5000 },
+      { timestamp: statusBase + 1, esm_trigger: 'stress_now', esm_json: JSON.stringify({ esm_type: 4 }), esm_user_answer: '', esm_status: 3, double_esm_user_answer_timestamp: statusBase + 6000 },
+      { timestamp: statusBase + 2, esm_trigger: 'stress_now', esm_json: JSON.stringify({ esm_type: 4 }), esm_user_answer: '3', esm_status: 2, double_esm_user_answer_timestamp: statusBase + 7000 },
+    ]),
+  }), formHeaders);
+  const statusQuality = await request('GET', `${apiBase}/dashboard/survey-quality?limit=1000`, { headers: researcherAuth });
+  const statusRows = statusQuality.json.rows.filter((row) => row.device_id === 'dev-status');
+  assert.deepStrictEqual(statusRows.map((row) => row.status_label).sort(), ['answered', 'dismissed', 'expired'], 'status labels');
+  assert.ok(statusRows.find((row) => row.status_label === 'dismissed').quality_flags.includes('dismissed'), 'dismissed flag');
+  const statusHealth = await request('GET', `${apiBase}/dashboard/participant-health`, { headers: researcherAuth });
+  const statusDevice = statusHealth.json.rows.find((row) => row.device_id === 'dev-status');
+  assert.strictEqual(statusDevice.surveys_dismissed_7d, 1, 'dismissed surveys counted');
+  assert.strictEqual(statusDevice.surveys_expired_7d, 1, 'expired surveys counted');
+  const templatesRes = await fetch(`${base}/assets/survey-templates.json`);
+  const templateJson = await templatesRes.json();
+  assert.ok(templateJson.templates.every((template) => template.source && template.questions.every((q) => Number.isInteger(q.esm_type) && q.esm_trigger)), 'survey templates are well-formed');
+  const templateSave = await request('PUT', `${apiBase}/esm-schedule`, {
+    body: JSON.stringify({ mode: 'fixed', times: '08:00', esms: templateJson.templates.flatMap((template) => template.questions) }),
+    headers: researcherAuth,
+  });
+  assert.strictEqual(templateSave.status, 200, 'all templates are accepted by the schedule validator');
+  console.log('✓ survey status labels, dismissal/expiry counts, and question templates');
+
   // 28. Repeated failed logins are throttled (run last: it blocks this IP).
   let limited = null;
   for (let attempt = 0; attempt < 40 && !limited; attempt += 1) {

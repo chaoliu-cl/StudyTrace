@@ -156,6 +156,8 @@ const SURVEY_QUALITY_COLUMNS = [
   'question_trigger',
   'question_type',
   'answered',
+  'esm_status',
+  'status_label',
   'answer_kind',
   'answer_length',
   'response_latency_seconds',
@@ -182,6 +184,8 @@ const PARTICIPANT_HEALTH_COLUMNS = [
   'prompts_delivered_7d',
   'survey_sessions_7d',
   'compliance_rate_7d',
+  'surveys_dismissed_7d',
+  'surveys_expired_7d',
   'telemetry_missing_7d',
   'permission_changes_7d',
   'location_rows',
@@ -943,8 +947,13 @@ async function deriveSurveyQualityRows({ studyId, deviceId, limit: rawLimit } = 
         ? 0
         : (typeof answer === 'string' ? answer.length : JSON.stringify(answer).length);
       const responseLatency = responseLatencySeconds(row);
+      const status = row.data?.esm_status === undefined || row.data?.esm_status === null || row.data?.esm_status === ''
+        ? ''
+        : Number(row.data.esm_status);
       const flags = [];
-      if (!answered) flags.push('missing_answer');
+      if (status === 1) flags.push('dismissed');
+      if (status === 3) flags.push('expired');
+      if (!answered && status !== 1 && status !== 3) flags.push('missing_answer');
       if (answerKind === 'photo') flags.push('photo_response');
       if (responseLatency !== null && responseLatency > 60 * 60) flags.push('long_latency');
       if (esmJson.studytrace_required === true && !answered) flags.push('required_missing');
@@ -961,6 +970,8 @@ async function deriveSurveyQualityRows({ studyId, deviceId, limit: rawLimit } = 
           question_trigger: row.data?.esm_trigger || esmJson.esm_trigger || '',
           question_type: Number(esmJson.esm_type || 0) || '',
           answered,
+          esm_status: status,
+          status_label: ESM_STATUS_LABELS[status] || '',
           answer_kind: answerKind,
           answer_length: answerLength,
           response_latency_seconds: responseLatency,
@@ -1037,6 +1048,8 @@ async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
           prompts_delivered_7d: compliance.promptsDelivered,
           survey_sessions_7d: compliance.surveySessions,
           compliance_rate_7d: compliance.rate,
+          surveys_dismissed_7d: compliance.dismissed,
+          surveys_expired_7d: compliance.expired,
           telemetry_missing_7d: telemetry.missingRows,
           permission_changes_7d: telemetry.permissionChanges,
           location_rows: locationCount,
@@ -1376,6 +1389,8 @@ function healthNotes({ device, state, locationCount, esmCount, screenshotCount, 
 }
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+// AWARE ESM status codes.
+const ESM_STATUS_LABELS = { 0: 'new', 1: 'dismissed', 2: 'answered', 3: 'expired' };
 const PROMPT_EVENTS = new Set(['notification_delivered', 'notification_presented', 'notification_tapped']);
 
 function eventMetadata(row) {
@@ -1443,9 +1458,13 @@ function complianceFor({ events, surveyRows }) {
     if (t - lastAnswer > 15 * 60 * 1000) sessions += 1;
     lastAnswer = t;
   }
+  const recentStatus = (code) => surveyRows.filter((row) => row.data?.esm_status === code &&
+    (toEpochMs(row.data?.submitted_at) || toEpochMs(row.timestamp) || 0) >= since).length;
   return {
     promptsDelivered: prompts.size,
     surveySessions: sessions,
+    dismissed: recentStatus(1),
+    expired: recentStatus(3),
     rate: prompts.size ? Math.round(Math.min(1, sessions / prompts.size) * 100) / 100 : '',
   };
 }
