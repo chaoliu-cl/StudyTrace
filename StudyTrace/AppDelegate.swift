@@ -44,6 +44,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         UNUserNotificationCenter.current().delegate = self
 
         registerBackgroundTasks()
+        StudyParticipationController.retryPendingWithdrawal()
 
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"application:didFinishLaunchingWithOptions:launchOptions:"]);
@@ -129,6 +130,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
+        StudyParticipationController.retryPendingWithdrawal()
         StudyTraceTelemetry.recordEvent("app_will_enter_foreground")
         refreshRemoteESMScheduleIfNeeded(force: true)
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
@@ -144,10 +146,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
-        AWAREUtils.sendLocalPushNotification(withTitle: NSLocalizedString("terminate_title" , comment: ""),
-                                             body: NSLocalizedString("terminate_msg" , comment: ""),
-                                             timeInterval: 1,
-                                             repeats: false)
+        // Only nudge active participants to reopen the app; someone who has
+        // withdrawn must not be asked to resume data collection.
+        if StudyParticipationController.hasConsent() {
+            AWAREUtils.sendLocalPushNotification(withTitle: NSLocalizedString("terminate_title" , comment: ""),
+                                                 body: NSLocalizedString("terminate_msg" , comment: ""),
+                                                 timeInterval: 1,
+                                                 repeats: false)
+        }
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationWillTerminate:"]);
         self.saveContext()
@@ -289,20 +295,142 @@ enum StudyParticipationController {
         StudyTraceTelemetry.uploadDeviceState(reason: "consent_granted")
     }
 
-    static func revokeParticipation(clearStudySettings: Bool) {
-        StudyTraceTelemetry.recordEvent("participation_revoked")
+    /// Outcome of telling the study server about a withdrawal.
+    enum WithdrawalServerResult {
+        /// No study server was configured, so there was nothing to notify.
+        case notApplicable
+        /// The server recorded the withdrawal (and deleted data if asked).
+        case recorded
+        /// The server was unreachable. The request is queued and retried on
+        /// the next launch/foreground; the device ID lets the participant ask
+        /// the research team directly.
+        case pending(deviceId: String)
+    }
+
+    private static let pendingWithdrawalKey = "com.studytrace.pending-withdrawal"
+
+    /// Stops collection, cancels study notifications, and deletes the study
+    /// data stored on this iPhone. When `notifyServer` is true (the
+    /// participant quit from Settings), the study server logs the withdrawal
+    /// and, if `deleteUploadedData` is true, deletes what this device uploaded.
+    static func revokeParticipation(clearStudySettings: Bool,
+                                    notifyServer: Bool = false,
+                                    deleteUploadedData: Bool = false,
+                                    completion: ((WithdrawalServerResult) -> Void)? = nil) {
+        // Read the server context before settings are cleared below.
+        let context = notifyServer ? StudyTraceTelemetry.studyContext() : nil
+        if !deleteUploadedData {
+            // Skipped when deleting: this event would be uploaded after the
+            // deletion and leave a row behind.
+            StudyTraceTelemetry.recordEvent("participation_revoked")
+        }
         UserDefaults.standard.set(false, forKey: consentKey)
         UserDefaults.standard.removeObject(forKey: consentTimestampKey)
+        OnboardingManager.recordConsentDecision()
 
         let manager = AWARESensorManager.shared()
         manager.stopAutoSyncTimer()
         manager.stopAndRemoveAllSensors()
         AWARECore.shared().deactivate()
 
+        cancelStudyNotifications()
+        deleteLocalStudyDatabase()
+        // Removes exported/CSV/JSON files; the AWARE.sqlite store itself is
+        // skipped by the framework, so its rows are cleared above.
         manager.removeAllFilesFromDocumentRoot()
         if clearStudySettings {
             AWAREStudy.shared().clearSettings()
         }
+
+        guard let context = context else {
+            completion?(.notApplicable)
+            return
+        }
+        let request: [String: Any] = [
+            "base_url": context.baseURL.absoluteString,
+            "study_id": context.studyId,
+            "password": context.password,
+            "device_id": context.deviceId,
+            "delete_data": deleteUploadedData,
+            "withdrawn_at": Date().timeIntervalSince1970 * 1000
+        ]
+        UserDefaults.standard.set(request, forKey: pendingWithdrawalKey)
+        sendWithdrawal(request) { success in
+            DispatchQueue.main.async {
+                completion?(success ? .recorded : .pending(deviceId: context.deviceId))
+            }
+        }
+    }
+
+    /// Re-sends a withdrawal that could not reach the server earlier. Safe to
+    /// repeat: the server only deletes rows received before `withdrawn_at`.
+    static func retryPendingWithdrawal() {
+        guard let request = UserDefaults.standard.dictionary(forKey: pendingWithdrawalKey) else { return }
+        sendWithdrawal(request) { _ in }
+    }
+
+    private static func sendWithdrawal(_ request: [String: Any], completion: @escaping (Bool) -> Void) {
+        guard let base = (request["base_url"] as? String).flatMap(URL.init(string:)),
+              let studyId = request["study_id"] as? String,
+              let password = request["password"] as? String,
+              let deviceId = request["device_id"] as? String else {
+            UserDefaults.standard.removeObject(forKey: pendingWithdrawalKey)
+            completion(false)
+            return
+        }
+        let payload: [String: Any] = [
+            "device_id": deviceId,
+            "delete_data": request["delete_data"] as? Bool ?? false,
+            "withdrawn_at": request["withdrawn_at"] as? Double ?? Date().timeIntervalSince1970 * 1000
+        ]
+        var urlRequest = URLRequest(url: base
+            .appendingPathComponent("api/v1/studies")
+            .appendingPathComponent(studyId)
+            .appendingPathComponent("withdrawal"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.timeoutInterval = 30
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("Bearer \(password)", forHTTPHeaderField: "Authorization")
+        urlRequest.httpBody = try? JSONSerialization.data(withJSONObject: payload, options: [])
+        URLSession.shared.dataTask(with: urlRequest) { _, response, error in
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let success = error == nil && (200..<300).contains(status)
+            if success {
+                UserDefaults.standard.removeObject(forKey: pendingWithdrawalKey)
+            }
+            completion(success)
+        }.resume()
+    }
+
+    /// Removes scheduled survey prompts and reminders so a withdrawn
+    /// participant is not notified again.
+    private static func cancelStudyNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
+        UIApplication.shared.applicationIconBadgeNumber = 0
+    }
+
+    /// Deletes every row in the local AWARE Core Data store (sensor data not
+    /// yet uploaded, ESM schedules, and survey answers).
+    private static func deleteLocalStudyDatabase() {
+        let handler = CoreDataHandler.shared()
+        guard let coordinator = handler.persistentStoreCoordinator else { return }
+        let context = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+        context.persistentStoreCoordinator = coordinator
+        context.performAndWait {
+            for entity in coordinator.managedObjectModel.entities where entity.superentity == nil {
+                guard let name = entity.name else { continue }
+                let request = NSBatchDeleteRequest(fetchRequest: NSFetchRequest<NSFetchRequestResult>(entityName: name))
+                do {
+                    try context.execute(request)
+                } catch {
+                    NSLog("[StudyTrace] Could not delete local %@ rows: %@", name, error.localizedDescription)
+                }
+            }
+        }
+        // Batch deletes bypass contexts; drop any objects still cached.
+        handler.managedObjectContext?.reset()
     }
 
     static func refreshCollectionState(fitbitPresenter: UIViewController?, createRemoteTables: Bool) {
@@ -344,10 +472,10 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         DispatchQueue.main.async {
-            if let tabBar = self.window?.rootViewController as? UITabBarController {
-                tabBar.selectedIndex = 2
-            } else {
-                self.window?.rootViewController?.tabBarController?.selectedIndex = 2
+            let tabBar = (self.window?.rootViewController as? UITabBarController)
+                ?? self.window?.rootViewController?.tabBarController
+            if let tabBar = tabBar, let surveysIndex = tabBar.surveysTabIndex {
+                tabBar.selectedIndex = surveysIndex
             }
         }
         StudyTraceTelemetry.recordEvent("notification_tapped", metadata: [
@@ -480,7 +608,7 @@ enum StudyTraceTelemetry {
         URLSession.shared.dataTask(with: request).resume()
     }
 
-    private static func studyContext() -> (baseURL: URL, studyId: String, password: String, deviceId: String)? {
+    static func studyContext() -> (baseURL: URL, studyId: String, password: String, deviceId: String)? {
         guard let studyURL = AWAREStudy.shared().getURL(),
               let components = URLComponents(string: studyURL),
               components.scheme?.lowercased() == "https",
@@ -639,5 +767,16 @@ enum AWARESlimConfiguration {
 
     static func isSupportedSensor(_ identifier: String) -> Bool {
         return supportedSensorIdentifiers.contains(identifier)
+    }
+}
+
+extension UITabBarController {
+    /// Index of the tab hosting the survey list, looked up by view controller
+    /// type so it stays correct if the storyboard tab order changes.
+    var surveysTabIndex: Int? {
+        return viewControllers?.firstIndex { tab in
+            if tab is ESMViewController { return true }
+            return (tab as? UINavigationController)?.viewControllers.first is ESMViewController
+        }
     }
 }

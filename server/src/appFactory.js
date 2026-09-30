@@ -31,7 +31,23 @@ import {
   updateStudyConfig,
   tableExists,
   isDatabaseConfigured,
+  upsertStudy,
+  deleteDeviceData,
+  getDeviceParticipant,
+  recordWithdrawal,
+  listWithdrawals,
 } from './db.js';
+import {
+  isRateLimited,
+  MIN_RESEARCHER_PASSWORD_LENGTH,
+  participantPasswordFrom,
+  recordAuthFailure,
+  researcherPasswordFrom,
+  safeEqual,
+  sendRateLimited,
+  studyAcceptsParticipantPassword,
+  studyAcceptsResearcherPassword,
+} from './auth.js';
 import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 
@@ -110,7 +126,10 @@ const BATTERY_USAGE_EXPORT_LIMIT = 10000;
 
 export function createApp() {
   const app = express();
-  app.set('trust proxy', true);
+  // Trust only the platform's own proxy hop(s) so X-Forwarded-For cannot be
+  // spoofed to dodge the failed-login limiter. Railway uses a single edge hop.
+  app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
+  app.disable('x-powered-by');
   const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
   // AWARE posts application/x-www-form-urlencoded ("device_id=..&data=<json>");
@@ -118,6 +137,20 @@ export function createApp() {
   app.use(express.urlencoded({ extended: false, limit: '25mb' }));
   app.use(express.json({ limit: '25mb' }));
   app.use(express.text({ type: '*/*', limit: '25mb' }));
+  app.use((_req, res, next) => {
+    res.setHeader('Content-Security-Policy', [
+      "default-src 'self'",
+      "img-src 'self' blob: data:",
+      "object-src 'none'",
+      "base-uri 'none'",
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+    ].join('; '));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Frame-Options', 'DENY');
+    next();
+  });
   app.use(express.static(publicDir));
 
   let publicBaseUrl = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
@@ -149,60 +182,136 @@ export function createApp() {
     next();
   });
 
-  // ---- Admin: provision a study ---------------------------------------------
-  // Shared admin auth guard (header: x-admin-token: $ADMIN_TOKEN).
+  // ---- Auth guards -----------------------------------------------------------
+  // Admin: header x-admin-token: $ADMIN_TOKEN.
   function requireAdmin(req, res, next) {
+    if (isRateLimited(req)) return sendRateLimited(res);
     const adminToken = process.env.ADMIN_TOKEN;
-    if (!adminToken || req.get('x-admin-token') !== adminToken) {
+    if (!adminToken || !safeEqual(req.get('x-admin-token') || '', adminToken)) {
+      recordAuthFailure(req);
       return res.status(403).json({ error: 'forbidden' });
     }
     next();
   }
 
-  async function requireStudyPassword(req, res, next) {
-    const auth = req.get('authorization');
-    const password = req.get('x-study-password') || (
-      auth && /^Bearer\s+/i.test(auth) ? auth.replace(/^Bearer\s+/i, '').trim() : ''
-    );
-    if (!password) {
-      return res.status(401).json({
-        error: 'missing credentials: send Authorization: Bearer <password> or x-study-password header',
-      });
+  // Researcher: x-researcher-password header (or Bearer). The participant
+  // study password is deliberately NOT accepted here, because every phone
+  // holds it in its join URL.
+  async function requireResearcher(req, res, next) {
+    try {
+      if (isRateLimited(req)) return sendRateLimited(res);
+      const password = researcherPasswordFrom(req);
+      if (!password) {
+        return res.status(401).json({
+          error: 'missing credentials: send the researcher password as x-researcher-password or Authorization: Bearer',
+        });
+      }
+      const study = await getStudy(req.params.studyId);
+      if (study && !study.researcher_password_hash) {
+        return res.status(403).json({
+          error: 'researcher_password_not_set',
+          message: 'An administrator must set a researcher password for this study in /admin/ before the researcher dashboard can be used.',
+        });
+      }
+      if (!studyAcceptsResearcherPassword(study, password)) {
+        recordAuthFailure(req);
+        return res.status(403).json({ error: 'invalid study id or researcher password' });
+      }
+      req.study = study;
+      next();
+    } catch (err) {
+      next(err);
     }
-
-    const study = await getStudy(req.params.studyId);
-    if (!study || study.password !== password) {
-      return res.status(403).json({ error: 'invalid study id or password' });
-    }
-    req.study = study;
-    next();
   }
 
+  // Participant: the study password from the join URL, for ingestion only.
+  async function requireParticipant(req, res, next) {
+    try {
+      if (isRateLimited(req)) return sendRateLimited(res);
+      const password = req.params.password || participantPasswordFrom(req);
+      if (!password) {
+        return res.status(401).json({
+          error: 'missing credentials: send Authorization: Bearer <password> or x-study-password header',
+        });
+      }
+      const study = await getStudy(req.params.studyId);
+      if (!studyAcceptsParticipantPassword(study, password)) {
+        recordAuthFailure(req);
+        return res.status(403).json({ error: 'invalid study id or password' });
+      }
+      req.study = study;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // ---- Admin: provision / update a study -------------------------------------
   // POST /admin/studies  (header: x-admin-token: $ADMIN_TOKEN)
-  //   body (JSON): { "study_id": "...", "password": "...", "name": "..." }
-  app.post('/admin/studies', requireAdmin, async (req, res) => {
-    const { study_id, password, name } = req.body || {};
-    if (!study_id || !password) {
-      return res.status(400).json({ error: 'study_id and password are required' });
+  //   body (JSON): { "study_id", "password", "researcher_password", "name" }
+  //   New studies need both passwords. For an existing study, only the fields
+  //   provided are changed, so setting a researcher password never rotates the
+  //   participant password (which would break every enrolled phone).
+  app.post('/admin/studies', requireAdmin, async (req, res, next) => {
+    try {
+      const { study_id, password, researcher_password: researcherPassword, name } = req.body || {};
+      if (!study_id) {
+        return res.status(400).json({ error: 'study_id is required' });
+      }
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(study_id)) {
+        return res.status(400).json({ error: 'study_id must be 1-64 chars [A-Za-z0-9_-]' });
+      }
+      if (researcherPassword && String(researcherPassword).length < MIN_RESEARCHER_PASSWORD_LENGTH) {
+        return res.status(400).json({ error: `researcher_password must be at least ${MIN_RESEARCHER_PASSWORD_LENGTH} characters` });
+      }
+      if (password && researcherPassword && password === researcherPassword) {
+        return res.status(400).json({ error: 'researcher_password must differ from the participant study password' });
+      }
+      const existing = await getStudy(study_id);
+      if (!existing && (!password || !researcherPassword)) {
+        return res.status(400).json({ error: 'new studies require both password and researcher_password' });
+      }
+      if (existing && password && studyAcceptsResearcherPassword(existing, password)) {
+        return res.status(400).json({ error: 'participant password must differ from the researcher password' });
+      }
+      if (existing && researcherPassword && studyAcceptsParticipantPassword(existing, researcherPassword)) {
+        return res.status(400).json({ error: 'researcher_password must differ from the participant study password' });
+      }
+
+      const { study, created } = await upsertStudy(study_id, {
+        password,
+        researcherPassword,
+        name: name || (existing ? undefined : 'StudyTrace Study'),
+      });
+      const base = publicBaseUrl || `${req.protocol}://${req.get('host')}`;
+      const response = {
+        status: true,
+        created,
+        study_id,
+        researcher_password_set: Boolean(study.researcher_password_hash),
+        // Generic-API base for any other client.
+        api_base: `${base}/api/v1/studies/${encodeURIComponent(study_id)}`,
+      };
+      if (password) {
+        // AWARE-protocol study URL (paste/QR into the StudyTrace app). Only
+        // returned when the participant password was supplied in this call,
+        // since the server stores it hashed.
+        response.study_url = `${base}/index.php/webservice/index/${encodeURIComponent(study_id)}/${encodeURIComponent(password)}`;
+      }
+      res.json(response);
+    } catch (err) {
+      next(err);
     }
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(study_id)) {
-      return res.status(400).json({ error: 'study_id must be 1-64 chars [A-Za-z0-9_-]' });
+  });
+
+  // DELETE /admin/studies/:studyId/participants/:deviceId
+  app.delete('/admin/studies/:studyId/participants/:deviceId', requireAdmin, async (req, res, next) => {
+    try {
+      const result = await deleteParticipantData(req.params.studyId, req.params.deviceId, 'admin');
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      next(err);
     }
-    await getPool().query(
-      `INSERT INTO studies (study_id, password, name)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (study_id) DO UPDATE SET password = EXCLUDED.password, name = EXCLUDED.name`,
-      [study_id, password, name || 'StudyTrace Study']
-    );
-    const base = publicBaseUrl || `${req.protocol}://${req.get('host')}`;
-    res.json({
-      status: true,
-      study_id,
-      // AWARE-protocol study URL (paste/QR into the StudyTrace app).
-      study_url: `${base}/index.php/webservice/index/${encodeURIComponent(study_id)}/${encodeURIComponent(password)}`,
-      // Generic-API base for any other client.
-      api_base: `${base}/api/v1/studies/${encodeURIComponent(study_id)}`,
-    });
   });
 
   // ---- Admin: data export ---------------------------------------------------
@@ -302,11 +411,12 @@ export function createApp() {
   });
 
   // ---- Researcher dashboard API --------------------------------------------
-  app.get('/api/v1/studies/:studyId/dashboard/summary', requireStudyPassword, async (req, res) => {
+  app.get('/api/v1/studies/:studyId/dashboard/summary', requireResearcher, async (req, res) => {
     try {
       const overview = await getStudyOverview(req.params.studyId);
       if (!overview) return res.status(404).json({ error: 'study not found' });
       await attachStudyDerivedSensors(overview, req.params.studyId);
+      overview.withdrawals = await listWithdrawals(req.params.studyId);
       res.json({ ok: true, ...overview });
     } catch (err) {
       console.error(`[dashboard summary ${req.params.studyId}]`, err);
@@ -314,7 +424,7 @@ export function createApp() {
     }
   });
 
-  app.get('/api/v1/studies/:studyId/export/:sensor', requireStudyPassword, async (req, res) => {
+  app.get('/api/v1/studies/:studyId/export/:sensor', requireResearcher, async (req, res) => {
     const { format = 'json', device_id: deviceId, limit, offset } = req.query;
     try {
       const rows = await exportDashboardSensorRows(req.params.sensor, {
@@ -339,7 +449,7 @@ export function createApp() {
     }
   });
 
-  app.get('/api/v1/studies/:studyId/esm-schedule', requireStudyPassword, async (req, res) => {
+  app.get('/api/v1/studies/:studyId/esm-schedule', requireResearcher, async (req, res) => {
     try {
       res.json(scheduleResponse(req.study, 'esm_schedule'));
     } catch (err) {
@@ -348,7 +458,7 @@ export function createApp() {
     }
   });
 
-  app.put('/api/v1/studies/:studyId/esm-schedule', requireStudyPassword, async (req, res) => {
+  app.put('/api/v1/studies/:studyId/esm-schedule', requireResearcher, async (req, res) => {
     try {
       const esmSchedule = buildEsmScheduleFromRequest(req.body || {}, 'esm_survey');
       const updated = await updateStudyConfig(req.params.studyId, { esm_schedule: esmSchedule });
@@ -362,7 +472,7 @@ export function createApp() {
     }
   });
 
-  app.get('/api/v1/studies/:studyId/battery-screenshot-schedule', requireStudyPassword, async (req, res) => {
+  app.get('/api/v1/studies/:studyId/battery-screenshot-schedule', requireResearcher, async (req, res) => {
     try {
       res.json(scheduleResponse(req.study, 'battery_screenshot_schedule'));
     } catch (err) {
@@ -371,7 +481,7 @@ export function createApp() {
     }
   });
 
-  app.put('/api/v1/studies/:studyId/battery-screenshot-schedule', requireStudyPassword, async (req, res) => {
+  app.put('/api/v1/studies/:studyId/battery-screenshot-schedule', requireResearcher, async (req, res) => {
     try {
       const batterySchedule = buildEsmScheduleFromRequest(req.body || {}, 'battery_usage_screenshot');
       const updated = await updateStudyConfig(req.params.studyId, {
@@ -388,7 +498,7 @@ export function createApp() {
     }
   });
 
-  app.post('/api/v1/studies/:studyId/battery-screenshots', requireStudyPassword, async (req, res) => {
+  app.post('/api/v1/studies/:studyId/battery-screenshots', requireParticipant, async (req, res) => {
     try {
       return await handleBatteryScreenshotUpload(req, res, req.params.studyId);
     } catch (err) {
@@ -397,12 +507,8 @@ export function createApp() {
     }
   });
 
-  app.post('/index.php/webservice/index/:studyId/:password/battery-screenshots', async (req, res) => {
+  app.post('/index.php/webservice/index/:studyId/:password/battery-screenshots', requireParticipant, async (req, res) => {
     try {
-      const study = await getStudy(req.params.studyId);
-      if (!study || study.password !== req.params.password) {
-        return res.status(403).json({ error: 'invalid study id or password' });
-      }
       return await handleBatteryScreenshotUpload(req, res, req.params.studyId);
     } catch (err) {
       console.error(`[battery screenshot upload ${req.params.studyId}]`, err);
@@ -410,7 +516,7 @@ export function createApp() {
     }
   });
 
-  app.get('/api/v1/studies/:studyId/dashboard/esm-responses', requireStudyPassword, async (req, res) => {
+  app.get('/api/v1/studies/:studyId/dashboard/esm-responses', requireResearcher, async (req, res) => {
     try {
       const rows = await findEsmResponseRows(req.params.studyId, req.query.limit);
       return res.json({ ok: true, count: rows.length, rows });
@@ -420,7 +526,7 @@ export function createApp() {
     }
   });
 
-  app.get('/api/v1/studies/:studyId/dashboard/battery-usage', requireStudyPassword, async (req, res) => {
+  app.get('/api/v1/studies/:studyId/dashboard/battery-usage', requireResearcher, async (req, res) => {
     try {
       const diagnostics = await findBatteryUsageDiagnostics({
         studyId: req.params.studyId,
@@ -433,7 +539,7 @@ export function createApp() {
     }
   });
 
-  app.get('/api/v1/studies/:studyId/dashboard/participant-health', requireStudyPassword, async (req, res) => {
+  app.get('/api/v1/studies/:studyId/dashboard/participant-health', requireResearcher, async (req, res) => {
     try {
       const rows = await deriveParticipantHealthRows({ studyId: req.params.studyId });
       return res.json({ ok: true, count: rows.length, rows: rows.map(rowForDashboard) });
@@ -443,7 +549,7 @@ export function createApp() {
     }
   });
 
-  app.get('/api/v1/studies/:studyId/dashboard/location-daily-summary', requireStudyPassword, async (req, res) => {
+  app.get('/api/v1/studies/:studyId/dashboard/location-daily-summary', requireResearcher, async (req, res) => {
     try {
       const rows = await deriveLocationDailySummaries({
         studyId: req.params.studyId,
@@ -456,7 +562,7 @@ export function createApp() {
     }
   });
 
-  app.get('/api/v1/studies/:studyId/dashboard/survey-quality', requireStudyPassword, async (req, res) => {
+  app.get('/api/v1/studies/:studyId/dashboard/survey-quality', requireResearcher, async (req, res) => {
     try {
       const rows = await deriveSurveyQualityRows({
         studyId: req.params.studyId,
@@ -469,7 +575,7 @@ export function createApp() {
     }
   });
 
-  app.get('/api/v1/studies/:studyId/media/:sensor/:rowId/image', requireStudyPassword, async (req, res) => {
+  app.get('/api/v1/studies/:studyId/media/:sensor/:rowId/image', requireResearcher, async (req, res) => {
     try {
       const image = await imageFromEsmRow(req.params.studyId, req.params.sensor, req.params.rowId);
       if (!image) return res.status(404).json({ error: 'image not found' });
@@ -482,7 +588,7 @@ export function createApp() {
     }
   });
 
-  app.get('/api/v1/studies/:studyId/media/esms/:rowId/image', requireStudyPassword, async (req, res) => {
+  app.get('/api/v1/studies/:studyId/media/esms/:rowId/image', requireResearcher, async (req, res) => {
     try {
       const image = await imageFromEsmRow(req.params.studyId, 'esms', req.params.rowId);
       if (!image) return res.status(404).json({ error: 'image not found' });
@@ -495,11 +601,39 @@ export function createApp() {
     }
   });
 
+  // DELETE /api/v1/studies/:studyId/participants/:deviceId (researcher)
+  //   Removes every row the device uploaded, across all sensor tables, and
+  //   logs the deletion in the withdrawals audit table.
+  app.delete('/api/v1/studies/:studyId/participants/:deviceId', requireResearcher, async (req, res, next) => {
+    try {
+      const result = await deleteParticipantData(req.params.studyId, req.params.deviceId, 'researcher');
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ---- Ingestion front-ends (shared storage) --------------------------------
   app.use('/', createAwareRouter(getPublicBaseUrl));
   app.use('/api/v1', createGenericApiRouter());
 
+  // Async failures (e.g. a transient DB error) become a 500 instead of an
+  // unhandled rejection that would take the process down.
+  app.use((err, req, res, _next) => {
+    console.error(`[${req.method} ${req.path}]`, err);
+    if (res.headersSent) return;
+    if (err.type === 'entity.too.large') return res.status(413).json({ error: 'payload too large' });
+    res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'server error' });
+  });
+
   return app;
+}
+
+async function deleteParticipantData(studyId, deviceId, source) {
+  const participant = await getDeviceParticipant(studyId, deviceId);
+  const rowsDeleted = await deleteDeviceData(studyId, deviceId);
+  await recordWithdrawal({ studyId, deviceId, participant, source, deleteData: true, rowsDeleted });
+  return { device_id: deviceId, rows_deleted: rowsDeleted };
 }
 
 async function listAdminSensorsForDashboard() {
@@ -758,7 +892,7 @@ async function rowsForSensorCandidates(sensors, { studyId, deviceId, limit } = {
   for (const sensor of sensors) {
     const table = safeTableName(sensor);
     if (!table || !(await tableExists(table))) continue;
-    const sensorRows = await exportRows(table, { studyId, deviceId, limit });
+    const sensorRows = await exportRows(table, { studyId, deviceId, limit, order: 'desc' });
     rows.push(...sensorRows.map((row) => ({ ...row, sensor })));
   }
   return rows;
@@ -771,7 +905,7 @@ async function allEsmResponseRows(limit) {
     if (!isKnownEsmSensor(sensor.sensor)) continue;
     const table = safeTableName(sensor.sensor);
     if (!table) continue;
-    const sensorRows = await exportRows(table, { limit });
+    const sensorRows = await exportRows(table, { limit, order: 'desc' });
     for (const row of sensorRows) {
       if (isEsmDataRow(row.data)) rows.push({ ...row, sensor: sensor.sensor });
     }
@@ -1277,7 +1411,7 @@ async function batteryScreenshotUploadFeedback(source) {
 }
 
 async function findEsmResponseRows(studyId, rawLimit) {
-  const limit = Math.min(Math.max(Number(rawLimit) || 50, 1), 200);
+  const limit = Math.min(Math.max(Number(rawLimit) || 50, 1), BATTERY_USAGE_EXPORT_LIMIT);
   const sensors = await listStudySensorTables(studyId);
   const esmSensors = [];
 
@@ -1287,7 +1421,7 @@ async function findEsmResponseRows(studyId, rawLimit) {
       continue;
     }
 
-    const sample = await exportRows(sensor.table, { studyId, limit: 5 });
+    const sample = await exportRows(sensor.table, { studyId, limit: 5, order: 'desc' });
     if (sample.some((row) => isEsmDataRow(row.data))) {
       esmSensors.push(sensor.sensor);
     }
@@ -1297,7 +1431,7 @@ async function findEsmResponseRows(studyId, rawLimit) {
   for (const sensor of [...new Set(esmSensors)]) {
     const table = safeTableName(sensor);
     if (!table) continue;
-    const sensorRows = await exportRows(table, { studyId, limit });
+    const sensorRows = await exportRows(table, { studyId, limit, order: 'desc' });
     for (const row of sensorRows) {
       if (isEsmDataRow(row.data)) rows.push({ ...row, sensor });
     }
@@ -1327,7 +1461,7 @@ async function findBatteryUsageDiagnostics({ studyId, limit: rawLimit } = {}) {
   const screenshotRows = await findBatteryScreenshotRows({ studyId, limit });
   const table = safeTableName(BATTERY_USAGE_EXPORT_SENSOR);
   const appRows = table && await tableExists(table)
-    ? (await exportRows(table, { studyId, limit })).map(batteryUsageAppRowFromExport)
+    ? (await exportRows(table, { studyId, limit, order: 'desc' })).map(batteryUsageAppRowFromExport)
     : [];
   return {
     screenshotRows,
@@ -1427,7 +1561,7 @@ async function findBatteryScreenshotRows({ studyId, limit: rawLimit } = {}) {
     const sensors = await listSensorTables();
     const esmSensors = sensors.filter((sensor) => isKnownEsmSensor(sensor.sensor));
     for (const sensor of esmSensors) {
-      const sensorRows = await exportRows(sensor.table, { limit });
+      const sensorRows = await exportRows(sensor.table, { limit, order: 'desc' });
       for (const row of sensorRows) {
         const candidate = { ...row, sensor: sensor.sensor };
         if (isBatteryScreenshotEsmRow(candidate)) rows.push(candidate);

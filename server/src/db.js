@@ -7,6 +7,7 @@
 // field the client sends without brittle per-sensor schemas.
 
 import pg from 'pg';
+import { hashSecret } from './auth.js';
 
 const { Pool } = pg;
 
@@ -73,6 +74,23 @@ export async function initSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // Credentials are stored as scrypt hashes. The legacy plaintext `password`
+  // column is kept (blanked) so older schemas keep their NOT NULL constraint.
+  await getPool().query(`ALTER TABLE studies ADD COLUMN IF NOT EXISTS password_hash TEXT`);
+  await getPool().query(`ALTER TABLE studies ADD COLUMN IF NOT EXISTS researcher_password_hash TEXT`);
+  await migratePlaintextStudyPasswords();
+  await getPool().query(`
+    CREATE TABLE IF NOT EXISTS withdrawals (
+      id            BIGSERIAL PRIMARY KEY,
+      study_id      TEXT NOT NULL,
+      device_id     TEXT NOT NULL,
+      participant   TEXT,
+      source        TEXT NOT NULL,
+      delete_data   BOOLEAN NOT NULL DEFAULT false,
+      rows_deleted  INTEGER NOT NULL DEFAULT 0,
+      requested_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
   await getPool().query(`
     CREATE TABLE IF NOT EXISTS devices (
       device_id   TEXT NOT NULL,
@@ -84,6 +102,22 @@ export async function initSchema() {
     );
   `);
   return true;
+}
+
+// One-time upgrade: hash any study password still stored in plaintext.
+export async function migratePlaintextStudyPasswords() {
+  const { rows } = await getPool().query(
+    `SELECT study_id, password FROM studies WHERE password_hash IS NULL AND password <> ''`
+  );
+  for (const row of rows) {
+    await getPool().query(
+      `UPDATE studies SET password_hash = $2, password = '' WHERE study_id = $1`,
+      [row.study_id, hashSecret(row.password)]
+    );
+  }
+  if (rows.length) {
+    console.log(`Hashed ${rows.length} plaintext study password(s). Researcher passwords must be set by an admin.`);
+  }
 }
 
 // Create a sensor data table on demand. Idempotent.
@@ -185,12 +219,121 @@ export async function upsertDevice(deviceId, studyId, participant) {
   );
 }
 
+const STUDY_COLUMNS = 'study_id, password_hash, researcher_password_hash, name, config, created_at';
+
 export async function getStudy(studyId) {
   const { rows } = await getPool().query(
-    `SELECT study_id, password, name, config, created_at FROM studies WHERE study_id = $1`,
+    `SELECT ${STUDY_COLUMNS} FROM studies WHERE study_id = $1`,
     [studyId]
   );
   return rows.length ? rows[0] : null;
+}
+
+// Create a study, or update only the fields provided for an existing one.
+// Returns { study, created }.
+export async function upsertStudy(studyId, { password, researcherPassword, name } = {}) {
+  const existing = await getStudy(studyId);
+  if (!existing) {
+    const { rows } = await getPool().query(
+      `INSERT INTO studies (study_id, password, password_hash, researcher_password_hash, name)
+       VALUES ($1, '', $2, $3, $4)
+       RETURNING ${STUDY_COLUMNS}`,
+      [studyId, hashSecret(password), researcherPassword ? hashSecret(researcherPassword) : null, name || 'StudyTrace Study']
+    );
+    return { study: rows[0], created: true };
+  }
+
+  const sets = [];
+  const params = [studyId];
+  if (password) {
+    params.push(hashSecret(password));
+    sets.push(`password_hash = $${params.length}`);
+  }
+  if (researcherPassword) {
+    params.push(hashSecret(researcherPassword));
+    sets.push(`researcher_password_hash = $${params.length}`);
+  }
+  if (name) {
+    params.push(name);
+    sets.push(`name = $${params.length}`);
+  }
+  if (!sets.length) return { study: existing, created: false };
+  const { rows } = await getPool().query(
+    `UPDATE studies SET ${sets.join(', ')} WHERE study_id = $1 RETURNING ${STUDY_COLUMNS}`,
+    params
+  );
+  return { study: rows[0], created: false };
+}
+
+// Delete every row a device contributed to a study, across all sensor tables
+// (raw and derived), plus its device registration. Returns rows deleted.
+// With `before`, only rows received up to that moment are removed: device IDs
+// persist across re-joins, so a withdrawal retried after the participant
+// re-enrolled must not delete their new data.
+export async function deleteDeviceData(studyId, deviceId, { before } = {}) {
+  const cutoff = before ? new Date(before).toISOString() : null;
+  const { rows: tables } = await getPool().query(
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = current_schema()`
+  );
+  let deleted = 0;
+  for (const { table_name: table } of tables) {
+    if (!table.startsWith('aware_') || !/^[a-z0-9_]+$/.test(table)) continue;
+    const result = cutoff
+      ? await getPool().query(
+        `DELETE FROM ${table} WHERE study_id = $1 AND device_id = $2 AND created_at <= $3::timestamptz`,
+        [studyId, deviceId, cutoff]
+      )
+      : await getPool().query(
+        `DELETE FROM ${table} WHERE study_id = $1 AND device_id = $2`,
+        [studyId, deviceId]
+      );
+    deleted += Number(result.rowCount) || 0;
+  }
+  if (cutoff) {
+    await getPool().query(
+      `DELETE FROM devices WHERE study_id = $1 AND device_id = $2 AND last_seen <= $3::timestamptz`,
+      [studyId, deviceId, cutoff]
+    );
+  } else {
+    await getPool().query(`DELETE FROM devices WHERE study_id = $1 AND device_id = $2`, [studyId, deviceId]);
+  }
+  return deleted;
+}
+
+export async function getDeviceParticipant(studyId, deviceId) {
+  const { rows } = await getPool().query(
+    `SELECT participant FROM devices WHERE study_id = $1 AND device_id = $2`,
+    [studyId, deviceId]
+  );
+  return rows.length ? rows[0].participant : null;
+}
+
+// Audit record of a withdrawal / deletion. Kept even when data is deleted so
+// the research team can document that the request was honored.
+export async function recordWithdrawal({ studyId, deviceId, participant, source, deleteData, rowsDeleted, requestedAt }) {
+  await getPool().query(
+    `INSERT INTO withdrawals (study_id, device_id, participant, source, delete_data, rows_deleted, requested_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz)`,
+    [
+      studyId,
+      deviceId,
+      participant || null,
+      source,
+      Boolean(deleteData),
+      Number(rowsDeleted) || 0,
+      new Date(requestedAt || Date.now()).toISOString(),
+    ]
+  );
+}
+
+export async function listWithdrawals(studyId) {
+  const { rows } = await getPool().query(
+    `SELECT device_id, participant, source, delete_data, rows_deleted, requested_at
+     FROM withdrawals WHERE study_id = $1 ORDER BY requested_at DESC`,
+    [studyId]
+  );
+  return rows;
 }
 
 export async function updateStudyConfig(studyId, configPatch) {
@@ -201,7 +344,7 @@ export async function updateStudyConfig(studyId, configPatch) {
     `UPDATE studies
      SET config = $2
      WHERE study_id = $1
-     RETURNING study_id, password, name, config, created_at`,
+     RETURNING ${STUDY_COLUMNS}`,
     [studyId, JSON.stringify(nextConfig)]
   );
   return rows.length ? rows[0] : null;
@@ -248,11 +391,12 @@ export async function listStudies() {
       s.study_id,
       s.name,
       s.created_at,
+      (s.researcher_password_hash IS NOT NULL) AS researcher_password_set,
       count(d.device_id)::int AS device_count,
       max(d.last_seen) AS last_seen
     FROM studies s
     LEFT JOIN devices d ON d.study_id = s.study_id
-    GROUP BY s.study_id, s.name, s.created_at
+    GROUP BY s.study_id, s.name, s.created_at, s.researcher_password_hash
     ORDER BY s.created_at DESC
   `);
   return rows;
@@ -296,8 +440,10 @@ export async function getStudyOverview(studyId) {
 }
 
 // Page through rows of a sensor table for export. Returns the stored JSON rows
-// plus their device_id/timestamp, ordered for stable pagination.
-export async function exportRows(table, { studyId, deviceId, limit, offset } = {}) {
+// plus their device_id/timestamp, ordered for stable pagination. Exports page
+// oldest-first; dashboards and derived pipelines pass order: 'desc' so that a
+// capped read always covers the most recent data.
+export async function exportRows(table, { studyId, deviceId, limit, offset, order = 'asc' } = {}) {
   const params = [];
   const where = [];
   if (studyId) {
@@ -316,7 +462,7 @@ export async function exportRows(table, { studyId, deviceId, limit, offset } = {
   const { rows } = await getPool().query(
     `SELECT id, study_id, device_id, timestamp, data, created_at
      FROM ${table} ${whereClause}
-     ORDER BY id ASC ${limitClause} ${offsetClause}`,
+     ORDER BY id ${order === 'desc' ? 'DESC' : 'ASC'} ${limitClause} ${offsetClause}`,
     params
   );
   return rows;

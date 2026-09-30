@@ -32,7 +32,7 @@ The Railway deployment now exposes three browser-facing interfaces in the same
 service:
 
 - `/participant/` — participant-facing onboarding page for the iPhone app
-- `/researcher/` — study-scoped dashboard authenticated by study id + password
+- `/researcher/` — study-scoped dashboard authenticated by study id + **researcher** password
 - `/admin/` — global admin dashboard authenticated by `ADMIN_TOKEN`
 
 Operational endpoints remain available too:
@@ -113,20 +113,23 @@ The subset the StudyTrace client calls:
 | Create sensor table  | `POST …/{STUDY_ID}/{PASSWORD}/{table}/create_table`                      |
 | Insert data          | `POST …/{table}/insert` body `device_id=…&data=<JSON array>`            |
 | Latest row (sync)    | `POST …/{table}/latest` body `device_id=…`                              |
-| Clear table          | `POST …/{table}/clear_table` body `device_id=…`                         |
+| Clear table          | Disabled (returns 403). The study password is shared by every participant, so it cannot authorize deletion. |
 
 ## Generic JSON API front-end
 
-Protocol-neutral REST over the same storage. Authenticate with the study
-password as a Bearer token (`Authorization: Bearer <password>`) or an
-`x-study-password` header. Base: `/api/v1/studies/{STUDY_ID}`.
+Protocol-neutral REST over the same storage. Ingestion authenticates with the
+participant study password as a Bearer token (`Authorization: Bearer <password>`)
+or an `x-study-password` header. Deleting data requires the researcher password
+(`x-researcher-password` or Bearer). Base: `/api/v1/studies/{STUDY_ID}`.
 
 | Action        | Request                                                                              |
 |---------------|--------------------------------------------------------------------------------------|
 | Insert data   | `POST   /api/v1/studies/{id}/sensors/{sensor}/data` body `{ "device_id": "...", "rows": [ {...} ] }` |
 | Latest row    | `GET    /api/v1/studies/{id}/sensors/{sensor}/latest?device_id=...`                  |
 | Row count     | `GET    /api/v1/studies/{id}/sensors/{sensor}/count?device_id=...`                   |
-| Clear data    | `DELETE /api/v1/studies/{id}/sensors/{sensor}/data?device_id=...`                    |
+| Clear data    | `DELETE /api/v1/studies/{id}/sensors/{sensor}/data?device_id=...` (researcher password) |
+| Withdraw      | `POST   /api/v1/studies/{id}/withdrawal` body `{ "device_id": "...", "delete_data": true }` (called by the app) |
+| Delete participant | `DELETE /api/v1/studies/{id}/participants/{device_id}` (researcher password; all tables) |
 
 The insert body also accepts a bare JSON array of rows, or a single row object.
 `device_id` may be given in the body, the `device_id` query param, or an
@@ -182,6 +185,8 @@ On the service **Variables** tab:
 | `ADMIN_TOKEN`     | yes      | A long random secret. Required to provision studies via the admin endpoint. |
 | `PUBLIC_BASE_URL` | recommended | Your public Railway URL, e.g. `https://studytrace-production.up.railway.app`. Used to build the study URL returned to clients. If unset, it is derived from request headers. |
 | `PORT`            | no       | Railway sets this automatically.                                            |
+| `TRUST_PROXY_HOPS` | no      | Number of reverse-proxy hops in front of the server (default `1`, correct for Railway). Used to read the real client IP for login rate limiting. |
+| `AUTH_FAILURE_MAX` / `AUTH_FAILURE_WINDOW_MS` | no | Failed-login limit per IP (default 30 per 900000 ms). |
 
 ### 4. Generate a public domain
 
@@ -240,14 +245,22 @@ After custom-domain verification, also check:
 
 ## Provision a study
 
-Studies are created through a token-guarded admin endpoint. Run this once per
-study:
+Each study has **two** credentials:
+
+| Credential | Who has it | What it allows |
+|------------|------------|----------------|
+| `password` (participant study password) | Every participant, inside the join URL / QR code | Joining, uploading data, downloading the survey schedule, withdrawing |
+| `researcher_password` (min. 12 chars) | Research team only | Researcher dashboard, exports, photo/screenshot access, schedule edits, deleting data |
+
+Both are stored as scrypt hashes; the server never keeps the plaintext.
+Studies are created through a token-guarded admin endpoint (or the `/admin/`
+dashboard):
 
 ```bash
 curl -X POST https://YOUR-APP.up.railway.app/admin/studies \
   -H "Content-Type: application/json" \
   -H "x-admin-token: $ADMIN_TOKEN" \
-  -d '{"study_id":"pilot1","password":"choose-a-strong-password","name":"StudyTrace Pilot"}'
+  -d '{"study_id":"pilot1","password":"choose-a-strong-password","researcher_password":"a-different-long-secret","name":"StudyTrace Pilot"}'
 ```
 
 Response:
@@ -255,15 +268,36 @@ Response:
 ```json
 {
   "status": true,
+  "created": true,
   "study_id": "pilot1",
+  "researcher_password_set": true,
   "study_url": "https://YOUR-APP.up.railway.app/index.php/webservice/index/pilot1/choose-a-strong-password",
   "api_base": "https://YOUR-APP.up.railway.app/api/v1/studies/pilot1"
 }
 ```
 
-- `study_url` — paste/QR into the StudyTrace app (AWARE protocol).
-- `api_base` — base path for the generic JSON API (use the study password as a
-  Bearer token).
+- `study_url` — paste/QR into the StudyTrace app (AWARE protocol). Because the
+  password is stored hashed, the URL is only returned when you send `password`
+  in the request, so save it when you create the study.
+- `api_base` — base path for the generic JSON API.
+
+Posting again for an existing study changes **only the fields you send**. To set
+or rotate the researcher password without disturbing enrolled phones:
+
+```bash
+curl -X POST https://YOUR-APP.up.railway.app/admin/studies \
+  -H "Content-Type: application/json" \
+  -H "x-admin-token: $ADMIN_TOKEN" \
+  -d '{"study_id":"pilot1","researcher_password":"a-different-long-secret"}'
+```
+
+### Upgrading studies created before researcher passwords existed
+
+On first boot after upgrading, existing plaintext study passwords are hashed
+automatically and participants keep working. The researcher dashboard for
+those studies stays **locked** (`researcher_password_not_set`) until an admin
+sets a researcher password as shown above. The `/admin/` studies table shows
+which studies still need one.
 
 ## Connect the app
 
@@ -322,12 +356,24 @@ CSV columns are `id, device_id, timestamp, <union of payload keys>, created_at`.
 Page with `limit`/`offset` for large datasets.
 
 Researchers can also use the hosted dashboard at `/researcher/`, or export one
-study-scoped sensor with the study password:
+study-scoped sensor with the researcher password:
 
 ```bash
 curl "https://YOUR-APP.up.railway.app/api/v1/studies/pilot1/export/locations?format=csv" \
-  -H "x-study-password: choose-a-strong-password" -o pilot1-locations.csv
+  -H "x-researcher-password: a-different-long-secret" -o pilot1-locations.csv
 ```
+
+## Withdrawal and deletion
+
+- When a participant quits in the app, it asks whether to also delete data
+  already uploaded, then calls `POST /api/v1/studies/{id}/withdrawal`. The
+  request is always recorded in the `withdrawals` audit table; with
+  `delete_data: true`, every row that device uploaded is removed from every
+  sensor table (raw and derived) and the device is unregistered.
+- Researchers can delete a participant from the **Enrolled devices** table in
+  `/researcher/` (or `DELETE /api/v1/studies/{id}/participants/{device_id}`).
+  Admins can use `DELETE /admin/studies/{id}/participants/{device_id}`.
+- The dashboard's **Withdrawals and deletions** table lists every request.
 
 
 ## Local development
@@ -346,9 +392,23 @@ npm test
 
 ## Security notes
 
-- All study endpoints require a valid `{study_id}/{password}` pair.
+- Ingestion endpoints require the participant study password; researcher
+  endpoints (dashboards, exports, media, schedules, deletion) require the
+  separate researcher password. The participant password is never accepted
+  for researcher endpoints.
+- Passwords are stored as scrypt hashes and compared in constant time.
 - The admin endpoint requires the `x-admin-token` header to match `ADMIN_TOKEN`.
   Keep that token secret and rotate it if exposed.
+- Failed credential checks are rate limited per client IP (30 per 15 minutes by
+  default; tune with `AUTH_FAILURE_MAX` / `AUTH_FAILURE_WINDOW_MS`). The client
+  IP comes from `X-Forwarded-For`, trusting `TRUST_PROXY_HOPS` proxy hops
+  (default `1`, correct for Railway).
+- Responses carry a strict Content-Security-Policy and related headers, and
+  the dashboards escape all participant-supplied values.
+- Residual risk: devices are identified by their random `device_id`, not a
+  per-device secret, so someone holding the participant password *and* another
+  device's ID could still upload rows under it. Per-device tokens would need
+  changes to the AWAREFramework client.
 - Table names from the client are constrained to a safe charset and prefixed
   with `aware_`, so they cannot inject SQL or collide with metadata tables.
 - This server accepts data over HTTPS only in practice, because Railway serves

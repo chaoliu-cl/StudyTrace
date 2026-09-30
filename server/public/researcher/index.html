@@ -20,7 +20,8 @@
       <p class="eyebrow">Researcher Dashboard</p>
       <h1>Study-scoped monitoring and export</h1>
       <p class="lede">
-        Authenticate with a study ID and study password. This interface only exposes the selected study.
+        Authenticate with a study ID and the researcher password. This is separate from the participant
+        study password in the join link, and only exposes the selected study.
       </p>
     </section>
 
@@ -32,8 +33,8 @@
           <input name="studyId" placeholder="pilot1" required>
         </label>
         <label>
-          <span>Study password</span>
-          <input name="password" type="password" placeholder="Study password" required>
+          <span>Researcher password</span>
+          <input name="password" type="password" placeholder="Researcher password" autocomplete="current-password" required>
         </label>
         <button class="button button-primary" type="submit">Load dashboard</button>
       </form>
@@ -48,6 +49,18 @@
         </div>
         <div class="table-wrap">
           <table id="researcher-devices"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Withdrawals and deletions</h2>
+            <p class="section-note">Audit log of participant withdrawals from the app and data deletions made from this dashboard.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-withdrawals"></table>
         </div>
       </section>
 

@@ -7,9 +7,10 @@
 // the AWARE protocol. The AWARE routes remain available for the StudyTrace
 // iOS client; this is an additional, equivalent door into the same data.
 //
-// Auth: every request carries the study password as a Bearer token
-//   Authorization: Bearer <password>
-// or the header `x-study-password: <password>`. The study id is in the path.
+// Auth: ingestion requests carry the participant study password as a Bearer
+// token (`Authorization: Bearer <password>`) or `x-study-password` header.
+// Destructive calls (DELETE) require the researcher password instead, sent as
+// `x-researcher-password` or Bearer. The study id is in the path.
 //
 // Endpoints (all under the mount point, e.g. /api/v1):
 //   POST   /studies/:studyId/sensors/:sensor/data
@@ -18,6 +19,9 @@
 //   GET    /studies/:studyId/sensors/:sensor/latest?device_id=...
 //   DELETE /studies/:studyId/sensors/:sensor/data?device_id=...
 //   GET    /studies/:studyId/sensors/:sensor/count?device_id=...
+//   POST   /studies/:studyId/withdrawal
+//            body: { "device_id": "...", "delete_data": true|false,
+//                    "withdrawn_at": <epoch ms, optional> }
 
 import express from 'express';
 import {
@@ -29,37 +33,50 @@ import {
   upsertDevice,
   getStudy,
   countRows,
+  deleteDeviceData,
+  getDeviceParticipant,
+  recordWithdrawal,
 } from './db.js';
-
-function extractPassword(req) {
-  const auth = req.get('authorization');
-  if (auth && /^Bearer\s+/i.test(auth)) {
-    return auth.replace(/^Bearer\s+/i, '').trim();
-  }
-  const header = req.get('x-study-password');
-  if (header) return header.trim();
-  return null;
-}
+import {
+  isRateLimited,
+  participantPasswordFrom,
+  recordAuthFailure,
+  researcherPasswordFrom,
+  sendRateLimited,
+  studyAcceptsParticipantPassword,
+  studyAcceptsResearcherPassword,
+} from './auth.js';
 
 export function createGenericApiRouter() {
   // mergeParams so :studyId from the mount path is visible here.
   const router = express.Router({ mergeParams: true });
 
-  // Authenticate against study credentials for every generic-API request.
+  // Authenticate every generic-API request. Either credential is accepted;
+  // req.authRole records which one matched so handlers can require more.
   router.use('/studies/:studyId', async (req, res, next) => {
-    const { studyId } = req.params;
-    const password = extractPassword(req);
-    if (!password) {
-      return res.status(401).json({
-        error: 'missing credentials: send Authorization: Bearer <password> or x-study-password header',
-      });
+    try {
+      if (isRateLimited(req)) return sendRateLimited(res);
+      const participantPassword = participantPasswordFrom(req);
+      const researcherPassword = researcherPasswordFrom(req);
+      if (!participantPassword && !researcherPassword) {
+        return res.status(401).json({
+          error: 'missing credentials: send Authorization: Bearer <password> or x-study-password header',
+        });
+      }
+      const study = await getStudy(req.params.studyId);
+      if (studyAcceptsResearcherPassword(study, researcherPassword)) {
+        req.authRole = 'researcher';
+      } else if (studyAcceptsParticipantPassword(study, participantPassword)) {
+        req.authRole = 'participant';
+      } else {
+        recordAuthFailure(req);
+        return res.status(403).json({ error: 'invalid study id or password' });
+      }
+      req.study = study;
+      next();
+    } catch (err) {
+      next(err);
     }
-    const study = await getStudy(studyId);
-    if (!study || study.password !== password) {
-      return res.status(403).json({ error: 'invalid study id or password' });
-    }
-    req.study = study;
-    next();
   });
 
   // Normalize the various accepted body shapes into an array of rows.
@@ -135,6 +152,9 @@ export function createGenericApiRouter() {
 
   // ---- Clear data -----------------------------------------------------------
   router.delete('/studies/:studyId/sensors/:sensor/data', async (req, res) => {
+    if (req.authRole !== 'researcher') {
+      return res.status(403).json({ error: 'deleting data requires the researcher password' });
+    }
     const table = safeTableName(req.params.sensor);
     if (!table) return res.status(400).json({ error: 'invalid sensor name' });
     const deviceId = deviceIdFrom(req);
@@ -146,6 +166,41 @@ export function createGenericApiRouter() {
       return res.json({ ok: true });
     } catch (err) {
       console.error(`[api clear ${req.params.sensor}]`, err);
+      return res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  // ---- Participant withdrawal ----------------------------------------------
+  // Called by the app when a participant quits. Always logged; when
+  // delete_data is true, every row this device uploaded up to withdrawn_at is
+  // removed. The app queues and retries this request when offline, so the
+  // cutoff keeps a late retry from deleting data sent after a re-join.
+  router.post('/studies/:studyId/withdrawal', async (req, res) => {
+    const deviceId = deviceIdFrom(req);
+    if (!deviceId) {
+      return res.status(400).json({ error: 'device_id is required' });
+    }
+    const deleteData = req.body?.delete_data === true || req.body?.delete_data === 'true';
+    const now = Date.now();
+    const claimed = Number(req.body?.withdrawn_at);
+    const withdrawnAt = Number.isFinite(claimed) && claimed > 0 ? Math.min(claimed, now) : now;
+    try {
+      const participant = await getDeviceParticipant(req.params.studyId, deviceId);
+      const rowsDeleted = deleteData
+        ? await deleteDeviceData(req.params.studyId, deviceId, { before: withdrawnAt })
+        : 0;
+      await recordWithdrawal({
+        studyId: req.params.studyId,
+        deviceId,
+        participant,
+        source: req.authRole === 'researcher' ? 'researcher' : 'participant',
+        deleteData,
+        rowsDeleted,
+        requestedAt: withdrawnAt,
+      });
+      return res.json({ ok: true, deleted: deleteData, rows_deleted: rowsDeleted });
+    } catch (err) {
+      console.error(`[api withdrawal ${req.params.studyId}]`, err);
       return res.status(500).json({ error: 'server error' });
     }
   });

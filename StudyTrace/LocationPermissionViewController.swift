@@ -67,7 +67,7 @@ public class LocationPermissionManager{
         if status == .authorizedAlways {
             return true
         } else {
-            let storyboard: UIStoryboard = vc.storyboard!
+            let storyboard: UIStoryboard = vc.storyboard ?? UIStoryboard(name: "Main", bundle: nil)
             let alwaysLocationVC = storyboard.instantiateViewController(withIdentifier: "alwaysLocationPermission")
             vc.present(alwaysLocationVC, animated: true, completion: nil)
             return false

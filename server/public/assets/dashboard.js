@@ -18,14 +18,14 @@ function fmtDate(value) {
 function renderMetricCards(container, metrics) {
   container.innerHTML = metrics.map(({ label, value }) => `
     <dl class="metric-card">
-      <dt>${label}</dt>
-      <dd>${value}</dd>
+      <dt>${escapeHtml(label)}</dt>
+      <dd>${escapeHtml(value)}</dd>
     </dl>
   `).join('');
 }
 
 function renderTable(container, columns, rows) {
-  const head = columns.map((column) => `<th>${column.label}</th>`).join('');
+  const head = columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join('');
   const body = rows.map((row) => `
     <tr>
       ${columns.map((column) => `<td>${column.render(row)}</td>`).join('')}
@@ -81,15 +81,15 @@ function looksLikeImageAnswer(answer) {
   return value.startsWith('iVBORw0KGgo') || value.startsWith('/9j/') || /^data:image\/(?:png|jpeg);base64,/i.test(value);
 }
 
-function renderEsmAnswer(row, studyId, password) {
+function renderEsmAnswer(row, studyId) {
   const answer = row?.data?.esm_user_answer;
   if ((isPictureEsmRow(row) || looksLikeImageAnswer(answer)) && typeof answer === 'string' && answer.trim()) {
     const sensor = row.sensor || 'esms';
     const imageUrl = `/api/v1/studies/${encodeURIComponent(studyId)}/media/${encodeURIComponent(sensor)}/${encodeURIComponent(row.id)}/image`;
     return `
       <div class="photo-answer">
-        <img data-src="${imageUrl}" alt="Photo response" loading="lazy" data-auth-image data-password="${escapeHtml(password)}">
-        <a href="${imageUrl}" data-download-image data-password="${escapeHtml(password)}" data-filename="studytrace-esm-${escapeHtml(row.id)}.png">Download image</a>
+        <img data-src="${imageUrl}" alt="Photo response" loading="lazy" data-auth-image>
+        <a href="${imageUrl}" data-download-image data-filename="studytrace-esm-${escapeHtml(row.id)}.png">Download image</a>
       </div>
     `;
   }
@@ -99,7 +99,7 @@ function renderEsmAnswer(row, studyId, password) {
 }
 
 async function loadEsmResponses({ studyId, password, sensors, table, message }) {
-  const headers = { 'x-study-password': password };
+  const headers = { 'x-researcher-password': password };
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/esm-responses?limit=50`, { headers });
   const payload = await readJson(res);
   if (!res.ok) {
@@ -111,14 +111,14 @@ async function loadEsmResponses({ studyId, password, sensors, table, message }) 
     { label: 'Question', render: (row) => escapeHtml(parseEsmJson(row).esm_title || row.data?.esm_trigger || '—') },
     { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
     { label: 'Sensor', render: (row) => escapeHtml(row.sensor || '—') },
-    { label: 'Answer', render: (row) => renderEsmAnswer(row, studyId, password) },
+    { label: 'Answer', render: (row) => renderEsmAnswer(row, studyId) },
   ], payload.rows || []);
 
-  await hydrateAuthenticatedImages(table);
+  await hydrateAuthenticatedImages(table, password);
 }
 
 async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screenshotTable, message }) {
-  const headers = { 'x-study-password': password };
+  const headers = { 'x-researcher-password': password };
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/battery-usage?limit=100`, { headers });
   const payload = await readJson(res);
   if (!res.ok) {
@@ -142,14 +142,14 @@ async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screen
     { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
     { label: 'Sensor', render: (row) => escapeHtml(row.sensor || '—') },
     { label: 'Question', render: (row) => escapeHtml(parseEsmJson(row).esm_title || row.data?.esm_trigger || 'Battery screenshot') },
-    { label: 'Screenshot', render: (row) => renderEsmAnswer(row, studyId, password) },
+    { label: 'Screenshot', render: (row) => renderEsmAnswer(row, studyId) },
   ], payload.screenshotRows || []);
 
-  await hydrateAuthenticatedImages(screenshotTable);
+  await hydrateAuthenticatedImages(screenshotTable, password);
 }
 
 async function loadParticipantHealth({ studyId, password, table, message }) {
-  const headers = { 'x-study-password': password };
+  const headers = { 'x-researcher-password': password };
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/participant-health`, { headers });
   const payload = await readJson(res);
   if (!res.ok) {
@@ -172,7 +172,7 @@ async function loadParticipantHealth({ studyId, password, table, message }) {
 }
 
 async function loadLocationDailySummary({ studyId, password, table, message }) {
-  const headers = { 'x-study-password': password };
+  const headers = { 'x-researcher-password': password };
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/location-daily-summary?limit=100`, { headers });
   const payload = await readJson(res);
   if (!res.ok) {
@@ -192,7 +192,7 @@ async function loadLocationDailySummary({ studyId, password, table, message }) {
 }
 
 async function loadSurveyQuality({ studyId, password, table, message }) {
-  const headers = { 'x-study-password': password };
+  const headers = { 'x-researcher-password': password };
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/survey-quality?limit=100`, { headers });
   const payload = await readJson(res);
   if (!res.ok) {
@@ -274,7 +274,7 @@ function fillScheduleForm(form, schedule, promptType) {
 
 async function loadScheduleSection({ studyId, password, form, result, message, promptType, endpoint }) {
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/${endpoint}`, {
-    headers: { 'x-study-password': password },
+    headers: { 'x-researcher-password': password },
   });
   const payload = await readJson(res);
   if (!res.ok) {
@@ -294,7 +294,7 @@ async function saveScheduleSection({ studyId, password, form, result, message, p
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'x-study-password': password,
+      'x-researcher-password': password,
     },
     body: JSON.stringify(body),
   });
@@ -322,11 +322,11 @@ function truncate(value, maxLength) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
-async function hydrateAuthenticatedImages(container) {
+async function hydrateAuthenticatedImages(container, password) {
   const images = [...container.querySelectorAll('[data-auth-image]')];
   await Promise.all(images.map(async (img) => {
     try {
-      const url = await downloadUrl(img.dataset.src, { 'x-study-password': img.dataset.password });
+      const url = await downloadUrl(img.dataset.src, { 'x-researcher-password': password });
       img.src = url;
     } catch {
       img.replaceWith(document.createTextNode('Image unavailable'));
@@ -340,6 +340,7 @@ function initResearcher() {
   const dashboard = document.querySelector('#researcher-dashboard');
   const metrics = document.querySelector('#researcher-metrics');
   const devices = document.querySelector('#researcher-devices');
+  const withdrawals = document.querySelector('#researcher-withdrawals');
   const participantHealth = document.querySelector('#researcher-participant-health');
   const sensors = document.querySelector('#researcher-sensors');
   const esmResponses = document.querySelector('#researcher-esm-responses');
@@ -362,13 +363,13 @@ function initResearcher() {
     const password = formData.get('password');
     currentStudyId = studyId;
     currentPassword = password;
-    const headers = { 'x-study-password': password };
+    const headers = { 'x-researcher-password': password };
 
     const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/summary`, { headers });
     const payload = await readJson(res);
     if (!res.ok) {
       dashboard.classList.add('hidden');
-      return setMessage(message, payload.error || 'Could not load study dashboard.', true);
+      return setMessage(message, payload.message || payload.error || 'Could not load study dashboard.', true);
     }
 
     renderMetricCards(metrics, [
@@ -379,18 +380,30 @@ function initResearcher() {
     ]);
 
     renderTable(devices, [
-      { label: 'Participant', render: (row) => row.participant || '—' },
-      { label: 'Device ID', render: (row) => row.device_id },
+      { label: 'Participant', render: (row) => escapeHtml(row.participant || '—') },
+      { label: 'Device ID', render: (row) => escapeHtml(row.device_id) },
       { label: 'First seen', render: (row) => fmtDate(row.first_seen) },
       { label: 'Last seen', render: (row) => fmtDate(row.last_seen) },
+      {
+        label: 'Data',
+        render: (row) => `<button class="button" type="button" data-delete-device="${escapeHtml(row.device_id)}" data-participant="${escapeHtml(row.participant || '')}">Delete data</button>`,
+      },
     ], payload.devices);
 
+    renderTable(withdrawals, [
+      { label: 'When', render: (row) => fmtDate(row.requested_at) },
+      { label: 'Participant', render: (row) => escapeHtml(row.participant || '—') },
+      { label: 'Device ID', render: (row) => escapeHtml(row.device_id) },
+      { label: 'Requested by', render: (row) => escapeHtml(row.source) },
+      { label: 'Data deleted', render: (row) => row.delete_data ? `Yes (${escapeHtml(row.rows_deleted)} rows)` : 'No' },
+    ], payload.withdrawals || []);
+
     renderTable(sensors, [
-      { label: 'Sensor', render: (row) => row.sensor },
-      { label: 'Rows', render: (row) => String(row.rows) },
+      { label: 'Sensor', render: (row) => escapeHtml(row.sensor) },
+      { label: 'Rows', render: (row) => escapeHtml(row.rows) },
       {
         label: 'Export',
-        render: (row) => `<a href="/api/v1/studies/${encodeURIComponent(studyId)}/export/${encodeURIComponent(row.sensor)}?format=csv" data-download="study" data-study="${escapeHtml(studyId)}" data-password="${escapeHtml(password)}" data-sensor="${escapeHtml(row.sensor)}">CSV</a>`,
+        render: (row) => `<a href="/api/v1/studies/${encodeURIComponent(studyId)}/export/${encodeURIComponent(row.sensor)}?format=csv" data-download="study" data-study="${escapeHtml(studyId)}" data-sensor="${escapeHtml(row.sensor)}">CSV</a>`,
       },
     ], payload.sensors);
 
@@ -462,11 +475,29 @@ function initResearcher() {
   });
 
   document.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-delete-device]');
+    if (!button) return;
+    const deviceId = button.dataset.deleteDevice;
+    const label = button.dataset.participant || deviceId;
+    if (!window.confirm(`Permanently delete ALL data uploaded by ${label}? This cannot be undone.`)) return;
+    const res = await fetch(`/api/v1/studies/${encodeURIComponent(currentStudyId)}/participants/${encodeURIComponent(deviceId)}`, {
+      method: 'DELETE',
+      headers: { 'x-researcher-password': currentPassword },
+    });
+    const payload = await readJson(res);
+    if (!res.ok) {
+      return setMessage(message, payload.error || 'Could not delete participant data.', true);
+    }
+    setMessage(message, `Deleted ${payload.rows_deleted} rows for ${label}. Reloading...`);
+    form.requestSubmit();
+  });
+
+  document.addEventListener('click', async (event) => {
     const link = event.target.closest('[data-download="study"]');
     if (!link) return;
     event.preventDefault();
     try {
-      const url = await downloadUrl(link.getAttribute('href'), { 'x-study-password': link.dataset.password });
+      const url = await downloadUrl(link.getAttribute('href'), { 'x-researcher-password': currentPassword });
       const a = document.createElement('a');
       a.href = url;
       a.download = `${link.dataset.study}-${link.dataset.sensor}.csv`;
@@ -482,7 +513,7 @@ function initResearcher() {
     if (!link) return;
     event.preventDefault();
     try {
-      const url = await downloadUrl(link.getAttribute('href'), { 'x-study-password': link.dataset.password });
+      const url = await downloadUrl(link.getAttribute('href'), { 'x-researcher-password': currentPassword });
       const a = document.createElement('a');
       a.href = url;
       a.download = link.dataset.filename || 'studytrace-photo-response.png';
@@ -532,18 +563,19 @@ function initAdmin() {
     ]);
 
     renderTable(studies, [
-      { label: 'Study ID', render: (row) => row.study_id },
-      { label: 'Name', render: (row) => row.name },
+      { label: 'Study ID', render: (row) => escapeHtml(row.study_id) },
+      { label: 'Name', render: (row) => escapeHtml(row.name) },
+      { label: 'Researcher password', render: (row) => row.researcher_password_set ? 'Set' : '<strong>Not set — dashboard locked</strong>' },
       { label: 'Devices', render: (row) => String(row.device_count || 0) },
       { label: 'Last activity', render: (row) => fmtDate(row.last_seen) },
     ], studiesPayload.studies);
 
     renderTable(sensors, [
-      { label: 'Sensor', render: (row) => row.sensor },
-      { label: 'Rows', render: (row) => String(row.rows) },
+      { label: 'Sensor', render: (row) => escapeHtml(row.sensor) },
+      { label: 'Rows', render: (row) => escapeHtml(row.rows) },
       {
         label: 'Export',
-        render: (row) => `<a href="/admin/export/${encodeURIComponent(row.sensor)}?format=csv" data-download="admin" data-sensor="${row.sensor}">CSV</a>`,
+        render: (row) => `<a href="/admin/export/${encodeURIComponent(row.sensor)}?format=csv" data-download="admin" data-sensor="${escapeHtml(row.sensor)}">CSV</a>`,
       },
     ], sensorsPayload.sensors);
 
@@ -567,7 +599,8 @@ function initAdmin() {
     if (!token) {
       return setMessage(authMessage, 'Load the admin console first.', true);
     }
-    const body = Object.fromEntries(new FormData(createForm).entries());
+    // Blank fields mean "leave unchanged" for an existing study.
+    const body = Object.fromEntries([...new FormData(createForm).entries()].filter(([, value]) => value !== ''));
     const res = await fetch('/admin/studies', {
       method: 'POST',
       headers: {
@@ -578,7 +611,7 @@ function initAdmin() {
     });
     const payload = await readJson(res);
     if (!res.ok) {
-      createResult.textContent = payload.error || 'Could not create study.';
+      createResult.textContent = payload.error || 'Could not save study.';
       return;
     }
     createResult.textContent = JSON.stringify(payload, null, 2);

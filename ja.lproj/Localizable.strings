@@ -136,3 +136,22 @@
 /// ESN
 "Tap to answer survey(s)" = "タップして調査に回答";
 "No pending survey(s)" = "未回答の調査はありません";
+// consent
+"onboarding_consent_title" = "研究参加への同意";
+"onboarding_consent_body" = "本研究に参加することにより、研究チームが設定した研究データ（位置情報、アンケートへの回答、およびあなたが選択した特定のアプリ・Webサイト・カテゴリのスクリーンタイム概要（任意）など）をStudyTraceが収集することに同意したものとみなされます。\n\nスクリーンタイムの収集にはiOSの別途の許可が必要であり、承認された研究のためにのみ使用され、広告やアプリ間のトラッキングには使用されません。\n\nあなたのデータは安全に保管され、研究目的にのみ使用されます。設定画面から研究への参加をやめることで、いつでも参加を撤回できます。\n\n内容を理解し、研究への参加に同意することを確認してください。";
+"onboarding_consent_agree" = "同意して参加する";
+"onboarding_consent_decline" = "同意しない";
+
+// insecure server URL
+"Insecure Server URL" = "安全でないサーバーURL";
+"StudyTrace only connects to servers over HTTPS. Please enter a secure https:// URL." = "StudyTraceはHTTPSで通信できるサーバーにのみ接続します。安全な https:// のURLを入力してください。";
+
+// quit / withdrawal
+"quit_study_message" = "研究への参加をやめると、すべてのデータ収集が停止し、このiPhoneに保存されている研究データ（未送信のデータを含む）が削除され、アンケートの通知も取り消されます。\n\nこのiPhoneからすでに送信されたデータも、研究チームのサーバーから削除しますか？";
+"quit_study_delete_uploaded" = "参加をやめて送信済みデータを削除";
+"quit_study_keep_uploaded" = "参加をやめて送信済みデータを残す";
+"quit_study_done_title" = "研究への参加を終了しました";
+"quit_study_done_local" = "データ収集を停止し、このiPhone上の研究データを削除しました。";
+"quit_study_done_deleted" = "データ収集を停止し、このiPhoneから送信されたデータを研究サーバーから削除しました。";
+"quit_study_done_kept" = "データ収集を停止しました。送信済みのデータは、同意書に記載されたとおり研究チームが保持します。";
+"quit_study_pending" = "データ収集は停止しましたが、研究サーバーに接続できませんでした。次回インターネットに接続した状態でアプリを開くと自動的に再試行します。次のIDを研究チームに伝えて依頼することもできます：\n%@";

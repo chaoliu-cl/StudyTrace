@@ -13,14 +13,18 @@ class OnboardingManager: NSObject {
 
     private var onboardingNav: UINavigationController?
 
-    public static func isFirstTime() -> Bool {
-        let key = "com.liuchao.studytrace.onboarding.is-already-done"
-        if !UserDefaults.standard.bool(forKey: key) {
-            UserDefaults.standard.set(true, forKey: key)
-            return true
-        } else {
-            return false
-        }
+    private static let consentDecisionKey = "com.studytrace.onboarding.consent-decision-recorded"
+
+    /// Onboarding is shown until the participant has actually agreed to or
+    /// declined the consent page. (Marking it done before it was shown meant
+    /// an app kill mid-flow skipped consent forever and nothing was collected.)
+    public static func needsOnboarding() -> Bool {
+        if StudyParticipationController.hasConsent() { return false }
+        return !UserDefaults.standard.bool(forKey: consentDecisionKey)
+    }
+
+    static func recordConsentDecision() {
+        UserDefaults.standard.set(true, forKey: consentDecisionKey)
     }
 
     func startOnboarding(with viewController: UIViewController) {
@@ -60,6 +64,7 @@ class OnboardingManager: NSObject {
                 buttonTitle: NSLocalizedString("onboarding_consent_agree", comment: ""),
                 action: {
                     StudyParticipationController.recordConsentGranted()
+                    OnboardingManager.recordConsentDecision()
                 },
                 isConsent: true,
                 declineTitle: NSLocalizedString("onboarding_consent_decline", comment: "")
@@ -251,8 +256,14 @@ class OnboardingPageViewController: UIViewController {
         page.action?()
 
         if page.isFinal {
+            // Capture the presenter before dismissing: inside the completion
+            // handler presentingViewController is already nil, and falling
+            // back to self (no storyboard) crashed LocationPermissionManager.
+            guard let presenter = presentingViewController else {
+                dismiss(animated: true)
+                return
+            }
             dismiss(animated: true) {
-                let presenter = self.presentingViewController ?? self
                 if StudyParticipationController.hasConsent() {
                     StudyParticipationController.refreshCollectionState(
                         fitbitPresenter: presenter,

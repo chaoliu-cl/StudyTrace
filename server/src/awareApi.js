@@ -14,7 +14,9 @@
 //     POST {studyURL}/{table}/create_table
 //     POST {studyURL}/{table}/insert       body: device_id=<uuid>&data=<JSON array>
 //     POST {studyURL}/{table}/latest       body: device_id=<uuid>
-//     POST {studyURL}/{table}/clear_table  body: device_id=<uuid>
+//     POST {studyURL}/{table}/clear_table  body: device_id=<uuid>  (disabled:
+//          the study password is shared by every participant, so it must not
+//          authorize deletion; researchers delete via the dashboard instead)
 
 import express from 'express';
 import { parse as parseQueryString } from 'node:querystring';
@@ -23,11 +25,16 @@ import {
   createSensorTable,
   insertRows,
   latestRow,
-  clearTable,
   upsertDevice,
   getStudy,
 } from './db.js';
 import { buildStudyConfig } from './studyConfig.js';
+import {
+  isRateLimited,
+  recordAuthFailure,
+  sendRateLimited,
+  studyAcceptsParticipantPassword,
+} from './auth.js';
 
 export function createAwareRouter(getPublicBaseUrl) {
   const router = express.Router();
@@ -36,13 +43,19 @@ export function createAwareRouter(getPublicBaseUrl) {
   const STUDY_PREFIX = '/index.php/webservice/index/:studyId/:password';
 
   async function requireStudy(req, res, next) {
-    const { studyId, password } = req.params;
-    const study = await getStudy(studyId);
-    if (!study || study.password !== password) {
-      return res.status(403).json({ error: 'invalid study id or password' });
+    try {
+      if (isRateLimited(req)) return sendRateLimited(res);
+      const { studyId, password } = req.params;
+      const study = await getStudy(studyId);
+      if (!studyAcceptsParticipantPassword(study, password)) {
+        recordAuthFailure(req);
+        return res.status(403).json({ error: 'invalid study id or password' });
+      }
+      req.study = study;
+      next();
+    } catch (err) {
+      next(err);
     }
-    req.study = study;
-    next();
   }
 
   function webserviceUrlFor(req) {
@@ -51,18 +64,22 @@ export function createAwareRouter(getPublicBaseUrl) {
   }
 
   // ---- Join / configuration -------------------------------------------------
-  router.post(STUDY_PREFIX, requireStudy, async (req, res) => {
-    const deviceId = req.body.device_id;
-    const participant = req.query.participant;
-    if (deviceId) {
-      await upsertDevice(deviceId, req.params.studyId, participant);
+  router.post(STUDY_PREFIX, requireStudy, async (req, res, next) => {
+    try {
+      const deviceId = req.body.device_id;
+      const participant = req.query.participant;
+      if (deviceId) {
+        await upsertDevice(deviceId, req.params.studyId, participant);
+      }
+      const config = buildStudyConfig({
+        studyId: req.params.studyId,
+        studyName: req.study.name,
+        webserviceUrl: webserviceUrlFor(req),
+      });
+      res.json(config);
+    } catch (err) {
+      next(err);
     }
-    const config = buildStudyConfig({
-      studyId: req.params.studyId,
-      studyName: req.study.name,
-      webserviceUrl: webserviceUrlFor(req),
-    });
-    res.json(config);
   });
 
   router.get(`${STUDY_PREFIX}/esm/config`, requireStudy, async (req, res) => {
@@ -109,8 +126,10 @@ export function createAwareRouter(getPublicBaseUrl) {
           return res.json(row ? [row] : []);
         }
         case 'clear_table': {
-          if (deviceId) await clearTable(table, req.params.studyId, deviceId);
-          return res.json({ status: true });
+          return res.status(403).json({
+            status: false,
+            error: 'clear_table is disabled; deletion requests go through the research team',
+          });
         }
         default:
           return res.status(404).json({ error: `unknown action: ${action}` });

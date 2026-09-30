@@ -142,3 +142,16 @@
 /// ESN
 "Tap to answer survey(s)" = "Tap to answer survey(s)";
 "No pending survey(s)" = "No pending survey(s)";
+// insecure server URL
+"Insecure Server URL" = "Insecure Server URL";
+"StudyTrace only connects to servers over HTTPS. Please enter a secure https:// URL." = "StudyTrace only connects to servers over HTTPS. Please enter a secure https:// URL.";
+
+// quit / withdrawal
+"quit_study_message" = "Quitting stops all data collection, deletes the study data stored on this iPhone (including data not yet uploaded), and cancels survey reminders.\n\nShould the research team's server also delete the data this iPhone has already uploaded?";
+"quit_study_delete_uploaded" = "Quit and Delete Uploaded Data";
+"quit_study_keep_uploaded" = "Quit and Keep Uploaded Data";
+"quit_study_done_title" = "You Have Left the Study";
+"quit_study_done_local" = "Data collection has stopped and the study data on this iPhone has been deleted.";
+"quit_study_done_deleted" = "Data collection has stopped, and the data this iPhone uploaded has been deleted from the study server.";
+"quit_study_done_kept" = "Data collection has stopped. Data already uploaded remains with the research team as described in your consent form.";
+"quit_study_pending" = "Data collection has stopped, but StudyTrace could not reach the study server. It will retry automatically the next time you open the app with an internet connection. You can also contact your research team and give them this ID:\n%@";
