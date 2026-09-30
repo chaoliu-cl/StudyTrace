@@ -129,4 +129,47 @@ class StudyTraceTests: XCTestCase {
         XCTAssertFalse(StudyTraceNotificationAudit.isSurveyPrompt(reminder))
     }
 
+    func testScreenshotParserReadsDurationsAndPercentages() {
+        XCTAssertEqual(UsageScreenshotParser.durationSeconds(in: "1h 12m"), 4320)
+        XCTAssertEqual(UsageScreenshotParser.durationSeconds(in: "1 hour 5 min"), 3900)
+        XCTAssertEqual(UsageScreenshotParser.durationSeconds(in: "45m On Screen"), 2700)
+        XCTAssertEqual(UsageScreenshotParser.durationSeconds(in: "1時間5分"), 3900)
+        XCTAssertEqual(UsageScreenshotParser.durationSeconds(in: "45分"), 2700)
+        XCTAssertNil(UsageScreenshotParser.durationSeconds(in: "9:41"), "status-bar clock is not a duration")
+        XCTAssertNil(UsageScreenshotParser.durationSeconds(in: "Formula 1 Hub"))
+        XCTAssertEqual(UsageScreenshotParser.percent(in: "21%"), 21)
+        XCTAssertEqual(UsageScreenshotParser.percent(in: "12％"), 12)
+        XCTAssertNil(UsageScreenshotParser.percent(in: "250%"))
+    }
+
+    func testScreenshotParserReadsBatteryRows() {
+        let text = ["9:41", "BATTERY USAGE BY APP", "Instagram 21%", "1h 12m On Screen", "YouTube", "45m On Screen", "3m Background", "10%"]
+            .joined(separator: "
+")
+        let rows = UsageScreenshotParser.batteryRows(from: text)
+        XCTAssertEqual(rows, [
+            UsageScreenshotParser.AppRow(appName: "Instagram", seconds: 4320, percent: 21),
+            UsageScreenshotParser.AppRow(appName: "YouTube", seconds: 2700, percent: 10)
+        ])
+        XCTAssertTrue(UsageScreenshotParser.isLikelyScreenshot(of: .battery, text: text))
+
+        let japanese = ["アプリごとのバッテリー使用状況", "写真", "1時間5分", "12％"].joined(separator: "
+")
+        XCTAssertEqual(UsageScreenshotParser.batteryRows(from: japanese),
+                       [UsageScreenshotParser.AppRow(appName: "写真", seconds: 3900, percent: 12)])
+    }
+
+    func testScreenshotParserReadsScreenTimeActivity() {
+        let text = ["9:41", "Screen Time", "Yesterday", "4h 32m", "MOST USED", "Instagram", "1h 10m", "YouTube", "48m",
+                    "PICKUPS", "First Pickup 7:12 AM", "Total Pickups", "87", "NOTIFICATIONS", "Total Notifications", "142"]
+            .joined(separator: "
+")
+        let parsed = UsageScreenshotParser.activity(from: text)
+        XCTAssertEqual(parsed.summary, UsageScreenshotParser.ActivitySummary(totalSeconds: 16320, pickups: 87, notifications: 142))
+        XCTAssertEqual(parsed.apps.map { $0.appName }, ["Instagram", "YouTube"])
+        XCTAssertEqual(parsed.apps.map { $0.seconds }, [4200, 2880])
+        XCTAssertEqual(UsageScreenshotParser.dayOffsetHint(in: text), -1)
+        XCTAssertTrue(UsageScreenshotParser.isLikelyScreenshot(of: .screenTimeActivity, text: text))
+    }
+
 }

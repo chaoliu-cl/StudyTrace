@@ -156,6 +156,38 @@
       <section class="panel">
         <div class="section-head">
           <div>
+            <h2>Screen Time activity screenshot notifications (optional)</h2>
+            <p class="section-note">Off until you save a schedule. Prompts ask participants to upload Settings → Screen Time → See All App &amp; Website Activity for one day (yesterday by default), which adds pickups and notification counts. Participants review the values the phone reads before uploading.</p>
+          </div>
+        </div>
+        <form id="researcher-activity-schedule" class="stack">
+          <input type="hidden" name="prompt_type" value="screen_time_activity_screenshot">
+          <label>
+            <span>Delivery mode</span>
+            <select name="mode">
+              <option value="fixed">Fixed exact times</option>
+              <option value="random">Randomized around listed times</option>
+            </select>
+          </label>
+          <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="10:00" required></label>
+          <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
+          <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="720"></label>
+          <label><span>Notification title</span><input name="notification_title" value="StudyTrace Screen Time screenshot"></label>
+          <label><span>Notification body</span><input name="notification_body" value="Please upload yesterday's Screen Time activity screenshot."></label>
+          <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
+          <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
+          <label>
+            <span>Screen Time screenshot question JSON</span>
+            <textarea name="esms_json" rows="10" spellcheck="false"></textarea>
+          </label>
+          <button class="button button-primary" type="submit">Save Screen Time screenshot schedule</button>
+        </form>
+        <pre id="researcher-activity-schedule-result" class="result-box"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
             <h2>Recent survey responses</h2>
             <p class="section-note">Photo ESM answers are rendered as images when the survey question uses <code>esm_type: 14</code>.</p>
           </div>
@@ -201,6 +233,18 @@
         </div>
         <div class="table-wrap">
           <table id="researcher-battery-usage-screenshots"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Screen Time activity</h2>
+            <p class="section-note"><code>screen_time_activity</code>: one daily-total row (screen time, pickups, notifications) plus one row per most-used app for each screenshot.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-screen-time-activity"></table>
         </div>
       </section>
     </section>

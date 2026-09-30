@@ -9,7 +9,7 @@
 import UIKit
 import AWAREFramework
 
-class ContextCardViewController: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+class ContextCardViewController: UIViewController {
 
     @IBOutlet weak var refreshButton: UIBarButtonItem!
     @IBOutlet weak var deleteButton:  UIBarButtonItem!
@@ -17,7 +17,7 @@ class ContextCardViewController: UIViewController, UIImagePickerControllerDelega
     var contextCards = Array<ContextCard>()
 
     private let emptyStateStack = UIStackView()
-    private var isUploadingBatteryScreenshot = false
+    private let screenshotCoordinator = UsageScreenshotCoordinator()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -215,40 +215,11 @@ class ContextCardViewController: UIViewController, UIImagePickerControllerDelega
         present(alert, animated: true)
     }
 
+    /// Same flow as the Surveys tab (on-device OCR, review, upload), minus
+    /// the instructions screen: the participant already has the screenshot.
     private func presentBatteryScreenshotUploader() {
-        guard UIImagePickerController.isSourceTypeAvailable(.photoLibrary) else {
-            showBatteryScreenshotUploadResult(title: "Photo Library Unavailable",
-                                              message: "StudyTrace could not open the photo library on this device.")
-            return
-        }
-
-        let picker = UIImagePickerController()
-        picker.sourceType = .photoLibrary
-        picker.delegate = self
-        present(picker, animated: true)
-    }
-
-    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        picker.dismiss(animated: true)
-    }
-
-    func imagePickerController(_ picker: UIImagePickerController,
-                               didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-        picker.dismiss(animated: true)
-        guard let image = info[.originalImage] as? UIImage else {
-            showBatteryScreenshotUploadResult(title: "Upload Failed",
-                                              message: "StudyTrace could not read the selected screenshot.")
-            return
-        }
-        uploadBatteryScreenshot(image)
-    }
-
-    private func uploadBatteryScreenshot(_ image: UIImage) {
-        guard !isUploadingBatteryScreenshot else { return }
-        isUploadingBatteryScreenshot = true
-        BatteryScreenshotUploader.upload(image) { [weak self] outcome in
+        screenshotCoordinator.start(kind: .battery, from: self, showInstructions: false) { [weak self] _, outcome in
             guard let self = self else { return }
-            self.isUploadingBatteryScreenshot = false
             switch outcome {
             case .uploaded(let feedback):
                 if feedback?.needsReview == true {

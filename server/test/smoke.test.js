@@ -882,6 +882,117 @@ try {
   assert.ok(qRow.local_date && qRow.timezone, 'survey quality rows include local date and zone');
   console.log('✓ participant health reports heartbeat, gaps, compliance, and telemetry loss');
 
+  // 32. Participant-confirmed Battery rows are stored as-is (no server OCR).
+  const confirmedBattery = await request('POST', `${apiBase}/usage-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-shots',
+      timestamp: 9100,
+      upload_id: 'battery-confirmed-1',
+      screenshot_kind: 'battery',
+      screenshot_base64: tinyPngBase64,
+      usage_window: 'last_24_hours',
+      captured_at: Date.UTC(2026, 8, 29, 21, 5),
+      device_ocr_text: 'BATTERY USAGE BY APP\nInstagram\n1h 12m\n21%',
+      participant_edited: true,
+      confirmed_rows: [
+        { app_name: 'Instagram', screen_time_seconds: 4320, battery_percent: 21 },
+        { app_name: 'Messages', screen_time_seconds: 600, battery_percent: 999 },
+        { app_name: '   ', screen_time_seconds: 60 },
+      ],
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(confirmedBattery.status, 201, 'confirmed Battery upload stored');
+  assert.strictEqual(confirmedBattery.json.feedback.needs_review, false, 'confirmed rows need no review');
+  assert.strictEqual(confirmedBattery.json.feedback.app_rows_detected, 2, 'blank app names dropped');
+  const confirmedExport = await request('GET', `${apiBase}/export/battery_usage_apps?format=json&device_id=dev-shots`, { headers: researcherAuth });
+  const insta = confirmedExport.json.rows.find((row) => row.data.app_name === 'Instagram');
+  assert.strictEqual(insta.data.extraction_method, 'participant_confirmed', 'confirmed rows marked as such');
+  assert.strictEqual(insta.data.usage_window, 'last_24_hours', 'usage window stored');
+  assert.strictEqual(insta.data.participant_edited, true, 'edit flag stored');
+  assert.ok(insta.data.captured_at.startsWith('2026-09-29'), 'capture time stored');
+  const messages = confirmedExport.json.rows.find((row) => row.data.app_name === 'Messages');
+  assert.strictEqual(messages.data.battery_percent, null, 'out-of-range percent rejected');
+  console.log('✓ participant-confirmed Battery rows are stored without server OCR');
+
+  // 33. Japanese Battery screenshots parse on the server fallback path.
+  const jaBattery = await request('POST', `${apiBase}/battery-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-ja',
+      timestamp: 9200,
+      screenshot_base64: tinyPngBase64,
+      battery_usage_ocr_text: ['アプリごとのバッテリー使用状況', '写真', '1時間5分', '12％', 'LINE', '45分', '8%', 'Maps', '1 hour 5 min', '2%'].join('\n'),
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(jaBattery.status, 201, 'Japanese Battery upload stored');
+  const jaExport = await request('GET', `${apiBase}/export/battery_usage_apps?format=json&device_id=dev-ja`, { headers: researcherAuth });
+  const photos = jaExport.json.rows.find((row) => row.data.app_name === '写真');
+  assert.ok(photos, 'Japanese app name kept');
+  assert.strictEqual(photos.data.screen_time_seconds, 3900, 'Japanese hours+minutes parsed');
+  assert.strictEqual(photos.data.battery_percent, 12, 'full-width percent parsed');
+  assert.strictEqual(jaExport.json.rows.find((row) => row.data.app_name === 'Maps').data.screen_time_seconds, 3900, 'spelled-out hour and minutes parsed');
+  assert.ok(!jaExport.json.rows.some((row) => row.data.app_name === 'アプリごとのバッテリー使用状況'), 'Japanese heading not parsed as an app');
+  console.log('✓ Japanese Battery screenshots parse');
+
+  // 34. Screen Time "See All Activity" screenshots: schedule, confirmed, OCR.
+  const activitySave = await request('PUT', `${apiBase}/screen-time-activity-schedule`, {
+    body: JSON.stringify({ mode: 'fixed', times: '10:00' }),
+    headers: researcherAuth,
+  });
+  assert.strictEqual(activitySave.status, 200, 'activity schedule saved');
+  assert.strictEqual(activitySave.json.esm_schedule[0].studytrace_prompt_type, 'screen_time_activity_screenshot', 'activity prompt type');
+  const activityQuestion = activitySave.json.esm_schedule[0].esms[0];
+  assert.strictEqual((activityQuestion.esm || activityQuestion).esm_trigger, 'screen_time_activity_screenshot', 'default activity question');
+  const participantConfig = await request('GET', `${studyPath}/esm/config`);
+  assert.ok(participantConfig.json.some((item) => item.studytrace_prompt_type === 'screen_time_activity_screenshot'), 'phones receive the activity schedule');
+  const esmOnly = await request('GET', `${apiBase}/esm-schedule`, { headers: researcherAuth });
+  assert.ok(esmOnly.json.esm_schedule.every((item) => item.studytrace_prompt_type === 'esm_survey'), 'ESM schedule excludes screenshot prompts');
+
+  const confirmedActivity = await request('POST', `${apiBase}/usage-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-shots',
+      timestamp: 9300,
+      screenshot_kind: 'screen_time_activity',
+      screenshot_base64: tinyPngBase64,
+      activity_date: '2026-09-28',
+      confirmed_rows: [{ app_name: 'Safari', screen_time_seconds: 1800 }],
+      summary: { total_screen_time_seconds: 16320, pickups: 87, notifications: 142 },
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(confirmedActivity.status, 201, 'activity screenshot stored');
+  assert.strictEqual(confirmedActivity.json.feedback.needs_review, false, 'confirmed activity needs no review');
+  const ocrActivity = await request('POST', `${apiBase}/usage-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-shots',
+      timestamp: 9400,
+      screenshot_kind: 'screen_time_activity',
+      screenshot_base64: tinyPngBase64,
+      battery_usage_ocr_text: [
+        '9:41', 'Screen Time', 'Yesterday', '4h 32m', 'MOST USED', 'Instagram', '1h 10m', 'YouTube', '48m',
+        'PICKUPS', 'Total Pickups', '87', 'NOTIFICATIONS', 'Total Notifications', '142',
+      ].join('\n'),
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(ocrActivity.status, 201, 'OCR activity screenshot stored');
+  const activityRows = await request('GET', `${apiBase}/dashboard/screen-time-activity`, { headers: researcherAuth });
+  const summaries = activityRows.json.rows.filter((row) => row.row_type === 'summary' && row.device_id === 'dev-shots');
+  const confirmedSummary = summaries.find((row) => row.activity_date === '2026-09-28');
+  assert.strictEqual(confirmedSummary.pickups, 87, 'confirmed pickups stored');
+  assert.strictEqual(confirmedSummary.extraction_method, 'participant_confirmed', 'confirmed activity marked');
+  const ocrSummary = summaries.find((row) => row.extraction_method === 'provided_text');
+  assert.strictEqual(ocrSummary.total_screen_time_seconds, 16320, 'OCR total screen time parsed (clock ignored)');
+  assert.strictEqual(ocrSummary.pickups, 87, 'OCR pickups parsed');
+  assert.strictEqual(ocrSummary.notifications, 142, 'OCR notifications parsed');
+  assert.ok(activityRows.json.rows.some((row) => row.row_type === 'app' && row.app_name === 'YouTube' && row.screen_time_seconds === 2880), 'OCR most-used apps parsed');
+  const batteryAfterActivity = await request('GET', `${apiBase}/export/battery_usage_apps?format=json&device_id=dev-shots`, { headers: researcherAuth });
+  assert.ok(!batteryAfterActivity.json.rows.some((row) => row.data.app_name === 'YouTube'), 'activity screenshots are not parsed as Battery screenshots');
+  const activityCsv = await request('GET', `${apiBase}/export/screen_time_activity?format=csv`, { headers: researcherAuth });
+  assert.ok(activityCsv.json.split('\r\n')[0].includes('pickups'), 'screen_time_activity CSV export');
+  console.log('✓ Screen Time activity screenshots: schedule, confirmed values, and OCR parsing');
+
   // 28. Repeated failed logins are throttled (run last: it blocks this IP).
   let limited = null;
   for (let attempt = 0; attempt < 40 && !limited; attempt += 1) {

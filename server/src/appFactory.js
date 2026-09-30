@@ -59,6 +59,9 @@ import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 
 const BATTERY_USAGE_EXPORT_SENSOR = 'battery_usage_apps';
+const SCREEN_TIME_ACTIVITY_SENSOR = 'screen_time_activity';
+const BATTERY_PROMPT = 'battery_usage_screenshot';
+const ACTIVITY_PROMPT = 'screen_time_activity_screenshot';
 const LOCATION_DAILY_SUMMARY_SENSOR = 'location_daily_summary';
 const SURVEY_QUALITY_SENSOR = 'survey_quality';
 const PARTICIPANT_HEALTH_SENSOR = 'participant_health';
@@ -78,12 +81,34 @@ const BATTERY_USAGE_EXPORT_COLUMNS = [
   'screen_time_text',
   'battery_percent',
   'battery_percent_text',
+  'usage_window',
+  'captured_at',
+  'participant_edited',
   'extraction_status',
   'extraction_method',
   'ocr_confidence',
   'needs_review',
   'qa_reason',
   'parse_notes',
+  'ocr_text',
+];
+const SCREEN_TIME_ACTIVITY_COLUMNS = [
+  'source_sensor',
+  'source_row_id',
+  'source_image_url',
+  'row_type',
+  'activity_date',
+  'app_name',
+  'screen_time_seconds',
+  'total_screen_time_seconds',
+  'pickups',
+  'notifications',
+  'captured_at',
+  'participant_edited',
+  'extraction_status',
+  'extraction_method',
+  'needs_review',
+  'qa_reason',
   'ocr_text',
 ];
 const LOCATION_DAILY_SUMMARY_COLUMNS = [
@@ -524,6 +549,47 @@ export function createApp() {
     }
   });
 
+  app.get('/api/v1/studies/:studyId/screen-time-activity-schedule', requireResearcher, async (req, res, next) => {
+    try {
+      res.json(scheduleResponse(req.study, 'screen_time_activity_schedule'));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.put('/api/v1/studies/:studyId/screen-time-activity-schedule', requireResearcher, async (req, res, next) => {
+    try {
+      const activitySchedule = buildEsmScheduleFromRequest(req.body || {}, ACTIVITY_PROMPT);
+      const updated = await updateStudyConfig(req.params.studyId, { screen_time_activity_schedule: activitySchedule });
+      res.json(scheduleResponse(updated, 'screen_time_activity_schedule'));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Unified screenshot upload (Battery or Screen Time "See All Activity").
+  app.post('/api/v1/studies/:studyId/usage-screenshots', requireParticipant, async (req, res) => {
+    try {
+      return await handleUsageScreenshotUpload(req, res, req.params.studyId);
+    } catch (err) {
+      console.error(`[usage screenshot upload ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  app.get('/api/v1/studies/:studyId/dashboard/screen-time-activity', requireResearcher, async (req, res, next) => {
+    try {
+      await processScreenTimeActivityUploads({ studyId: req.params.studyId, limit: req.query.limit });
+      const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
+      const rows = (await tableExists(table))
+        ? await exportRows(table, { studyId: req.params.studyId, limit: req.query.limit || 200, order: 'desc' })
+        : [];
+      res.json({ ok: true, count: rows.length, rows: rows.map(rowForDashboard) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.post('/api/v1/studies/:studyId/battery-screenshots', requireParticipant, async (req, res) => {
     try {
       return await handleBatteryScreenshotUpload(req, res, req.params.studyId);
@@ -669,6 +735,7 @@ async function listAdminSensorsForDashboard() {
   const locationRows = await deriveLocationDailySummaries({ limit: BATTERY_USAGE_EXPORT_LIMIT });
   const surveyRows = await deriveSurveyQualityRows({ limit: BATTERY_USAGE_EXPORT_LIMIT });
   const healthRows = await deriveParticipantHealthRows({});
+  upsertVirtualSensor(sensors, SCREEN_TIME_ACTIVITY_SENSOR, await countDerivedActivityRows({}), 'derived_from_screen_time_screenshot_esm');
   upsertVirtualSensor(sensors, LOCATION_DAILY_SUMMARY_SENSOR, locationRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(sensors, SURVEY_QUALITY_SENSOR, surveyRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(sensors, PARTICIPANT_HEALTH_SENSOR, healthRows.length, 'virtual_derived_sensor');
@@ -683,6 +750,7 @@ async function attachStudyDerivedSensors(overview, studyId) {
 
   overview.sensors = filterLegacyScreenTimeSensors(overview.sensors || []);
   upsertVirtualSensor(overview.sensors, BATTERY_USAGE_EXPORT_SENSOR, batteryDiagnostics.appRows.length, 'derived_from_battery_screenshot_esm');
+  upsertVirtualSensor(overview.sensors, SCREEN_TIME_ACTIVITY_SENSOR, await countDerivedActivityRows({ studyId }), 'derived_from_screen_time_screenshot_esm');
   upsertVirtualSensor(overview.sensors, LOCATION_DAILY_SUMMARY_SENSOR, locationRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, SURVEY_QUALITY_SENSOR, surveyRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, PARTICIPANT_HEALTH_SENSOR, healthRows.length, 'virtual_derived_sensor');
@@ -720,6 +788,7 @@ function upsertVirtualSensor(sensors, sensorName, rows, tableName = 'virtual_der
 
 function exportColumnsForSensor(sensor) {
   if (sensor === BATTERY_USAGE_EXPORT_SENSOR) return BATTERY_USAGE_EXPORT_COLUMNS;
+  if (sensor === SCREEN_TIME_ACTIVITY_SENSOR) return SCREEN_TIME_ACTIVITY_COLUMNS;
   if (sensor === LOCATION_DAILY_SUMMARY_SENSOR) return LOCATION_DAILY_SUMMARY_COLUMNS;
   if (sensor === SURVEY_QUALITY_SENSOR) return SURVEY_QUALITY_COLUMNS;
   if (sensor === PARTICIPANT_HEALTH_SENSOR) return PARTICIPANT_HEALTH_COLUMNS;
@@ -735,6 +804,13 @@ async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, off
     await processBatteryScreenshotUploads({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
     const table = safeTableName(BATTERY_USAGE_EXPORT_SENSOR);
     if (!table) throw httpError(400, 'invalid sensor name');
+    return exportRows(table, { studyId, deviceId, limit, offset });
+  }
+
+  if (sensor === SCREEN_TIME_ACTIVITY_SENSOR) {
+    await processScreenTimeActivityUploads({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+    const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
+    if (!(await tableExists(table))) return [];
     return exportRows(table, { studyId, deviceId, limit, offset });
   }
 
@@ -1279,16 +1355,21 @@ function scheduleForKey(study, key = 'esm_schedule') {
   const batterySchedule = Array.isArray(config.battery_screenshot_schedule) ? config.battery_screenshot_schedule : [];
   if (key === 'battery_screenshot_schedule') {
     return batterySchedule.length
-      ? batterySchedule.filter((item) => schedulePromptType(item) === 'battery_usage_screenshot')
-      : esmSchedule.filter((item) => schedulePromptType(item) === 'battery_usage_screenshot');
+      ? batterySchedule.filter((item) => schedulePromptType(item) === BATTERY_PROMPT)
+      : esmSchedule.filter((item) => schedulePromptType(item) === BATTERY_PROMPT);
   }
-  return esmSchedule.filter((item) => schedulePromptType(item) !== 'battery_usage_screenshot');
+  if (key === 'screen_time_activity_schedule') {
+    const activitySchedule = Array.isArray(config.screen_time_activity_schedule) ? config.screen_time_activity_schedule : [];
+    return activitySchedule.filter((item) => schedulePromptType(item) === ACTIVITY_PROMPT);
+  }
+  return esmSchedule.filter((item) => schedulePromptType(item) === 'esm_survey');
 }
 
 function schedulePromptType(item) {
   if (item?.studytrace_prompt_type) return normalizePromptType(item.studytrace_prompt_type);
   const scheduleId = String(item?.schedule_id || '').toLowerCase();
-  if (scheduleId.includes('battery_screenshot') || scheduleId.includes('battery_usage')) return 'battery_usage_screenshot';
+  if (scheduleId.includes('screen_time_activity')) return ACTIVITY_PROMPT;
+  if (scheduleId.includes('battery_screenshot') || scheduleId.includes('battery_usage')) return BATTERY_PROMPT;
   return 'esm_survey';
 }
 
@@ -1324,21 +1405,26 @@ function buildEsmScheduleFromRequest(body, defaultPromptType = 'esm_survey') {
 function normalizePromptType(value) {
   const text = String(value || '').trim().toLowerCase();
   if (text === 'esm' || text === 'esm_survey' || text === 'survey') return 'esm_survey';
-  return 'battery_usage_screenshot';
+  if (text === ACTIVITY_PROMPT || text === 'screen_time_activity') return ACTIVITY_PROMPT;
+  return BATTERY_PROMPT;
 }
 
 function scheduleSlugForPrompt(promptType) {
-  return promptType === 'esm_survey' ? 'esm_survey' : 'battery_screenshot';
+  if (promptType === 'esm_survey') return 'esm_survey';
+  if (promptType === ACTIVITY_PROMPT) return 'screen_time_activity';
+  return 'battery_screenshot';
 }
 
 function defaultNotificationTitle(promptType) {
-  return promptType === 'esm_survey' ? 'StudyTrace survey available' : 'StudyTrace Battery screenshot';
+  if (promptType === 'esm_survey') return 'StudyTrace survey available';
+  if (promptType === ACTIVITY_PROMPT) return 'StudyTrace Screen Time screenshot';
+  return 'StudyTrace Battery screenshot';
 }
 
 function defaultNotificationBody(promptType) {
-  return promptType === 'esm_survey'
-    ? 'Please complete your scheduled study survey.'
-    : 'Please upload your iOS Battery usage screenshot.';
+  if (promptType === 'esm_survey') return 'Please complete your scheduled study survey.';
+  if (promptType === ACTIVITY_PROMPT) return "Please upload yesterday's Screen Time activity screenshot.";
+  return 'Please upload your iOS Battery usage screenshot.';
 }
 
 function parsePromptTimes(value) {
@@ -1431,6 +1517,20 @@ function defaultEsmQuestions(promptType = 'battery_usage_screenshot') {
       },
     ];
   }
+  if (promptType === ACTIVITY_PROMPT) {
+    return [
+      {
+        esm_type: 14,
+        esm_title: 'Screen Time activity screenshot',
+        esm_instructions: 'Open iPhone Settings → Screen Time → See All App & Website Activity, choose Day, tap yesterday, and take a screenshot showing screen time, pickups, and notifications. Then upload that screenshot here.',
+        esm_trigger: ACTIVITY_PROMPT,
+        esm_submit: 'Submit',
+        esm_na: true,
+        studytrace_required: true,
+        studytrace_quality_check: 'participant_confirmed',
+      },
+    ];
+  }
   return [
     {
       esm_type: 14,
@@ -1469,6 +1569,35 @@ function httpError(statusCode, message) {
 }
 
 async function handleBatteryScreenshotUpload(req, res, studyId) {
+  return handleUsageScreenshotUpload(req, res, studyId, 'battery');
+}
+
+const SCREENSHOT_KINDS = {
+  battery: {
+    trigger: BATTERY_PROMPT,
+    esmJson: {
+      esm_type: 14,
+      esm_title: 'Battery usage screenshot',
+      esm_instructions: 'Open Settings > Battery > View All Battery Usage, then upload the screenshot.',
+      esm_trigger: BATTERY_PROMPT,
+      esm_submit: 'Submit',
+      esm_na: true,
+    },
+  },
+  screen_time_activity: {
+    trigger: ACTIVITY_PROMPT,
+    esmJson: {
+      esm_type: 14,
+      esm_title: 'Screen Time activity screenshot',
+      esm_instructions: 'Open Settings > Screen Time > See All App & Website Activity, choose one day, then upload the screenshot.',
+      esm_trigger: ACTIVITY_PROMPT,
+      esm_submit: 'Submit',
+      esm_na: true,
+    },
+  },
+};
+
+async function handleUsageScreenshotUpload(req, res, studyId, forcedKind) {
   const payload = req.body || {};
   const deviceId = String(payload.device_id || '').trim();
   const screenshotBase64 = normalizeBase64Image(payload.screenshot_base64 || payload.esm_user_answer);
@@ -1478,21 +1607,16 @@ async function handleBatteryScreenshotUpload(req, res, studyId) {
   if (!screenshotBase64) {
     return res.status(400).json({ error: 'screenshot_base64 is required' });
   }
+  const kindName = forcedKind || (payload.screenshot_kind === 'screen_time_activity' ? 'screen_time_activity' : 'battery');
+  const kind = SCREENSHOT_KINDS[kindName];
 
   const timestamp = Number(payload.timestamp) || Date.now();
-  const esmJson = {
-    esm_type: 14,
-    esm_title: 'Battery usage screenshot',
-    esm_instructions: 'Open Settings > Battery > View All Battery Usage, then upload the screenshot.',
-    esm_trigger: 'battery_usage_screenshot',
-    esm_submit: 'Submit',
-    esm_na: true,
-  };
   const row = {
     timestamp,
     device_id: deviceId,
-    esm_trigger: 'battery_usage_screenshot',
-    esm_json: JSON.stringify(esmJson),
+    screenshot_kind: kindName,
+    esm_trigger: kind.trigger,
+    esm_json: JSON.stringify(kind.esmJson),
     esm_user_answer: screenshotBase64,
     double_esm_user_answer_timestamp: timestamp,
     esm_status: 2,
@@ -1505,21 +1629,68 @@ async function handleBatteryScreenshotUpload(req, res, studyId) {
   const uploadId = typeof payload.upload_id === 'string' ? payload.upload_id.trim().slice(0, 128) : '';
   if (uploadId) row.upload_id = uploadId;
   if (isValidTimeZone(payload.timezone)) row.timezone = payload.timezone;
+  Object.assign(row, confirmedScreenshotFields(payload, kindName));
 
   const table = safeTableName('plugin_ios_esm');
   await createSensorTable(table);
   const inserted = await insertRows(table, studyId, deviceId, [row]);
   const source = await findLatestBatteryScreenshotSource(table, { studyId, deviceId, timestamp });
-  const processed = await processBatteryScreenshotUploads({ studyId, limit: 25 });
-  const feedback = source
-    ? await batteryScreenshotUploadFeedback(source)
-    : {
-        app_rows_detected: 0,
-        needs_review: true,
-        qa_reason: 'uploaded screenshot could not be located for OCR feedback',
-        message: 'Screenshot uploaded, but StudyTrace could not confirm OCR quality yet.',
-      };
+  let processed;
+  let feedback;
+  if (kindName === 'screen_time_activity') {
+    processed = await processScreenTimeActivityUploads({ studyId, limit: 25 });
+    feedback = source ? await screenTimeActivityUploadFeedback(source) : null;
+  } else {
+    processed = await processBatteryScreenshotUploads({ studyId, limit: 25 });
+    feedback = source ? await batteryScreenshotUploadFeedback(source) : null;
+  }
+  feedback = feedback || {
+    app_rows_detected: 0,
+    needs_review: true,
+    qa_reason: 'uploaded screenshot could not be located for OCR feedback',
+    message: 'Screenshot uploaded, but StudyTrace could not confirm OCR quality yet.',
+  };
   return res.status(inserted ? 201 : 200).json({ ok: true, inserted, duplicate: inserted === 0, processed, feedback });
+}
+
+// Values the participant reviewed on the phone (on-device OCR, then edited
+// or accepted). Sanitized here because they come straight from the client.
+function confirmedScreenshotFields(payload, kindName) {
+  const fields = {};
+  const window = String(payload.usage_window || '');
+  if (['last_24_hours', 'last_10_days'].includes(window)) fields.usage_window = window;
+  const capturedAt = Number(payload.captured_at);
+  if (Number.isFinite(capturedAt) && capturedAt > 0) fields.captured_at = new Date(capturedAt).toISOString();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(payload.activity_date || ''))) fields.activity_date = String(payload.activity_date);
+  if (typeof payload.device_ocr_text === 'string') fields.device_ocr_text = payload.device_ocr_text.slice(0, 20000);
+  if (!Array.isArray(payload.confirmed_rows)) return fields;
+
+  const maxSeconds = kindName === 'battery' && fields.usage_window === 'last_10_days' ? 10 * 86400 : 86400;
+  fields.participant_confirmed = true;
+  fields.participant_edited = payload.participant_edited === true;
+  fields.confirmed_rows = payload.confirmed_rows.slice(0, 100)
+    .map((item) => ({
+      app_name: String(item?.app_name || '').trim().slice(0, 80),
+      screen_time_seconds: boundedNumber(item?.screen_time_seconds, 0, maxSeconds),
+      battery_percent: kindName === 'battery' ? boundedNumber(item?.battery_percent, 0, 100) : null,
+    }))
+    .filter((item) => item.app_name);
+  if (kindName === 'screen_time_activity') {
+    const summary = payload.summary || {};
+    fields.confirmed_summary = {
+      total_screen_time_seconds: boundedNumber(summary.total_screen_time_seconds, 0, 86400),
+      pickups: boundedNumber(summary.pickups, 0, 5000),
+      notifications: boundedNumber(summary.notifications, 0, 20000),
+    };
+  }
+  return fields;
+}
+
+function boundedNumber(value, min, max) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Math.round(Number(value));
+  if (!Number.isFinite(number) || number < min || number > max) return null;
+  return number;
 }
 
 async function findLatestBatteryScreenshotSource(table, { studyId, deviceId, timestamp }) {
@@ -1558,7 +1729,7 @@ async function batteryScreenshotUploadFeedback(source) {
   );
   const parsedRows = rows
     .map((row) => row.data || {})
-    .filter((row) => row.extraction_status === 'parsed' && row.app_name);
+    .filter((row) => ['parsed', 'confirmed'].includes(row.extraction_status) && row.app_name);
   const needsReview = rows.some((row) => row.data?.needs_review === true || row.data?.needs_review === 'true') ||
     parsedRows.length === 0;
   const qaReason = [...new Set(rows.map((row) => row.data?.qa_reason).filter(Boolean))].join('; ');
@@ -1647,12 +1818,24 @@ async function processBatteryScreenshotUploads({ studyId, limit: rawLimit } = {}
       continue;
     }
 
+    const sourceImageUrl = `/api/v1/studies/${encodeURIComponent(source.study_id)}/media/${encodeURIComponent(source.sensor)}/${encodeURIComponent(source.id)}/image`;
+    if (Array.isArray(source.data?.confirmed_rows)) {
+      // Participant reviewed the on-device OCR result; store what they
+      // confirmed instead of re-running server OCR.
+      inserted += await insertRows(table, source.study_id, source.device_id,
+        confirmedBatteryRows(source, sourceImageUrl).map((row, index) => ({
+          timestamp: source.timestamp,
+          dedupe_key: `battery:${source.sensor}:${source.id}:${index}`,
+          ...row,
+        })));
+      continue;
+    }
+
     const image = decodeImageAnswer(source.data?.esm_user_answer);
     const ocr = image
       ? await extractBatteryUsageOcrText(source.data, image.buffer)
       : { text: '', confidence: null, method: 'none', status: 'no_image' };
     const parsedRows = parseBatteryUsageOcrText(ocr.text);
-    const sourceImageUrl = `/api/v1/studies/${encodeURIComponent(source.study_id)}/media/${encodeURIComponent(source.sensor)}/${encodeURIComponent(source.id)}/image`;
     const qa = batteryOcrQa({ ocr, parsedRows });
     const base = {
       source_sensor: source.sensor,
@@ -1699,6 +1882,221 @@ async function processBatteryScreenshotUploads({ studyId, limit: rawLimit } = {}
   return { screenshots: screenshotRows.length, inserted, skipped };
 }
 
+function confirmedBatteryRows(source, sourceImageUrl) {
+  const data = source.data || {};
+  const base = {
+    source_sensor: source.sensor,
+    source_row_id: String(source.id),
+    source_image_url: sourceImageUrl,
+    usage_window: data.usage_window || '',
+    captured_at: data.captured_at || '',
+    participant_edited: data.participant_edited === true,
+    extraction_method: 'participant_confirmed',
+    ocr_confidence: null,
+    ocr_text: data.device_ocr_text || '',
+  };
+  if (!data.confirmed_rows.length) {
+    return [{
+      ...base,
+      app_name: '',
+      screen_time_seconds: null,
+      screen_time_text: '',
+      battery_percent: null,
+      battery_percent_text: '',
+      extraction_status: 'confirmed_empty',
+      needs_review: true,
+      qa_reason: 'participant confirmed no app rows',
+      parse_notes: 'participant confirmed an empty table',
+    }];
+  }
+  return data.confirmed_rows.map((item) => ({
+    ...base,
+    app_name: item.app_name,
+    screen_time_seconds: item.screen_time_seconds,
+    screen_time_text: item.screen_time_seconds === null ? '' : formatSecondsText(item.screen_time_seconds),
+    battery_percent: item.battery_percent,
+    battery_percent_text: item.battery_percent === null ? '' : `${item.battery_percent}%`,
+    extraction_status: 'confirmed',
+    needs_review: false,
+    qa_reason: '',
+    parse_notes: data.participant_edited ? 'edited by participant' : 'confirmed by participant',
+  }));
+}
+
+function formatSecondsText(seconds) {
+  const minutes = Math.round(Number(seconds) / 60);
+  const hours = Math.floor(minutes / 60);
+  return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+}
+
+// ---- Screen Time "See All Activity" screenshots ---------------------------
+
+function isScreenTimeActivityEsmRow(row) {
+  const data = row?.data || {};
+  if (data.screenshot_kind === 'screen_time_activity' || data.esm_trigger === ACTIVITY_PROMPT) return true;
+  return parseEsmJson(data.esm_json).esm_trigger === ACTIVITY_PROMPT;
+}
+
+async function findScreenTimeActivityRows({ studyId, limit: rawLimit } = {}) {
+  const limit = Math.min(Math.max(Number(rawLimit) || 100, 1), BATTERY_USAGE_EXPORT_LIMIT);
+  const rows = [];
+  const sensors = studyId ? await listStudySensorTables(studyId) : await listSensorTables();
+  for (const sensor of sensors.filter((item) => isKnownEsmSensor(item.sensor))) {
+    const sensorRows = await exportRows(sensor.table, { studyId, limit, order: 'desc' });
+    for (const row of sensorRows) {
+      const candidate = { ...row, sensor: sensor.sensor };
+      if (decodeImageAnswer(candidate.data?.esm_user_answer) && isScreenTimeActivityEsmRow(candidate)) rows.push(candidate);
+    }
+  }
+  return rows.slice(0, limit);
+}
+
+async function countDerivedActivityRows({ studyId } = {}) {
+  const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
+  if (!(await tableExists(table))) return 0;
+  await processScreenTimeActivityUploads({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  const { rows } = await getPool().query(
+    `SELECT count(*)::int AS n FROM ${table}${studyId ? ' WHERE study_id = $1' : ''}`,
+    studyId ? [studyId] : []
+  );
+  return rows[0].n;
+}
+
+async function processScreenTimeActivityUploads({ studyId, limit } = {}) {
+  const sources = await findScreenTimeActivityRows({ studyId, limit });
+  const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
+  await createSensorTable(table);
+  let inserted = 0;
+  for (const source of sources) {
+    if (await batteryUsageSourceAlreadyProcessed(table, source)) continue;
+    const data = source.data || {};
+    const sourceImageUrl = `/api/v1/studies/${encodeURIComponent(source.study_id)}/media/${encodeURIComponent(source.sensor)}/${encodeURIComponent(source.id)}/image`;
+    let parsed;
+    let method;
+    if (Array.isArray(data.confirmed_rows)) {
+      parsed = { summary: data.confirmed_summary || {}, apps: data.confirmed_rows };
+      method = 'participant_confirmed';
+    } else {
+      const image = decodeImageAnswer(data.esm_user_answer);
+      const ocr = image
+        ? await extractBatteryUsageOcrText(data, image.buffer)
+        : { text: '', method: 'none' };
+      parsed = parseScreenTimeActivityOcrText(ocr.text);
+      parsed.ocrText = ocr.text;
+      method = ocr.method;
+    }
+    const summary = parsed.summary || {};
+    const needsReview = method !== 'participant_confirmed' &&
+      (summary.total_screen_time_seconds == null || !parsed.apps?.length);
+    const base = {
+      source_sensor: source.sensor,
+      source_row_id: String(source.id),
+      source_image_url: sourceImageUrl,
+      activity_date: data.activity_date || '',
+      captured_at: data.captured_at || '',
+      participant_edited: data.participant_edited === true,
+      extraction_method: method,
+      extraction_status: method === 'participant_confirmed' ? 'confirmed' : (needsReview ? 'needs_review' : 'parsed'),
+      needs_review: needsReview,
+      qa_reason: needsReview ? 'total screen time or app rows not found' : '',
+      ocr_text: data.device_ocr_text || parsed.ocrText || '',
+    };
+    const rows = [{
+      ...base,
+      row_type: 'summary',
+      app_name: '',
+      screen_time_seconds: null,
+      total_screen_time_seconds: summary.total_screen_time_seconds ?? null,
+      pickups: summary.pickups ?? null,
+      notifications: summary.notifications ?? null,
+      dedupe_key: `activity:${source.sensor}:${source.id}:summary`,
+    }, ...(parsed.apps || []).map((app, index) => ({
+      ...base,
+      row_type: 'app',
+      app_name: app.app_name,
+      screen_time_seconds: app.screen_time_seconds ?? null,
+      total_screen_time_seconds: null,
+      pickups: null,
+      notifications: null,
+      dedupe_key: `activity:${source.sensor}:${source.id}:app:${index}`,
+    }))];
+    inserted += await insertRows(table, source.study_id, source.device_id,
+      rows.map((row) => ({ timestamp: source.timestamp, ...row })));
+  }
+  return { screenshots: sources.length, inserted };
+}
+
+async function screenTimeActivityUploadFeedback(source) {
+  const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
+  const { rows } = await getPool().query(
+    `SELECT data FROM ${table}
+     WHERE study_id = $1 AND data->>'source_sensor' = $2 AND data->>'source_row_id' = $3`,
+    [source.study_id, source.sensor, String(source.id)]
+  );
+  const apps = rows.filter((row) => row.data?.row_type === 'app').length;
+  const summary = rows.find((row) => row.data?.row_type === 'summary')?.data || {};
+  const needsReview = rows.some((row) => row.data?.needs_review === true);
+  return {
+    app_rows_detected: apps,
+    needs_review: needsReview,
+    qa_reason: summary.qa_reason || '',
+    message: needsReview
+      ? 'Screenshot uploaded, but StudyTrace could not read the screen time totals. Please retake it if possible.'
+      : `Screenshot uploaded with ${apps} app${apps === 1 ? '' : 's'}.`,
+  };
+}
+
+// Parses Settings > Screen Time > See All Activity (one day, English or
+// Japanese): total screen time, total pickups/notifications, and the
+// "Most Used" app list.
+function parseScreenTimeActivityOcrText(text) {
+  const lines = String(text || '').split(/\r?\n/).map(cleanOcrLine).filter(Boolean);
+  const lower = lines.map((line) => line.toLowerCase());
+  const indexOf = (pattern, from = 0) => {
+    for (let i = from; i < lower.length; i += 1) if (pattern.test(lower[i])) return i;
+    return -1;
+  };
+  const countNear = (pattern) => {
+    const at = indexOf(pattern);
+    if (at < 0) return null;
+    for (let i = at; i < Math.min(lines.length, at + 4); i += 1) {
+      const match = lines[i].replace(/,/g, '').match(/(?:^|\s)(\d{1,5})(?:\s*(?:回|件))?$/);
+      if (match && !parseBatteryDuration(lines[i])) return Number(match[1]);
+    }
+    return null;
+  };
+
+  const mostUsed = indexOf(/most used|よく使われた/);
+  const pickupsAt = indexOf(/pickup|持ち上げ/);
+  const notificationsAt = indexOf(/notification|通知/);
+  let total = null;
+  for (let i = 0; i < (mostUsed > 0 ? mostUsed : lines.length); i += 1) {
+    const duration = parseBatteryDuration(lines[i]);
+    if (duration && !/^\d{1,2}:\d{2}$/.test(lines[i])) {
+      total = duration.seconds;
+      break;
+    }
+  }
+
+  const apps = [];
+  if (mostUsed >= 0) {
+    const stop = [pickupsAt, notificationsAt].filter((i) => i > mostUsed).sort((a, b) => a - b)[0] ?? lines.length;
+    for (let i = mostUsed + 1; i < stop; i += 1) {
+      if (!looksLikeBatteryAppNameLine(lines[i])) continue;
+      const next = [lines[i + 1], lines[i + 2]].map((line) => parseBatteryDuration(line)).find(Boolean);
+      if (next) apps.push({ app_name: cleanAppName(lines[i]), screen_time_seconds: next.seconds });
+    }
+  }
+  return {
+    summary: {
+      total_screen_time_seconds: total,
+      pickups: countNear(/total pickups|pickups|持ち上げ/),
+      notifications: countNear(/notifications|通知/),
+    },
+    apps,
+  };
+}
+
 async function batteryUsageSourceAlreadyProcessed(table, source) {
   const { rows } = await getPool().query(
     `SELECT 1
@@ -1738,6 +2136,7 @@ async function findBatteryScreenshotRows({ studyId, limit: rawLimit } = {}) {
 
 function isBatteryScreenshotEsmRow(row) {
   if (!row?.data || !decodeImageAnswer(row.data.esm_user_answer)) return false;
+  if (isScreenTimeActivityEsmRow(row)) return false;
   const esmJson = parseEsmJson(row.data.esm_json);
   const text = [
     row.data.esm_trigger,
@@ -1778,7 +2177,8 @@ async function extractBatteryUsageOcrText(data, imageBuffer) {
 
   try {
     const tesseract = await import('tesseract.js');
-    const worker = await tesseract.createWorker('eng');
+    // e.g. OCR_LANGUAGES=eng+jpn for Japanese studies (downloads traineddata once).
+    const worker = await tesseract.createWorker((process.env.OCR_LANGUAGES || 'eng').split('+'));
     const result = await worker.recognize(imageBuffer);
     await worker.terminate();
     return {
@@ -1890,8 +2290,9 @@ function batteryDurationLinePriority(line) {
 function parseBatteryDuration(value) {
   const text = String(value || '').replace(/[·•]/g, ' ');
   const patterns = [
-    /(\d{1,2})\s*(?:h|hr|hrs|hour|hours)\s*(\d{1,2})?\s*(?:m|min|mins|minute|minutes)?/i,
-    /(\d{1,3})\s*(?:m|min|mins|minute|minutes)\b/i,
+    // Longest unit first: with `h` first, "1 hour 5 min" stopped at "1 h".
+    /(\d{1,2})\s*(?:hours|hour|hrs|hr|h|時間)(?![a-z])\s*(?:(\d{1,2})\s*(?:minutes|minute|mins|min|m|分)(?![a-z]))?/i,
+    /(\d{1,3})\s*(?:minutes|minute|mins|min|m|分)(?![a-z])/i,
     /\b(\d{1,2}):(\d{2})\b/,
   ];
   for (const pattern of patterns) {
@@ -1915,7 +2316,7 @@ function parseBatteryDuration(value) {
 }
 
 function parseBatteryPercent(value) {
-  const match = String(value || '').match(/\b(\d{1,3})\s*%/);
+  const match = String(value || '').match(/(\d{1,3})\s*[%％]/);
   if (!match) return null;
   const valueNumber = Number(match[1]);
   if (!Number.isInteger(valueNumber) || valueNumber < 0 || valueNumber > 100) return null;
@@ -1930,9 +2331,10 @@ function cleanOcrLine(value) {
 }
 
 function cleanAppName(value) {
+  // Unicode-aware so Japanese app names (e.g. 写真, メッセージ) survive.
   return String(value || '')
-    .replace(/^[^A-Za-z0-9]+/, '')
-    .replace(/[^A-Za-z0-9).]+$/, '')
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .replace(/[^\p{L}\p{N}).]+$/u, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -1946,7 +2348,7 @@ function looksLikeBatteryAppNameLine(line) {
 function isUsableAppName(value) {
   const text = cleanAppName(value);
   if (text.length < 2 || text.length > 60) return false;
-  if (!/[A-Za-z]/.test(text)) return false;
+  if (!/\p{L}/u.test(text)) return false;
   const lower = text.toLowerCase();
   return ![
     'settings',
@@ -1965,6 +2367,17 @@ function isUsableAppName(value) {
     'activity by app',
     'battery level',
     'insights and suggestions',
+    'バッテリー',
+    'バッテリーの使用状況',
+    'アプリごとのバッテリー使用状況',
+    'アプリごとのアクティビティ',
+    '過去24時間',
+    '過去10日間',
+    'アクティビティを表示',
+    'バッテリー使用状況を表示',
+    '画面オン',
+    '画面オフ',
+    'バッテリー残量',
     'show activity',
     'show battery usage',
   ].includes(lower);

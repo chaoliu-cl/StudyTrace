@@ -148,6 +148,26 @@ async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screen
   await hydrateAuthenticatedImages(screenshotTable, password);
 }
 
+async function loadScreenTimeActivity({ studyId, password, table, message }) {
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/screen-time-activity?limit=200`, {
+    headers: { 'x-researcher-password': password },
+  });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load Screen Time activity screenshots.', true);
+  }
+  renderTable(table, [
+    { label: 'Day', render: (row) => escapeHtml(row.activity_date || '—') },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Row', render: (row) => escapeHtml(row.row_type === 'summary' ? 'Daily total' : row.app_name || '—') },
+    { label: 'Screen time', render: (row) => formatDuration(row.row_type === 'summary' ? row.total_screen_time_seconds : row.screen_time_seconds) },
+    { label: 'Pickups', render: (row) => row.pickups ?? '—' },
+    { label: 'Notifications', render: (row) => row.notifications ?? '—' },
+    { label: 'Source', render: (row) => escapeHtml(row.extraction_method === 'participant_confirmed' ? (row.participant_edited ? 'Participant (edited)' : 'Participant') : 'Server OCR') },
+    { label: 'Needs review', render: (row) => row.needs_review ? 'Yes' : 'No' },
+  ], payload.rows || []);
+}
+
 async function loadParticipantHealth({ studyId, password, table, message }) {
   const headers = { 'x-researcher-password': password };
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/participant-health`, { headers });
@@ -243,8 +263,29 @@ const defaultBatteryScreenshotQuestions = [
   },
 ];
 
+const defaultScreenTimeActivityQuestions = [
+  {
+    esm_type: 14,
+    esm_title: 'Screen Time activity screenshot',
+    esm_instructions: 'Open iPhone Settings > Screen Time > See All App & Website Activity, choose Day, tap yesterday, and take a screenshot showing screen time, pickups, and notifications. Then upload that screenshot here.',
+    esm_trigger: 'screen_time_activity_screenshot',
+    esm_submit: 'Submit',
+    esm_na: true,
+    studytrace_required: true,
+    studytrace_quality_check: 'participant_confirmed',
+  },
+];
+
+const promptDefaults = {
+  esm_survey: { times: '09:30, 17:15', title: 'StudyTrace survey available', body: 'Please complete your scheduled study survey.' },
+  battery_usage_screenshot: { times: '20:30', title: 'StudyTrace Battery screenshot', body: 'Please upload your iOS Battery usage screenshot.' },
+  screen_time_activity_screenshot: { times: '10:00', title: 'StudyTrace Screen Time screenshot', body: "Please upload yesterday's Screen Time activity screenshot." },
+};
+
 function defaultQuestionsForPrompt(promptType) {
-  return promptType === 'esm_survey' ? defaultEsmSurveyQuestions : defaultBatteryScreenshotQuestions;
+  if (promptType === 'esm_survey') return defaultEsmSurveyQuestions;
+  if (promptType === 'screen_time_activity_screenshot') return defaultScreenTimeActivityQuestions;
+  return defaultBatteryScreenshotQuestions;
 }
 
 function unwrapEsmQuestions(esms, promptType) {
@@ -257,6 +298,7 @@ function findScheduleForPrompt(schedule, promptType) {
   return schedule.find((item) => item.studytrace_prompt_type === promptType) ||
     schedule.find((item) => promptType === 'battery_usage_screenshot' && String(item.schedule_id || '').includes('battery_screenshot')) ||
     schedule.find((item) => promptType === 'esm_survey' && String(item.schedule_id || '').includes('esm_survey')) ||
+    schedule.find((item) => promptType === 'screen_time_activity_screenshot' && String(item.schedule_id || '').includes('screen_time_activity')) ||
     null;
 }
 
@@ -265,11 +307,11 @@ function fillScheduleForm(form, schedule, promptType) {
   form.elements.mode.value = item?.studytrace_delivery_mode || (Number(item?.randomize || 0) > 0 ? 'random' : 'fixed');
   form.elements.times.value = Array.isArray(item?.times) && item.times.length
     ? item.times.join(', ')
-    : (Array.isArray(item?.hours) ? item.hours.map((hour) => `${String(hour).padStart(2, '0')}:00`).join(', ') : (promptType === 'esm_survey' ? '09:30, 17:15' : '20:30'));
+    : (Array.isArray(item?.hours) ? item.hours.map((hour) => `${String(hour).padStart(2, '0')}:00`).join(', ') : promptDefaults[promptType].times);
   form.elements.randomize_minutes.value = String(item?.randomize || 30);
   form.elements.expiration_minutes.value = String(item?.expiration || 120);
-  form.elements.notification_title.value = item?.notification_title || (promptType === 'esm_survey' ? 'StudyTrace survey available' : 'StudyTrace Battery screenshot');
-  form.elements.notification_body.value = item?.notification_body || (promptType === 'esm_survey' ? 'Please complete your scheduled study survey.' : 'Please upload your iOS Battery usage screenshot.');
+  form.elements.notification_title.value = item?.notification_title || promptDefaults[promptType].title;
+  form.elements.notification_body.value = item?.notification_body || promptDefaults[promptType].body;
   form.elements.start_date.value = item?.start_date || '';
   form.elements.end_date.value = item?.end_date || '';
   if (form.elements.esms_json) {
@@ -357,6 +399,9 @@ function initResearcher() {
   const esmScheduleResult = document.querySelector('#researcher-esm-schedule-result');
   const batteryScheduleForm = document.querySelector('#researcher-battery-schedule');
   const batteryScheduleResult = document.querySelector('#researcher-battery-schedule-result');
+  const activityScheduleForm = document.querySelector('#researcher-activity-schedule');
+  const activityScheduleResult = document.querySelector('#researcher-activity-schedule-result');
+  const screenTimeActivity = document.querySelector('#researcher-screen-time-activity');
   let currentStudyId = '';
   let currentPassword = '';
 
@@ -431,6 +476,16 @@ function initResearcher() {
       endpoint: 'battery-screenshot-schedule',
       message,
     });
+    await loadScheduleSection({
+      studyId,
+      password,
+      form: activityScheduleForm,
+      result: activityScheduleResult,
+      promptType: 'screen_time_activity_screenshot',
+      endpoint: 'screen-time-activity-schedule',
+      message,
+    });
+    await loadScreenTimeActivity({ studyId, password, table: screenTimeActivity, message });
     await loadBatteryUsageDiagnostics({
       studyId,
       password,
@@ -476,6 +531,23 @@ function initResearcher() {
       promptType: 'battery_usage_screenshot',
       label: 'Battery screenshot',
       endpoint: 'battery-screenshot-schedule',
+    });
+  });
+
+  activityScheduleForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!currentStudyId || !currentPassword) {
+      return setMessage(message, 'Load a study before saving the Screen Time screenshot schedule.', true);
+    }
+    await saveScheduleSection({
+      studyId: currentStudyId,
+      password: currentPassword,
+      form: activityScheduleForm,
+      result: activityScheduleResult,
+      message,
+      promptType: 'screen_time_activity_screenshot',
+      label: 'Screen Time screenshot',
+      endpoint: 'screen-time-activity-schedule',
     });
   });
 
