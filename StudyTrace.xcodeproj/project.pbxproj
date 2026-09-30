@@ -24,6 +24,8 @@
 		4F387DCE29EBC5B7002D5300 /* OnboardingViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 4F387DCB29EBC5B6002D5300 /* OnboardingViewController.m */; };
 		4F530264240D4EEE008E3342 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4F530266240D4EEE008E3342 /* Localizable.strings */; };
 		4F70E8AD241DA28000A8AAA8 /* LocationPermissionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F70E8AC241DA28000A8AAA8 /* LocationPermissionViewController.swift */; };
+		AB5100010000000000000001 /* StudyTraceUploadQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000002 /* StudyTraceUploadQueue.swift */; };
+		AB5100010000000000000003 /* StudyTraceMonitoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000004 /* StudyTraceMonitoring.swift */; };
 		4FC60F4C2395E37D007740E4 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FC60F4B2395E37D007740E4 /* MapKit.framework */; };
 		4FDA1E4A2423B51C004F891F /* ESMCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FDA1E492423B51C004F891F /* ESMCard.swift */; };
 		4FDB55F4233C49B50095E7D7 /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */; };
@@ -94,6 +96,8 @@
 		4F530269240FB13D008E3342 /* StudyTrace.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StudyTrace.entitlements; sourceTree = "<group>"; };
 		4F70E8AB241D9CB500A8AAA8 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Main.strings; sourceTree = "<group>"; };
 		4F70E8AC241DA28000A8AAA8 /* LocationPermissionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPermissionViewController.swift; sourceTree = "<group>"; };
+		AB5100010000000000000002 /* StudyTraceUploadQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceUploadQueue.swift; sourceTree = "<group>"; };
+		AB5100010000000000000004 /* StudyTraceMonitoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceMonitoring.swift; sourceTree = "<group>"; };
 		4FC60F4B2395E37D007740E4 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
 		4FDA1E492423B51C004F891F /* ESMCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESMCard.swift; sourceTree = "<group>"; };
 		4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExternalAccessory.framework; path = System/Library/Frameworks/ExternalAccessory.framework; sourceTree = SDKROOT; };
@@ -276,6 +280,8 @@
 				4F0BC9A2222D6BE3006348E4 /* SensorSettingViewController.swift */,
 				4FEA0297237B8D1700CFDC2F /* OnboardingManager.swift */,
 				4F70E8AC241DA28000A8AAA8 /* LocationPermissionViewController.swift */,
+				AB5100010000000000000002 /* StudyTraceUploadQueue.swift */,
+				AB5100010000000000000004 /* StudyTraceMonitoring.swift */,
 				4F387DC629EBC59A002D5300 /* Onboard */,
 				4FFE197A2226A10B00C4715E /* Main.storyboard */,
 				4FFE19802226A10D00C4715E /* Assets.xcassets */,
@@ -674,6 +680,8 @@
 				4F0BC9A1222D4952006348E4 /* AdvancedSettingsViewController.swift in Sources */,
 				4FFE197F2226A10B00C4715E /* StudyTrace.xcdatamodeld in Sources */,
 				4F70E8AD241DA28000A8AAA8 /* LocationPermissionViewController.swift in Sources */,
+				AB5100010000000000000001 /* StudyTraceUploadQueue.swift in Sources */,
+				AB5100010000000000000003 /* StudyTraceMonitoring.swift in Sources */,
 				4F1B11B322286E75006F3176 /* ScatterChartCard.swift in Sources */,
 				4F387DCD29EBC5B7002D5300 /* OnboardingContentViewController.m in Sources */,
 				4FFE19792226A10B00C4715E /* ViewController.swift in Sources */,

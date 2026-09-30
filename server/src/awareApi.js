@@ -119,7 +119,7 @@ export function createAwareRouter(getPublicBaseUrl) {
           }
           const n = await insertRows(table, req.params.studyId, deviceId, rows);
           if (deviceId) await upsertDevice(deviceId, req.params.studyId, req.query.participant);
-          return res.json({ status: true, inserted: n });
+          return res.json({ status: true, inserted: n, duplicates: rows.length - n });
         }
         case 'latest': {
           const row = await latestRow(table, req.params.studyId, deviceId);

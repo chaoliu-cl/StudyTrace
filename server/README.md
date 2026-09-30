@@ -77,6 +77,45 @@ Each sensor gets its own Postgres table (`aware_<sensor>`), storing the
 while keeping rows scoped to a study. Study and device metadata live in the
 `studies` and `devices` tables.
 
+### Deduplication
+
+Every row also gets a `dedupe_key`, backed by a unique index on
+`(study_id, device_id, dedupe_key)`, so retried uploads are stored once:
+
+- Rows carrying an `event_id`, `upload_id`, or `dedupe_key` field use it as the
+  key. The iOS app sets `event_id` on telemetry rows and `upload_id` (a SHA-256
+  of the image) on Battery screenshots.
+- Other rows (e.g. AWARE sensor batches) are keyed by a hash of their content,
+  so an identical re-send is skipped.
+- Insert responses report `inserted` and `duplicates`. A repeated screenshot
+  upload returns `200` with `"duplicate": true` and the original OCR feedback.
+- Rows stored before this change have no key and are left as they are.
+
+## Data quality and compliance
+
+The iOS app queues its own uploads (telemetry and screenshots) on disk and
+retries them in the background. Each telemetry row carries a per-device
+sequence number and the phone's IANA time zone. The `participant_health`
+export and dashboard derive from this:
+
+| Column | Meaning |
+|--------|---------|
+| `last_heartbeat` | Latest hourly heartbeat. The app sends one while it is running, so a long silence means iOS suspended or killed it. |
+| `max_telemetry_gap_hours_24h` | Longest stretch with no telemetry in the last 24 hours. |
+| `last_launch_reason` | `user`, `location`, `remote_notification`, or `background`. |
+| `prompts_delivered_7d` | Distinct survey prompts the phone reported as delivered, presented, or tapped. Prompts swiped away before the app next ran may be missed. |
+| `survey_sessions_7d` | Answered survey sessions (answers within 15 minutes count as one session). |
+| `compliance_rate_7d` | `survey_sessions_7d / prompts_delivered_7d`, capped at 1. |
+| `telemetry_missing_7d` | Rows lost in transit, from gaps in the sequence numbers. |
+| `permission_changes_7d` | Permission changes, such as location Always → While Using. |
+| `location_accuracy_authorization`, `background_refresh_status`, `timezone` | Latest device state. |
+
+`location_daily_summary` groups fixes by the participant's **local** calendar
+day, using the time zone the phone reported at the time of each fix. A device
+that has not reported one yet falls back to the study's default time zone (set
+`timezone` in `POST /admin/studies`), then `DEFAULT_STUDY_TIMEZONE`, then UTC.
+`survey_quality` rows include `local_date` and `timezone` the same way.
+
 ## Battery screenshot app-usage workflow
 
 StudyTrace no longer depends on exporting Apple's Screen Time data from the
@@ -187,6 +226,7 @@ On the service **Variables** tab:
 | `PORT`            | no       | Railway sets this automatically.                                            |
 | `TRUST_PROXY_HOPS` | no      | Number of reverse-proxy hops in front of the server (default `1`, correct for Railway). Used to read the real client IP for login rate limiting. |
 | `AUTH_FAILURE_MAX` / `AUTH_FAILURE_WINDOW_MS` | no | Failed-login limit per IP (default 30 per 900000 ms). |
+| `DEFAULT_STUDY_TIMEZONE` | no | IANA time zone for local-day summaries when neither the phone nor the study has one (default `UTC`). |
 
 ### 4. Generate a public domain
 
@@ -384,7 +424,9 @@ npm install
 DATABASE_URL=postgres://localhost/studytrace ADMIN_TOKEN=dev npm start
 ```
 
-Run the protocol smoke test (uses an in-memory Postgres, no DB needed):
+Run the protocol smoke test (uses an in-memory Postgres, no DB needed). CI runs
+the same suite on every pull request that touches the server
+(`.github/workflows/server-tests.yml`):
 
 ```bash
 npm test

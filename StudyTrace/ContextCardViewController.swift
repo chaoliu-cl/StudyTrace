@@ -245,105 +245,28 @@ class ContextCardViewController: UIViewController, UIImagePickerControllerDelega
 
     private func uploadBatteryScreenshot(_ image: UIImage) {
         guard !isUploadingBatteryScreenshot else { return }
-        guard let studyURL = AWAREStudy.shared().getURL(), !studyURL.isEmpty else {
-            showBatteryScreenshotUploadResult(title: "Study Not Configured",
-                                              message: "Join a study before uploading a Battery screenshot.")
-            return
-        }
-        guard let imageData = image.jpegData(compressionQuality: 0.85) else {
-            showBatteryScreenshotUploadResult(title: "Upload Failed",
-                                              message: "StudyTrace could not prepare the selected screenshot.")
-            return
-        }
-
         isUploadingBatteryScreenshot = true
-        let timestamp = Date().timeIntervalSince1970 * 1000
-        let deviceId = AWAREStudy.shared().getDeviceId() ?? ""
-        let screenshotBase64 = imageData.base64EncodedString()
-        guard let request = batteryScreenshotUploadRequest(studyURL: studyURL,
-                                                           deviceId: deviceId,
-                                                           timestamp: timestamp,
-                                                           screenshotBase64: screenshotBase64) else {
-            isUploadingBatteryScreenshot = false
-            showBatteryScreenshotUploadResult(title: "Study Not Configured",
-                                              message: "StudyTrace could not find the study upload credentials. Please rejoin the study from the QR code, then upload the screenshot again.")
-            return
-        }
-
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.isUploadingBatteryScreenshot = false
-                if let error = error {
-                    self.showBatteryScreenshotUploadResult(title: "Upload Failed", message: error.localizedDescription)
-                    return
-                }
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                if (200..<300).contains(statusCode) {
-                    self.showBatteryScreenshotUploadResult(title: "Battery Screenshot Uploaded",
-                                                           message: "Your screenshot was uploaded to the study server.")
+        BatteryScreenshotUploader.upload(image) { [weak self] outcome in
+            guard let self = self else { return }
+            self.isUploadingBatteryScreenshot = false
+            switch outcome {
+            case .uploaded(let feedback):
+                if feedback?.needsReview == true {
+                    self.showBatteryScreenshotUploadResult(
+                        title: "Please Retake Battery Screenshot",
+                        message: feedback?.message ?? "Your screenshot uploaded, but StudyTrace could not read the app usage rows clearly. Please retake it and upload it again."
+                    )
                 } else {
-                    let serverMessage = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                    let detail = serverMessage.isEmpty ? "" : "\n\nServer response: \(serverMessage)"
-                    self.showBatteryScreenshotUploadResult(title: "Upload Failed",
-                                                           message: "The study server returned HTTP \(statusCode).\(detail)")
+                    self.showBatteryScreenshotUploadResult(title: "Battery Screenshot Uploaded",
+                                                           message: feedback?.message ?? "Your screenshot was uploaded to the study server.")
                 }
+            case .queued:
+                self.showBatteryScreenshotUploadResult(title: "Screenshot Saved",
+                                                       message: "StudyTrace could not reach the study server right now. Your screenshot is saved on this iPhone and will upload automatically when a connection is available.")
+            case .failed(let title, let message):
+                self.showBatteryScreenshotUploadResult(title: title, message: message)
             }
-        }.resume()
-    }
-
-    private func batteryScreenshotUploadRequest(studyURL: String,
-                                                deviceId: String,
-                                                timestamp: Double,
-                                                screenshotBase64: String) -> URLRequest? {
-        guard let target = batteryScreenshotUploadTarget(from: studyURL) else { return nil }
-        let esmJson: [String: Any] = [
-            "esm_type": 14,
-            "esm_title": "Battery usage screenshot",
-            "esm_instructions": "Open Settings > Battery > View All Battery Usage, then upload the screenshot.",
-            "esm_trigger": "battery_usage_screenshot",
-            "esm_submit": "Submit",
-            "esm_na": true
-        ]
-        let payload: [String: Any] = [
-            "device_id": deviceId,
-            "timestamp": timestamp,
-            "screenshot_base64": screenshotBase64,
-            "esm_json": jsonString(esmJson)
-        ]
-        guard JSONSerialization.isValidJSONObject(payload),
-              let body = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
-            return nil
         }
-
-        var request = URLRequest(url: target)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body
-        return request
-    }
-
-    private func batteryScreenshotUploadTarget(from studyURL: String) -> URL? {
-        guard var components = URLComponents(string: studyURL),
-              components.scheme?.lowercased() == "https",
-              components.host?.isEmpty == false else {
-            return nil
-        }
-        let path = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard path.contains("index.php/webservice/index") else { return nil }
-        components.percentEncodedPath = "/\(path)/battery-screenshots"
-        components.query = nil
-        components.fragment = nil
-        return components.url
-    }
-
-    private func jsonString(_ value: Any) -> String {
-        guard JSONSerialization.isValidJSONObject(value),
-              let data = try? JSONSerialization.data(withJSONObject: value, options: []),
-              let string = String(data: data, encoding: .utf8) else {
-            return "{}"
-        }
-        return string
     }
 
     private func showBatteryScreenshotUploadResult(title: String, message: String) {

@@ -546,159 +546,40 @@ class ESMViewController: UIViewController, PHPickerViewControllerDelegate {
 
     private func uploadBatteryScreenshot(_ image: UIImage) {
         guard !isUploadingBatteryScreenshot else { return }
-        guard let studyURL = AWAREStudy.shared().getURL(), !studyURL.isEmpty else {
-            showBatteryScreenshotUploadResult(title: "Study Not Configured",
-                                              message: "Join a study before uploading a Battery screenshot.")
-            return
-        }
-        guard let imageData = image.jpegData(compressionQuality: 0.85) else {
-            showBatteryScreenshotUploadResult(title: "Upload Failed",
-                                              message: "StudyTrace could not prepare the selected screenshot.")
-            return
-        }
-
         isUploadingBatteryScreenshot = true
-        StudyTraceTelemetry.recordEvent("battery_screenshot_upload_started", metadata: [
-            "image_bytes": imageData.count
-        ])
-        let timestamp = Date().timeIntervalSince1970 * 1000
-        let deviceId = AWAREStudy.shared().getDeviceId()
-        guard let request = batteryScreenshotUploadRequest(studyURL: studyURL,
-                                                           deviceId: deviceId,
-                                                           timestamp: timestamp,
-                                                           screenshotBase64: imageData.base64EncodedString()) else {
-            isUploadingBatteryScreenshot = false
-            StudyTraceTelemetry.recordEvent("battery_screenshot_upload_failed", metadata: [
-                "reason": "invalid_upload_url"
-            ])
-            showBatteryScreenshotUploadResult(title: "Study Not Configured",
-                                              message: "StudyTrace could not prepare the Battery screenshot upload URL. Please rejoin the study, then try again.")
-            return
-        }
-
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.isUploadingBatteryScreenshot = false
-                if let error = error {
-                    StudyTraceTelemetry.recordEvent("battery_screenshot_upload_failed", metadata: [
-                        "transport_error": error.localizedDescription
-                    ])
-                    self.showBatteryScreenshotUploadResult(title: "Upload Failed", message: error.localizedDescription)
+        BatteryScreenshotUploader.upload(image) { [weak self] outcome in
+            guard let self = self else { return }
+            self.isUploadingBatteryScreenshot = false
+            switch outcome {
+            case .uploaded(let feedback):
+                if feedback?.needsReview == true {
+                    self.showBatteryScreenshotRetakeResult(
+                        title: "Please Retake Battery Screenshot",
+                        message: feedback?.message ?? "Your screenshot uploaded, but StudyTrace could not read the app usage rows clearly. Please retake the Settings > Battery > View All Battery Usage screenshot and upload it again."
+                    )
                     return
                 }
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                if (200..<300).contains(statusCode) {
-                    let feedback = self.batteryScreenshotUploadFeedback(from: data)
-                    StudyTraceTelemetry.recordEvent("battery_screenshot_upload_succeeded", metadata: [
-                        "http_status": statusCode,
-                        "app_rows_detected": feedback?.appRowsDetected ?? 0,
-                        "needs_review": feedback?.needsReview ?? false
-                    ])
-                    if feedback?.needsReview == true {
-                        self.showBatteryScreenshotRetakeResult(
-                            title: "Please Retake Battery Screenshot",
-                            message: feedback?.message ?? "Your screenshot uploaded, but StudyTrace could not read the app usage rows clearly. Please retake the Settings > Battery > View All Battery Usage screenshot and upload it again."
-                        )
-                        return
-                    }
-                    if let schedule = self.activeBatterySchedule {
-                        self.markBatteryScheduleCompleted(schedule)
-                    }
-                    self.batteryInstructionStack.isHidden = true
-                    self.checkESMSchedules()
-                    self.showBatteryScreenshotUploadResult(title: "Battery Screenshot Uploaded",
-                                                           message: feedback?.message ?? "Your screenshot was uploaded to the study server.")
-                } else {
-                    let serverMessage = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                    StudyTraceTelemetry.recordEvent("battery_screenshot_upload_failed", metadata: [
-                        "http_status": statusCode,
-                        "server_response": serverMessage
-                    ])
-                    let detail = serverMessage.isEmpty ? "" : "\n\nServer response: \(serverMessage)"
-                    self.showBatteryScreenshotUploadResult(title: "Upload Failed",
-                                                           message: "The study server returned HTTP \(statusCode).\(detail)")
-                }
+                self.completeActiveBatterySchedule()
+                self.showBatteryScreenshotUploadResult(title: "Battery Screenshot Uploaded",
+                                                       message: feedback?.message ?? "Your screenshot was uploaded to the study server.")
+            case .queued:
+                // The screenshot is safely stored and will upload on its own,
+                // so the participant has done their part for this prompt.
+                self.completeActiveBatterySchedule()
+                self.showBatteryScreenshotUploadResult(title: "Screenshot Saved",
+                                                       message: "StudyTrace could not reach the study server right now. Your screenshot is saved on this iPhone and will upload automatically when a connection is available.")
+            case .failed(let title, let message):
+                self.showBatteryScreenshotUploadResult(title: title, message: message)
             }
-        }.resume()
-    }
-
-    private struct BatteryScreenshotUploadFeedback {
-        let appRowsDetected: Int
-        let needsReview: Bool
-        let qaReason: String
-        let message: String
-    }
-
-    private func batteryScreenshotUploadFeedback(from data: Data?) -> BatteryScreenshotUploadFeedback? {
-        guard let data = data,
-              let object = try? JSONSerialization.jsonObject(with: data, options: []),
-              let json = object as? [String: Any],
-              let feedback = json["feedback"] as? [String: Any] else {
-            return nil
         }
-        return BatteryScreenshotUploadFeedback(
-            appRowsDetected: feedback["app_rows_detected"] as? Int ?? 0,
-            needsReview: feedback["needs_review"] as? Bool ?? false,
-            qaReason: feedback["qa_reason"] as? String ?? "",
-            message: feedback["message"] as? String ?? "Your screenshot was uploaded to the study server."
-        )
     }
 
-    private func batteryScreenshotUploadRequest(studyURL: String,
-                                                deviceId: String,
-                                                timestamp: Double,
-                                                screenshotBase64: String) -> URLRequest? {
-        guard let target = batteryScreenshotUploadTarget(from: studyURL) else { return nil }
-        let payload: [String: Any] = [
-            "device_id": deviceId,
-            "timestamp": timestamp,
-            "screenshot_base64": screenshotBase64,
-            "esm_json": jsonString([
-                "esm_type": 14,
-                "esm_title": "Battery usage screenshot",
-                "esm_instructions": "Open Settings > Battery > View All Battery Usage, then upload the screenshot.",
-                "esm_trigger": "battery_usage_screenshot",
-                "esm_submit": "Submit",
-                "esm_na": true
-            ])
-        ]
-        guard JSONSerialization.isValidJSONObject(payload),
-              let body = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
-            StudyTraceTelemetry.recordEvent("battery_screenshot_upload_failed", metadata: [
-                "reason": "invalid_payload"
-            ])
-            return nil
+    private func completeActiveBatterySchedule() {
+        if let schedule = activeBatterySchedule {
+            markBatteryScheduleCompleted(schedule)
         }
-
-        var request = URLRequest(url: target)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body
-        return request
-    }
-
-    private func batteryScreenshotUploadTarget(from studyURL: String) -> URL? {
-        guard var components = URLComponents(string: studyURL),
-              components.scheme?.lowercased() == "https",
-              components.host?.isEmpty == false else {
-            return nil
-        }
-        let path = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard path.contains("index.php/webservice/index") else { return nil }
-        components.percentEncodedPath = "/\(path)/battery-screenshots"
-        components.query = nil
-        components.fragment = nil
-        return components.url
-    }
-
-    private func jsonString(_ value: Any) -> String {
-        guard JSONSerialization.isValidJSONObject(value),
-              let data = try? JSONSerialization.data(withJSONObject: value, options: []),
-              let string = String(data: data, encoding: .utf8) else {
-            return "{}"
-        }
-        return string
+        batteryInstructionStack.isHidden = true
+        checkESMSchedules()
     }
 
     private func markBatteryScheduleCompleted(_ schedule: EntityESMSchedule) {

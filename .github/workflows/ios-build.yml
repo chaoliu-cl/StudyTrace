@@ -1,0 +1,91 @@
+name: iOS build
+
+on:
+  pull_request:
+    paths:
+      - "StudyTrace/**"
+      - "StudyTraceTests/**"
+      - "StudyTraceUITests/**"
+      - "StudyTraceMonitor/**"
+      - "StudyTraceReport/**"
+      - "StudyTrace.xcodeproj/**"
+      - "StudyTrace.xcworkspace/**"
+      - "Pods/**"
+      - "Podfile"
+      - "Podfile.lock"
+      - "en.lproj/**"
+      - "ja.lproj/**"
+      - ".github/workflows/ios-build.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "StudyTrace/**"
+      - "StudyTraceTests/**"
+      - "StudyTrace.xcodeproj/**"
+      - "Pods/**"
+      - "en.lproj/**"
+      - "ja.lproj/**"
+      - ".github/workflows/ios-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The app icon is an Icon Composer (.icon) file, which needs Xcode 26+.
+      - name: Select newest Xcode
+        run: |
+          XCODE=$(python3 - <<'PY'
+          import glob, re
+          apps = [a for a in glob.glob('/Applications/Xcode*.app') if 'beta' not in a.lower()]
+          def version(path):
+              return [int(n) for n in re.findall(r'\d+', path.split('/')[-1])] or [0]
+          print(sorted(apps, key=version)[-1] if apps else '')
+          PY
+          )
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          MAJOR=$(xcodebuild -version | head -1 | sed -E 's/Xcode ([0-9]+).*/\1/')
+          if [ "$MAJOR" -lt 26 ]; then
+            echo "::error::Xcode 26 or newer is required for the .icon app icon; found Xcode $MAJOR."
+            exit 1
+          fi
+
+      # Pods are committed, so no `pod install` is needed.
+      - name: Build app and unit tests
+        run: |
+          xcodebuild build-for-testing \
+            -workspace StudyTrace.xcworkspace \
+            -scheme StudyTrace \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            -quiet
+
+      - name: Run unit tests
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          for runtime, entries in sorted(devices.items(), reverse=True):
+              if "iOS" in runtime:
+                  for device in entries:
+                      if device["name"].startswith("iPhone"):
+                          print(device["udid"]); sys.exit(0)
+          sys.exit("no iPhone simulator available")')
+          xcodebuild test-without-building \
+            -workspace StudyTrace.xcworkspace \
+            -scheme StudyTrace \
+            -destination "id=$UDID" \
+            -derivedDataPath build \
+            -only-testing:StudyTraceTests \
+            CODE_SIGNING_ALLOWED=NO
