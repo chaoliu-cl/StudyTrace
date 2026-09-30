@@ -3,6 +3,7 @@
 // the deployed server; run with `node test/smoke.test.js`.
 
 import assert from 'node:assert';
+import zlib from 'node:zlib';
 import { newDb } from 'pg-mem';
 import * as db from '../src/db.js';
 
@@ -67,6 +68,33 @@ async function postWithoutContentType(path, body) {
   let json;
   try { json = JSON.parse(text); } catch { json = text; }
   return { status: res.status, json };
+}
+
+// Reads a ZIP (stored/deflated entries) into Map<name, Buffer> via its
+// central directory, to check the study export.
+function readZip(buffer) {
+  const entries = new Map();
+  const end = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  assert.ok(end >= 0, 'zip end record present');
+  const count = buffer.readUInt16LE(end + 10);
+  let at = buffer.readUInt32LE(end + 16);
+  for (let i = 0; i < count; i += 1) {
+    assert.strictEqual(buffer.readUInt32LE(at), 0x02014b50, 'central directory record');
+    const method = buffer.readUInt16LE(at + 10);
+    const compressedSize = buffer.readUInt32LE(at + 20);
+    const nameLength = buffer.readUInt16LE(at + 28);
+    const extraLength = buffer.readUInt16LE(at + 30);
+    const commentLength = buffer.readUInt16LE(at + 32);
+    const localOffset = buffer.readUInt32LE(at + 42);
+    const name = buffer.toString('utf8', at + 46, at + 46 + nameLength);
+    const localNameLength = buffer.readUInt16LE(localOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    const raw = buffer.subarray(dataStart, dataStart + compressedSize);
+    entries.set(name, method === 8 ? zlib.inflateRawSync(raw) : raw);
+    at += 46 + nameLength + extraLength + commentLength;
+  }
+  return entries;
 }
 
 const form = (obj) =>
@@ -881,6 +909,253 @@ try {
   const qRow = quality.json.rows.find((row) => row.device_id === 'dev-health');
   assert.ok(qRow.local_date && qRow.timezone, 'survey quality rows include local date and zone');
   console.log('✓ participant health reports heartbeat, gaps, compliance, and telemetry loss');
+
+  // 32. Participant-confirmed Battery rows are stored as-is (no server OCR).
+  const confirmedBattery = await request('POST', `${apiBase}/usage-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-shots',
+      timestamp: 9100,
+      upload_id: 'battery-confirmed-1',
+      screenshot_kind: 'battery',
+      screenshot_base64: tinyPngBase64,
+      usage_window: 'last_24_hours',
+      captured_at: Date.UTC(2026, 8, 29, 21, 5),
+      device_ocr_text: 'BATTERY USAGE BY APP\nInstagram\n1h 12m\n21%',
+      participant_edited: true,
+      confirmed_rows: [
+        { app_name: 'Instagram', screen_time_seconds: 4320, battery_percent: 21 },
+        { app_name: 'Messages', screen_time_seconds: 600, battery_percent: 999 },
+        { app_name: '   ', screen_time_seconds: 60 },
+      ],
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(confirmedBattery.status, 201, 'confirmed Battery upload stored');
+  assert.strictEqual(confirmedBattery.json.feedback.needs_review, false, 'confirmed rows need no review');
+  assert.strictEqual(confirmedBattery.json.feedback.app_rows_detected, 2, 'blank app names dropped');
+  const confirmedExport = await request('GET', `${apiBase}/export/battery_usage_apps?format=json&device_id=dev-shots`, { headers: researcherAuth });
+  const insta = confirmedExport.json.rows.find((row) => row.data.app_name === 'Instagram');
+  assert.strictEqual(insta.data.extraction_method, 'participant_confirmed', 'confirmed rows marked as such');
+  assert.strictEqual(insta.data.usage_window, 'last_24_hours', 'usage window stored');
+  assert.strictEqual(insta.data.participant_edited, true, 'edit flag stored');
+  assert.ok(insta.data.captured_at.startsWith('2026-09-29'), 'capture time stored');
+  const messages = confirmedExport.json.rows.find((row) => row.data.app_name === 'Messages');
+  assert.strictEqual(messages.data.battery_percent, null, 'out-of-range percent rejected');
+  console.log('✓ participant-confirmed Battery rows are stored without server OCR');
+
+  // 33. Japanese Battery screenshots parse on the server fallback path.
+  const jaBattery = await request('POST', `${apiBase}/battery-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-ja',
+      timestamp: 9200,
+      screenshot_base64: tinyPngBase64,
+      battery_usage_ocr_text: ['アプリごとのバッテリー使用状況', '写真', '1時間5分', '12％', 'LINE', '45分', '8%', 'Maps', '1 hour 5 min', '2%'].join('\n'),
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(jaBattery.status, 201, 'Japanese Battery upload stored');
+  const jaExport = await request('GET', `${apiBase}/export/battery_usage_apps?format=json&device_id=dev-ja`, { headers: researcherAuth });
+  const photos = jaExport.json.rows.find((row) => row.data.app_name === '写真');
+  assert.ok(photos, 'Japanese app name kept');
+  assert.strictEqual(photos.data.screen_time_seconds, 3900, 'Japanese hours+minutes parsed');
+  assert.strictEqual(photos.data.battery_percent, 12, 'full-width percent parsed');
+  assert.strictEqual(jaExport.json.rows.find((row) => row.data.app_name === 'Maps').data.screen_time_seconds, 3900, 'spelled-out hour and minutes parsed');
+  assert.ok(!jaExport.json.rows.some((row) => row.data.app_name === 'アプリごとのバッテリー使用状況'), 'Japanese heading not parsed as an app');
+  console.log('✓ Japanese Battery screenshots parse');
+
+  // 34. Screen Time "See All Activity" screenshots: schedule, confirmed, OCR.
+  const activitySave = await request('PUT', `${apiBase}/screen-time-activity-schedule`, {
+    body: JSON.stringify({ mode: 'fixed', times: '10:00' }),
+    headers: researcherAuth,
+  });
+  assert.strictEqual(activitySave.status, 200, 'activity schedule saved');
+  assert.strictEqual(activitySave.json.esm_schedule[0].studytrace_prompt_type, 'screen_time_activity_screenshot', 'activity prompt type');
+  const activityQuestion = activitySave.json.esm_schedule[0].esms[0];
+  assert.strictEqual((activityQuestion.esm || activityQuestion).esm_trigger, 'screen_time_activity_screenshot', 'default activity question');
+  const participantConfig = await request('GET', `${studyPath}/esm/config`);
+  assert.ok(participantConfig.json.some((item) => item.studytrace_prompt_type === 'screen_time_activity_screenshot'), 'phones receive the activity schedule');
+  const esmOnly = await request('GET', `${apiBase}/esm-schedule`, { headers: researcherAuth });
+  assert.ok(esmOnly.json.esm_schedule.every((item) => item.studytrace_prompt_type === 'esm_survey'), 'ESM schedule excludes screenshot prompts');
+
+  const confirmedActivity = await request('POST', `${apiBase}/usage-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-shots',
+      timestamp: 9300,
+      screenshot_kind: 'screen_time_activity',
+      screenshot_base64: tinyPngBase64,
+      activity_date: '2026-09-28',
+      confirmed_rows: [{ app_name: 'Safari', screen_time_seconds: 1800 }],
+      summary: { total_screen_time_seconds: 16320, pickups: 87, notifications: 142 },
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(confirmedActivity.status, 201, 'activity screenshot stored');
+  assert.strictEqual(confirmedActivity.json.feedback.needs_review, false, 'confirmed activity needs no review');
+  const ocrActivity = await request('POST', `${apiBase}/usage-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-shots',
+      timestamp: 9400,
+      screenshot_kind: 'screen_time_activity',
+      screenshot_base64: tinyPngBase64,
+      battery_usage_ocr_text: [
+        '9:41', 'Screen Time', 'Yesterday', '4h 32m', 'MOST USED', 'Instagram', '1h 10m', 'YouTube', '48m',
+        'PICKUPS', 'Total Pickups', '87', 'NOTIFICATIONS', 'Total Notifications', '142',
+      ].join('\n'),
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(ocrActivity.status, 201, 'OCR activity screenshot stored');
+  const activityRows = await request('GET', `${apiBase}/dashboard/screen-time-activity`, { headers: researcherAuth });
+  const summaries = activityRows.json.rows.filter((row) => row.row_type === 'summary' && row.device_id === 'dev-shots');
+  const confirmedSummary = summaries.find((row) => row.activity_date === '2026-09-28');
+  assert.strictEqual(confirmedSummary.pickups, 87, 'confirmed pickups stored');
+  assert.strictEqual(confirmedSummary.extraction_method, 'participant_confirmed', 'confirmed activity marked');
+  const ocrSummary = summaries.find((row) => row.extraction_method === 'provided_text');
+  assert.strictEqual(ocrSummary.total_screen_time_seconds, 16320, 'OCR total screen time parsed (clock ignored)');
+  assert.strictEqual(ocrSummary.pickups, 87, 'OCR pickups parsed');
+  assert.strictEqual(ocrSummary.notifications, 142, 'OCR notifications parsed');
+  assert.ok(activityRows.json.rows.some((row) => row.row_type === 'app' && row.app_name === 'YouTube' && row.screen_time_seconds === 2880), 'OCR most-used apps parsed');
+  const batteryAfterActivity = await request('GET', `${apiBase}/export/battery_usage_apps?format=json&device_id=dev-shots`, { headers: researcherAuth });
+  assert.ok(!batteryAfterActivity.json.rows.some((row) => row.data.app_name === 'YouTube'), 'activity screenshots are not parsed as Battery screenshots');
+  const activityCsv = await request('GET', `${apiBase}/export/screen_time_activity?format=csv`, { headers: researcherAuth });
+  assert.ok(activityCsv.json.split('\r\n')[0].includes('pickups'), 'screen_time_activity CSV export');
+  console.log('✓ Screen Time activity screenshots: schedule, confirmed values, and OCR parsing');
+
+  // 35. Phone use from lock/unlock events, split at local midnight.
+  await request('POST', `${apiBase}/sensors/device_state/data`, {
+    body: JSON.stringify({ device_id: 'dev-use', rows: [{ timestamp: Date.UTC(2026, 0, 15, 12), timezone: 'America/New_York' }] }),
+    headers: jsonAuth,
+  });
+  const minute = 60000;
+  await request('POST', `${apiBase}/sensors/plugin_device_usage/data`, {
+    body: JSON.stringify({ device_id: 'dev-use', rows: [
+      // Unlock 23:50 New York, lock 00:20: a 30-minute session across midnight.
+      { timestamp: Date.UTC(2026, 0, 16, 4, 50), elapsed_device_on: 0, elapsed_device_off: 60 * minute },
+      { timestamp: Date.UTC(2026, 0, 16, 5, 20), elapsed_device_on: 30 * minute, elapsed_device_off: 0 },
+      // Unlock 08:00, lock 30 s later: a short session.
+      { timestamp: Date.UTC(2026, 0, 16, 13, 0), elapsed_device_on: 0, elapsed_device_off: 460 * minute },
+      { timestamp: Date.UTC(2026, 0, 16, 13, 0, 30), elapsed_device_on: 30000, elapsed_device_off: 0 },
+      // Stale reading after the app was not running: not a real session.
+      { timestamp: Date.UTC(2026, 0, 16, 23, 0), elapsed_device_on: 10 * 60 * minute, elapsed_device_off: 0 },
+    ] }),
+    headers: jsonAuth,
+  });
+  await request('POST', `${apiBase}/sensors/android_screen_events/data`, {
+    body: JSON.stringify({ device_id: 'dev-android', rows: [
+      { timestamp: Date.UTC(2026, 0, 16, 15, 0), event: 'screen_on', timezone: 'UTC' },
+      { timestamp: Date.UTC(2026, 0, 16, 15, 0, 5), event: 'unlock', timezone: 'UTC' },
+      { timestamp: Date.UTC(2026, 0, 16, 15, 5, 5), event: 'lock', timezone: 'UTC' },
+    ] }),
+    headers: jsonAuth,
+  });
+  const phoneUse = await request('GET', `${apiBase}/dashboard/phone-use-daily?limit=1000`, { headers: researcherAuth });
+  assert.strictEqual(phoneUse.status, 200, 'phone use dashboard ok');
+  const jan15 = phoneUse.json.rows.find((row) => row.device_id === 'dev-use' && row.date === '2026-01-15');
+  const jan16 = phoneUse.json.rows.find((row) => row.device_id === 'dev-use' && row.date === '2026-01-16');
+  assert.strictEqual(jan15.pickups, 1, 'late-evening pickup on its local day');
+  assert.strictEqual(jan15.total_use_seconds, 600, 'use before midnight counted on the first day');
+  assert.strictEqual(jan15.session_count, 1, 'session counted on the day it started');
+  assert.strictEqual(jan16.total_use_seconds, 1230, 'use after midnight plus the short session');
+  assert.strictEqual(jan16.night_use_seconds, 1200, 'night use = 00:00-00:20 local');
+  assert.strictEqual(jan16.session_count, 1, 'stale 10-hour reading excluded');
+  assert.strictEqual(jan16.short_session_share, 1, 'short session share');
+  assert.strictEqual(jan16.timezone, 'America/New_York', 'local zone reported');
+  const androidDay = phoneUse.json.rows.find((row) => row.device_id === 'dev-android');
+  assert.strictEqual(androidDay.platform, 'android', 'Android platform');
+  assert.strictEqual(androidDay.pickups, 1, 'Android unlock counted once (screen_on ignored when keyguard events exist)');
+  assert.strictEqual(androidDay.total_use_seconds, 300, 'Android unlock-to-lock session');
+  const phoneUseCsv = await request('GET', `${apiBase}/export/phone_use_daily?format=csv`, { headers: researcherAuth });
+  assert.ok(phoneUseCsv.json.split('\r\n')[0].includes('night_use_seconds'), 'phone_use_daily CSV export');
+  console.log('✓ phone use (pickups, sessions, night use) derived from lock/unlock events');
+
+  // 36. Survey status: dismissed and expired prompts are labelled and counted.
+  const statusBase = Date.now() - 3600000;
+  await post(`${studyPath}/esms/insert`, form({
+    device_id: 'dev-status',
+    data: JSON.stringify([
+      { timestamp: statusBase, esm_trigger: 'stress_now', esm_json: JSON.stringify({ esm_type: 4 }), esm_user_answer: '', esm_status: 1, double_esm_user_answer_timestamp: statusBase + 5000 },
+      { timestamp: statusBase + 1, esm_trigger: 'stress_now', esm_json: JSON.stringify({ esm_type: 4 }), esm_user_answer: '', esm_status: 3, double_esm_user_answer_timestamp: statusBase + 6000 },
+      { timestamp: statusBase + 2, esm_trigger: 'stress_now', esm_json: JSON.stringify({ esm_type: 4 }), esm_user_answer: '3', esm_status: 2, double_esm_user_answer_timestamp: statusBase + 7000 },
+    ]),
+  }), formHeaders);
+  const statusQuality = await request('GET', `${apiBase}/dashboard/survey-quality?limit=1000`, { headers: researcherAuth });
+  const statusRows = statusQuality.json.rows.filter((row) => row.device_id === 'dev-status');
+  assert.deepStrictEqual(statusRows.map((row) => row.status_label).sort(), ['answered', 'dismissed', 'expired'], 'status labels');
+  assert.ok(statusRows.find((row) => row.status_label === 'dismissed').quality_flags.includes('dismissed'), 'dismissed flag');
+  const statusHealth = await request('GET', `${apiBase}/dashboard/participant-health`, { headers: researcherAuth });
+  const statusDevice = statusHealth.json.rows.find((row) => row.device_id === 'dev-status');
+  assert.strictEqual(statusDevice.surveys_dismissed_7d, 1, 'dismissed surveys counted');
+  assert.strictEqual(statusDevice.surveys_expired_7d, 1, 'expired surveys counted');
+  const templatesRes = await fetch(`${base}/assets/survey-templates.json`);
+  const templateJson = await templatesRes.json();
+  assert.ok(templateJson.templates.every((template) => template.source && template.questions.every((q) => Number.isInteger(q.esm_type) && q.esm_trigger)), 'survey templates are well-formed');
+  const templateSave = await request('PUT', `${apiBase}/esm-schedule`, {
+    body: JSON.stringify({ mode: 'fixed', times: '08:00', esms: templateJson.templates.flatMap((template) => template.questions) }),
+    headers: researcherAuth,
+  });
+  assert.strictEqual(templateSave.status, 200, 'all templates are accepted by the schedule validator');
+  console.log('✓ survey status labels, dismissal/expiry counts, and question templates');
+
+  // 37. Telemetry loss counts gaps across client_events AND device_state
+  //     (one shared counter), and Android devices get Android-specific checks.
+  await request('POST', `${apiBase}/sensors/client_events/data`, {
+    body: JSON.stringify({ device_id: 'dev-seq', rows: [
+      { timestamp: Date.now() - 60000, seq: 1, event_id: 's1', event_name: 'app_launch' },
+      { timestamp: Date.now() - 30000, seq: 3, event_id: 's3', event_name: 'heartbeat' },
+    ] }),
+    headers: jsonAuth,
+  });
+  await request('POST', `${apiBase}/sensors/device_state/data`, {
+    body: JSON.stringify({ device_id: 'dev-seq', rows: [
+      { timestamp: Date.now() - 45000, seq: 2, event_id: 's2', platform: 'android', usage_access: 'denied', timezone: 'UTC' },
+    ] }),
+    headers: jsonAuth,
+  });
+  await request('POST', `${apiBase}/sensors/android_app_usage/data`, {
+    body: JSON.stringify({ device_id: 'dev-seq', rows: [
+      { timestamp: Date.UTC(2026, 0, 16), date: '2026-01-16', timezone: 'UTC', package_name: 'com.example.chat', app_label: 'Chat', foreground_seconds: 1234, platform: 'android', construct: 'foreground_time', dedupe_key: 'android_usage:2026-01-16:com.example.chat' },
+    ] }),
+    headers: jsonAuth,
+  });
+  const seqHealth = await request('GET', `${apiBase}/dashboard/participant-health`, { headers: researcherAuth });
+  const seqRow = seqHealth.json.rows.find((row) => row.device_id === 'dev-seq');
+  assert.strictEqual(seqRow.telemetry_missing_7d, 0, 'device_state seq fills the client_events gap');
+  assert.strictEqual(seqRow.platform, 'android', 'platform from device state');
+  assert.ok(!seqRow.notes.includes('Battery screenshots'), 'Android is not asked for Battery screenshots');
+  assert.ok(seqRow.notes.includes('usage access not granted'), 'Android usage access checked');
+  assert.strictEqual(seqRow.android_app_usage_rows, 1, 'Android app usage rows counted');
+  const combined = await request('GET', `${apiBase}/export/app_usage_combined?format=json`, { headers: researcherAuth });
+  const constructs = new Set(combined.json.rows.map((row) => row.data.construct));
+  assert.ok(constructs.has('foreground_time') && constructs.has('battery_on_screen_time') && constructs.has('screen_time_app_total'), 'combined usage covers all three constructs');
+  const chat = combined.json.rows.find((row) => row.data.app_name === 'Chat');
+  assert.strictEqual(chat.data.seconds, 1234, 'Android foreground seconds');
+  assert.strictEqual(chat.data.usage_window, 'day', 'Android window');
+  console.log('✓ seq gaps span both telemetry tables; Android health checks; combined app usage');
+
+  // 38. Whole-study ZIP export with codebook.
+  const zipRes = await fetch(`${base}${apiBase}/export.zip`, { headers: { 'x-researcher-password': researcherAuth['x-researcher-password'] } });
+  assert.strictEqual(zipRes.status, 200, 'zip export ok');
+  assert.strictEqual(zipRes.headers.get('content-type'), 'application/zip', 'zip content type');
+  const zipBytes = Buffer.from(await zipRes.arrayBuffer());
+  const zipEntries = readZip(zipBytes);
+  for (const name of ['README.txt', 'codebook.csv', 'devices.csv', 'withdrawals.csv', 'raw/locations.csv', 'raw/plugin_ios_esm.csv',
+    'battery_usage_apps.csv', 'screen_time_activity.csv', 'phone_use_daily.csv', 'app_usage_combined.csv', 'participant_health.csv']) {
+    assert.ok(zipEntries.has(name), `zip contains ${name}`);
+  }
+  assert.ok(!zipEntries.has('raw/battery_usage_apps.csv'), 'derived tables are not duplicated under raw/');
+  const esmCsv = zipEntries.get('raw/plugin_ios_esm.csv').toString('utf8');
+  assert.ok(esmCsv.includes('image:media/plugin_ios_esm-'), 'photo answers replaced by image references');
+  assert.ok(!esmCsv.includes('iVBORw0KGgo'), 'no base64 images inside CSVs');
+  const codebookCsv = zipEntries.get('codebook.csv').toString('utf8');
+  assert.ok(/phone_use_daily\.csv,night_use_seconds,/.test(codebookCsv), 'codebook documents derived columns');
+  assert.ok(/raw\/locations\.csv,double_latitude,Latitude/.test(codebookCsv), 'codebook documents raw columns');
+  const withImages = readZip(Buffer.from(await (await fetch(`${base}${apiBase}/export.zip?images=1`, {
+    headers: { 'x-researcher-password': researcherAuth['x-researcher-password'] },
+  })).arrayBuffer()));
+  assert.ok([...withImages.keys()].some((name) => name.startsWith('media/') && name.endsWith('.png')), 'images included on request');
+  const zipAsParticipant = await fetch(`${base}${apiBase}/export.zip`, { headers: { Authorization: 'Bearer secret' } });
+  assert.strictEqual(zipAsParticipant.status, 403, 'participant password cannot download the study export');
+  console.log('✓ whole-study ZIP export with codebook, README, and image references');
 
   // 28. Repeated failed logins are throttled (run last: it blocks this IP).
   let limited = null;

@@ -148,6 +148,26 @@ async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screen
   await hydrateAuthenticatedImages(screenshotTable, password);
 }
 
+async function loadScreenTimeActivity({ studyId, password, table, message }) {
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/screen-time-activity?limit=200`, {
+    headers: { 'x-researcher-password': password },
+  });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load Screen Time activity screenshots.', true);
+  }
+  renderTable(table, [
+    { label: 'Day', render: (row) => escapeHtml(row.activity_date || '—') },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Row', render: (row) => escapeHtml(row.row_type === 'summary' ? 'Daily total' : row.app_name || '—') },
+    { label: 'Screen time', render: (row) => formatDuration(row.row_type === 'summary' ? row.total_screen_time_seconds : row.screen_time_seconds) },
+    { label: 'Pickups', render: (row) => row.pickups ?? '—' },
+    { label: 'Notifications', render: (row) => row.notifications ?? '—' },
+    { label: 'Source', render: (row) => escapeHtml(row.extraction_method === 'participant_confirmed' ? (row.participant_edited ? 'Participant (edited)' : 'Participant') : 'Server OCR') },
+    { label: 'Needs review', render: (row) => row.needs_review ? 'Yes' : 'No' },
+  ], payload.rows || []);
+}
+
 async function loadParticipantHealth({ studyId, password, table, message }) {
   const headers = { 'x-researcher-password': password };
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/participant-health`, { headers });
@@ -173,6 +193,27 @@ async function loadParticipantHealth({ studyId, password, table, message }) {
     { label: 'Battery screenshots', render: (row) => String(row.battery_screenshot_rows || 0) },
     { label: 'Upload failures 24h', render: (row) => String(row.upload_failures_24h || 0) },
     { label: 'Notes', render: (row) => escapeHtml(row.notes || '—') },
+  ], payload.rows || []);
+}
+
+async function loadPhoneUseDaily({ studyId, password, table, message }) {
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/phone-use-daily?limit=200`, {
+    headers: { 'x-researcher-password': password },
+  });
+  const payload = await readJson(res);
+  if (!res.ok) {
+    return setMessage(message, payload.error || 'Could not load daily phone use.', true);
+  }
+  renderTable(table, [
+    { label: 'Date', render: (row) => escapeHtml(row.date || '—') },
+    { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
+    { label: 'Platform', render: (row) => escapeHtml(row.platform || '—') },
+    { label: 'Pickups', render: (row) => escapeHtml(row.pickups ?? 0) },
+    { label: 'Use', render: (row) => formatDuration(row.total_use_seconds) },
+    { label: 'Sessions', render: (row) => escapeHtml(row.session_count ?? 0) },
+    { label: 'Median session', render: (row) => row.median_session_seconds === '' ? '—' : `${escapeHtml(row.median_session_seconds)} s` },
+    { label: 'Under 1 min', render: (row) => row.short_session_share === '' ? '—' : `${Math.round(Number(row.short_session_share) * 100)}%` },
+    { label: 'Night use', render: (row) => formatDuration(row.night_use_seconds) },
   ], payload.rows || []);
 }
 
@@ -243,8 +284,29 @@ const defaultBatteryScreenshotQuestions = [
   },
 ];
 
+const defaultScreenTimeActivityQuestions = [
+  {
+    esm_type: 14,
+    esm_title: 'Screen Time activity screenshot',
+    esm_instructions: 'Open iPhone Settings > Screen Time > See All App & Website Activity, choose Day, tap yesterday, and take a screenshot showing screen time, pickups, and notifications. Then upload that screenshot here.',
+    esm_trigger: 'screen_time_activity_screenshot',
+    esm_submit: 'Submit',
+    esm_na: true,
+    studytrace_required: true,
+    studytrace_quality_check: 'participant_confirmed',
+  },
+];
+
+const promptDefaults = {
+  esm_survey: { times: '09:30, 17:15', title: 'StudyTrace survey available', body: 'Please complete your scheduled study survey.' },
+  battery_usage_screenshot: { times: '20:30', title: 'StudyTrace Battery screenshot', body: 'Please upload your iOS Battery usage screenshot.' },
+  screen_time_activity_screenshot: { times: '10:00', title: 'StudyTrace Screen Time screenshot', body: "Please upload yesterday's Screen Time activity screenshot." },
+};
+
 function defaultQuestionsForPrompt(promptType) {
-  return promptType === 'esm_survey' ? defaultEsmSurveyQuestions : defaultBatteryScreenshotQuestions;
+  if (promptType === 'esm_survey') return defaultEsmSurveyQuestions;
+  if (promptType === 'screen_time_activity_screenshot') return defaultScreenTimeActivityQuestions;
+  return defaultBatteryScreenshotQuestions;
 }
 
 function unwrapEsmQuestions(esms, promptType) {
@@ -257,6 +319,7 @@ function findScheduleForPrompt(schedule, promptType) {
   return schedule.find((item) => item.studytrace_prompt_type === promptType) ||
     schedule.find((item) => promptType === 'battery_usage_screenshot' && String(item.schedule_id || '').includes('battery_screenshot')) ||
     schedule.find((item) => promptType === 'esm_survey' && String(item.schedule_id || '').includes('esm_survey')) ||
+    schedule.find((item) => promptType === 'screen_time_activity_screenshot' && String(item.schedule_id || '').includes('screen_time_activity')) ||
     null;
 }
 
@@ -265,11 +328,11 @@ function fillScheduleForm(form, schedule, promptType) {
   form.elements.mode.value = item?.studytrace_delivery_mode || (Number(item?.randomize || 0) > 0 ? 'random' : 'fixed');
   form.elements.times.value = Array.isArray(item?.times) && item.times.length
     ? item.times.join(', ')
-    : (Array.isArray(item?.hours) ? item.hours.map((hour) => `${String(hour).padStart(2, '0')}:00`).join(', ') : (promptType === 'esm_survey' ? '09:30, 17:15' : '20:30'));
+    : (Array.isArray(item?.hours) ? item.hours.map((hour) => `${String(hour).padStart(2, '0')}:00`).join(', ') : promptDefaults[promptType].times);
   form.elements.randomize_minutes.value = String(item?.randomize || 30);
   form.elements.expiration_minutes.value = String(item?.expiration || 120);
-  form.elements.notification_title.value = item?.notification_title || (promptType === 'esm_survey' ? 'StudyTrace survey available' : 'StudyTrace Battery screenshot');
-  form.elements.notification_body.value = item?.notification_body || (promptType === 'esm_survey' ? 'Please complete your scheduled study survey.' : 'Please upload your iOS Battery usage screenshot.');
+  form.elements.notification_title.value = item?.notification_title || promptDefaults[promptType].title;
+  form.elements.notification_body.value = item?.notification_body || promptDefaults[promptType].body;
   form.elements.start_date.value = item?.start_date || '';
   form.elements.end_date.value = item?.end_date || '';
   if (form.elements.esms_json) {
@@ -339,6 +402,48 @@ async function hydrateAuthenticatedImages(container, password) {
   }));
 }
 
+// Optional question templates (assets/survey-templates.json), appended to
+// the ESM survey question JSON on request.
+async function setupTemplatePicker({ select, button, source, textarea, message }) {
+  let templates = [];
+  try {
+    const res = await fetch('/assets/survey-templates.json');
+    templates = (await res.json()).templates || [];
+  } catch {
+    select.disabled = true;
+    button.disabled = true;
+    return;
+  }
+  for (const template of templates) {
+    const option = document.createElement('option');
+    option.value = template.id;
+    option.textContent = `${template.label} (${template.questions.length} question${template.questions.length === 1 ? '' : 's'})`;
+    select.appendChild(option);
+  }
+  const defaultNote = source.textContent;
+  select.addEventListener('change', () => {
+    const template = templates.find((item) => item.id === select.value);
+    source.textContent = template ? `Source: ${template.source}` : defaultNote;
+  });
+  button.addEventListener('click', () => {
+    const template = templates.find((item) => item.id === select.value);
+    if (!template) return setMessage(message, 'Choose a question template first.', true);
+    let questions = [];
+    try {
+      questions = textarea.value.trim() ? JSON.parse(textarea.value) : [];
+      if (!Array.isArray(questions)) throw new Error('not an array');
+    } catch {
+      return setMessage(message, 'Fix the survey questions JSON (it must be an array) before adding a template.', true);
+    }
+    const triggers = new Set(questions.map((item) => (item?.esm || item)?.esm_trigger));
+    const added = template.questions.filter((item) => !triggers.has(item.esm_trigger));
+    textarea.value = JSON.stringify([...questions, ...added], null, 2);
+    setMessage(message, added.length
+      ? `Added ${added.length} question${added.length === 1 ? '' : 's'} from "${template.label}". Save the schedule to send it to participants.`
+      : `"${template.label}" is already in this survey.`);
+  });
+}
+
 function initResearcher() {
   const form = document.querySelector('#researcher-auth');
   const message = document.querySelector('#researcher-auth-message');
@@ -351,12 +456,16 @@ function initResearcher() {
   const esmResponses = document.querySelector('#researcher-esm-responses');
   const surveyQuality = document.querySelector('#researcher-survey-quality');
   const locationDailySummary = document.querySelector('#researcher-location-daily-summary');
+  const phoneUseDaily = document.querySelector('#researcher-phone-use-daily');
   const batteryUsageCleaned = document.querySelector('#researcher-battery-usage-cleaned');
   const batteryUsageScreenshots = document.querySelector('#researcher-battery-usage-screenshots');
   const esmScheduleForm = document.querySelector('#researcher-esm-schedule');
   const esmScheduleResult = document.querySelector('#researcher-esm-schedule-result');
   const batteryScheduleForm = document.querySelector('#researcher-battery-schedule');
   const batteryScheduleResult = document.querySelector('#researcher-battery-schedule-result');
+  const activityScheduleForm = document.querySelector('#researcher-activity-schedule');
+  const activityScheduleResult = document.querySelector('#researcher-activity-schedule-result');
+  const screenTimeActivity = document.querySelector('#researcher-screen-time-activity');
   let currentStudyId = '';
   let currentPassword = '';
 
@@ -431,6 +540,16 @@ function initResearcher() {
       endpoint: 'battery-screenshot-schedule',
       message,
     });
+    await loadScheduleSection({
+      studyId,
+      password,
+      form: activityScheduleForm,
+      result: activityScheduleResult,
+      promptType: 'screen_time_activity_screenshot',
+      endpoint: 'screen-time-activity-schedule',
+      message,
+    });
+    await loadScreenTimeActivity({ studyId, password, table: screenTimeActivity, message });
     await loadBatteryUsageDiagnostics({
       studyId,
       password,
@@ -442,7 +561,16 @@ function initResearcher() {
     await loadParticipantHealth({ studyId, password, table: participantHealth, message });
     await loadSurveyQuality({ studyId, password, table: surveyQuality, message });
     await loadLocationDailySummary({ studyId, password, table: locationDailySummary, message });
+    await loadPhoneUseDaily({ studyId, password, table: phoneUseDaily, message });
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
+  });
+
+  setupTemplatePicker({
+    select: document.querySelector('#researcher-template-select'),
+    button: document.querySelector('#researcher-template-add'),
+    source: document.querySelector('#researcher-template-source'),
+    textarea: esmScheduleForm.elements.esms_json,
+    message,
   });
 
   esmScheduleForm.addEventListener('submit', async (event) => {
@@ -477,6 +605,49 @@ function initResearcher() {
       label: 'Battery screenshot',
       endpoint: 'battery-screenshot-schedule',
     });
+  });
+
+  activityScheduleForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!currentStudyId || !currentPassword) {
+      return setMessage(message, 'Load a study before saving the Screen Time screenshot schedule.', true);
+    }
+    await saveScheduleSection({
+      studyId: currentStudyId,
+      password: currentPassword,
+      form: activityScheduleForm,
+      result: activityScheduleResult,
+      message,
+      promptType: 'screen_time_activity_screenshot',
+      label: 'Screen Time screenshot',
+      endpoint: 'screen-time-activity-schedule',
+    });
+  });
+
+  document.querySelector('#researcher-export-zip').addEventListener('click', async (event) => {
+    if (!currentStudyId || !currentPassword) {
+      return setMessage(message, 'Load a study before downloading the export.', true);
+    }
+    const button = event.currentTarget;
+    const images = document.querySelector('#researcher-export-images').checked;
+    button.disabled = true;
+    setMessage(message, 'Preparing the study export. Large studies can take a minute...');
+    try {
+      const url = await downloadUrl(
+        `/api/v1/studies/${encodeURIComponent(currentStudyId)}/export.zip${images ? '?images=1' : ''}`,
+        { 'x-researcher-password': currentPassword },
+      );
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${currentStudyId}-export.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage(message, 'Study export downloaded.');
+    } catch (error) {
+      setMessage(message, error.message, true);
+    } finally {
+      button.disabled = false;
+    }
   });
 
   document.addEventListener('click', async (event) => {

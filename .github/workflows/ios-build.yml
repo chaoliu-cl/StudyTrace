@@ -6,8 +6,6 @@ on:
       - "StudyTrace/**"
       - "StudyTraceTests/**"
       - "StudyTraceUITests/**"
-      - "StudyTraceMonitor/**"
-      - "StudyTraceReport/**"
       - "StudyTrace.xcodeproj/**"
       - "StudyTrace.xcworkspace/**"
       - "Pods/**"

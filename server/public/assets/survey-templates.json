@@ -1,0 +1,138 @@
+{
+  "note": "Optional question templates for StudyTrace ESM surveys, in AWARE ESM format. Nothing here is sent to participants until a researcher adds it to a schedule and saves. Wording is short-form and intended for momentary (EMA) or daily use; confirm instruments and wording with your IRB and cite the sources listed for each template.",
+  "templates": [
+    {
+      "id": "affect_circumplex",
+      "label": "Momentary affect (pleasantness + energy)",
+      "source": "Two-item valence/arousal ratings based on the circumplex model of affect (Russell, 1980).",
+      "questions": [
+        {
+          "esm_type": 4,
+          "esm_title": "Mood right now",
+          "esm_instructions": "How pleasant or unpleasant do you feel right now?",
+          "esm_likert_max": 7,
+          "esm_likert_step": 1,
+          "esm_likert_min_label": "Very unpleasant",
+          "esm_likert_max_label": "Very pleasant",
+          "esm_trigger": "affect_valence",
+          "esm_submit": "Next",
+          "esm_na": false
+        },
+        {
+          "esm_type": 4,
+          "esm_title": "Energy right now",
+          "esm_instructions": "How calm or energized do you feel right now?",
+          "esm_likert_max": 7,
+          "esm_likert_step": 1,
+          "esm_likert_min_label": "Very calm",
+          "esm_likert_max_label": "Very energized",
+          "esm_trigger": "affect_arousal",
+          "esm_submit": "Next",
+          "esm_na": false
+        }
+      ]
+    },
+    {
+      "id": "stress_now",
+      "label": "Momentary stress (single item)",
+      "source": "Single-item momentary stress rating, as commonly used in EMA studies.",
+      "questions": [
+        {
+          "esm_type": 4,
+          "esm_title": "Stress right now",
+          "esm_instructions": "How stressed do you feel right now?",
+          "esm_likert_max": 5,
+          "esm_likert_step": 1,
+          "esm_likert_min_label": "Not at all",
+          "esm_likert_max_label": "Extremely",
+          "esm_trigger": "stress_now",
+          "esm_submit": "Next",
+          "esm_na": false
+        }
+      ]
+    },
+    {
+      "id": "loneliness_now",
+      "label": "Momentary loneliness (single item)",
+      "source": "Single-item momentary loneliness rating. For a validated trait measure, consider the 3-item loneliness scale (Hughes et al., 2004) in a daily or baseline survey.",
+      "questions": [
+        {
+          "esm_type": 4,
+          "esm_title": "Loneliness right now",
+          "esm_instructions": "Right now, how lonely do you feel?",
+          "esm_likert_max": 5,
+          "esm_likert_step": 1,
+          "esm_likert_min_label": "Not at all",
+          "esm_likert_max_label": "Extremely",
+          "esm_trigger": "loneliness_now",
+          "esm_submit": "Next",
+          "esm_na": false
+        }
+      ]
+    },
+    {
+      "id": "screen_time_self_estimate",
+      "label": "Self-estimated phone use (yesterday)",
+      "source": "Self-estimate to compare with logged use (phone_use_daily, screen_time_activity), e.g. to study self-report bias (Parry et al., 2021).",
+      "questions": [
+        {
+          "esm_type": 9,
+          "esm_title": "Phone use yesterday",
+          "esm_instructions": "About how many hours in total did you spend using your phone yesterday? A best guess is fine.",
+          "esm_trigger": "screen_time_self_estimate_hours",
+          "esm_submit": "Next",
+          "esm_na": true
+        }
+      ]
+    },
+    {
+      "id": "morning_sleep_diary",
+      "label": "Morning sleep diary",
+      "source": "Items adapted from the Consensus Sleep Diary (Carney et al., 2012), plus phone use in bed. Schedule once each morning.",
+      "questions": [
+        {
+          "esm_type": 13,
+          "esm_title": "Bedtime",
+          "esm_instructions": "What time did you try to go to sleep last night?",
+          "esm_trigger": "sleep_try_time",
+          "esm_submit": "Next",
+          "esm_na": true
+        },
+        {
+          "esm_type": 9,
+          "esm_title": "Falling asleep",
+          "esm_instructions": "About how many minutes did it take you to fall asleep?",
+          "esm_trigger": "sleep_onset_latency_minutes",
+          "esm_submit": "Next",
+          "esm_na": true
+        },
+        {
+          "esm_type": 13,
+          "esm_title": "Wake time",
+          "esm_instructions": "What time was your final awakening this morning?",
+          "esm_trigger": "sleep_final_wake_time",
+          "esm_submit": "Next",
+          "esm_na": true
+        },
+        {
+          "esm_type": 2,
+          "esm_title": "Sleep quality",
+          "esm_instructions": "How would you rate the quality of your sleep last night?",
+          "esm_radios": ["Very poor", "Poor", "Fair", "Good", "Very good"],
+          "esm_trigger": "sleep_quality",
+          "esm_submit": "Next",
+          "esm_na": true
+        },
+        {
+          "esm_type": 2,
+          "esm_title": "Phone in bed",
+          "esm_instructions": "Did you use your phone in bed before falling asleep last night?",
+          "esm_radios": ["No", "Yes, less than 15 minutes", "Yes, 15 to 60 minutes", "Yes, more than an hour"],
+          "esm_trigger": "phone_use_in_bed",
+          "esm_submit": "Submit",
+          "esm_na": true
+        }
+      ]
+    }
+  ]
+}

@@ -292,13 +292,13 @@ extension StudyTraceUploadQueue: URLSessionDataDelegate {
     }
 }
 
-// MARK: - Battery screenshot uploads
+// MARK: - Usage screenshot uploads
 
-/// Single uploader for Battery usage screenshots, used by the Surveys and
-/// Dashboard screens. It tries a foreground upload first so the participant
-/// gets OCR feedback; if the network or server is unavailable, the screenshot
-/// is saved to the upload queue and sent automatically later.
-enum BatteryScreenshotUploader {
+/// Uploads a Battery or Screen Time screenshot together with the values the
+/// participant confirmed on the review screen. Tries a foreground upload
+/// first so the participant gets immediate feedback; if the network or
+/// server is unavailable, the upload is saved to the queue and sent later.
+enum UsageScreenshotUploader {
 
     struct Feedback {
         let appRowsDetected: Int
@@ -316,40 +316,71 @@ enum BatteryScreenshotUploader {
         case failed(title: String, message: String)
     }
 
-    static func upload(_ image: UIImage, completion: @escaping (Outcome) -> Void) {
+    static func upload(_ image: UIImage, submission: UsageScreenshotSubmission, completion: @escaping (Outcome) -> Void) {
         guard let context = StudyTraceTelemetry.studyContext() else {
             completion(.failed(title: "Study Not Configured",
-                               message: "Join a study before uploading a Battery screenshot."))
+                               message: "Join a study before uploading a screenshot."))
             return
         }
-        // Screenshots are PNGs; keep them lossless (sharper text for OCR)
-        // unless that makes the upload very large.
+        // Re-encoding drops the original file's metadata (location, device).
+        // Screenshots are PNGs; keep them lossless (sharper text) unless huge.
         guard let imageData = encodedScreenshot(image) else {
             completion(.failed(title: "Upload Failed",
                                message: "StudyTrace could not prepare the selected screenshot."))
             return
         }
         let uploadId = SHA256.hash(data: imageData).map { String(format: "%02x", $0) }.joined()
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "device_id": context.deviceId,
             "timestamp": Date().timeIntervalSince1970 * 1000,
             "upload_id": uploadId,
+            "screenshot_kind": submission.kind.rawValue,
             "screenshot_base64": imageData.base64EncodedString(),
-            "timezone": TimeZone.current.identifier
+            "timezone": TimeZone.current.identifier,
+            "device_ocr_text": submission.ocrText,
+            "participant_edited": submission.edited,
+            "confirmed_rows": submission.rows.map { row -> [String: Any] in
+                var item: [String: Any] = ["app_name": row.appName]
+                item["screen_time_seconds"] = jsonNumber(row.minutes.map { $0 * 60 })
+                item["battery_percent"] = jsonNumber(row.percent)
+                return item
+            }
         ]
-        guard let body = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
+        if let capturedAt = submission.capturedAt {
+            payload["captured_at"] = capturedAt.timeIntervalSince1970 * 1000
+        }
+        switch submission.kind {
+        case .battery:
+            payload["usage_window"] = submission.usageWindow
+        case .screenTimeActivity:
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyy-MM-dd"
+            payload["activity_date"] = formatter.string(from: submission.activityDate)
+            payload["summary"] = [
+                "total_screen_time_seconds": jsonNumber(submission.totalMinutes.map { $0 * 60 }),
+                "pickups": jsonNumber(submission.pickups),
+                "notifications": jsonNumber(submission.notifications)
+            ] as [String: Any]
+        }
+        guard JSONSerialization.isValidJSONObject(payload),
+              let body = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
             completion(.failed(title: "Upload Failed",
                                message: "StudyTrace could not prepare the selected screenshot."))
             return
         }
-        StudyTraceTelemetry.recordEvent("battery_screenshot_upload_started", metadata: [
-            "image_bytes": imageData.count
+        let kind = submission.kind.rawValue
+        StudyTraceTelemetry.recordEvent("usage_screenshot_upload_started", metadata: [
+            "kind": kind,
+            "image_bytes": imageData.count,
+            "rows": submission.rows.count,
+            "participant_edited": submission.edited
         ])
 
         var request = URLRequest(url: context.baseURL
             .appendingPathComponent("api/v1/studies")
             .appendingPathComponent(context.studyId)
-            .appendingPathComponent("battery-screenshots"))
+            .appendingPathComponent("usage-screenshots"))
         request.httpMethod = "POST"
         request.timeoutInterval = 60
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -361,23 +392,26 @@ enum BatteryScreenshotUploader {
             let outcome: Outcome
             if error == nil, (200..<300).contains(status) {
                 let feedback = parseFeedback(data)
-                StudyTraceTelemetry.recordEvent("battery_screenshot_upload_succeeded", metadata: [
+                StudyTraceTelemetry.recordEvent("usage_screenshot_upload_succeeded", metadata: [
+                    "kind": kind,
                     "http_status": status,
                     "app_rows_detected": feedback?.appRowsDetected ?? 0,
                     "needs_review": feedback?.needsReview ?? false
                 ])
                 outcome = .uploaded(feedback)
             } else if error != nil || status == 0 || status == 408 || status == 429 || status >= 500 {
-                StudyTraceUploadQueue.shared.enqueue(kind: "battery_screenshot", path: "battery-screenshots",
+                StudyTraceUploadQueue.shared.enqueue(kind: "usage_screenshot", path: "usage-screenshots",
                                                      body: body, id: uploadId)
-                StudyTraceTelemetry.recordEvent("battery_screenshot_upload_queued", metadata: [
+                StudyTraceTelemetry.recordEvent("usage_screenshot_upload_queued", metadata: [
+                    "kind": kind,
                     "http_status": status,
                     "transport_error": error?.localizedDescription ?? ""
                 ])
                 outcome = .queued
             } else {
                 // The response body is not logged: it can echo request data.
-                StudyTraceTelemetry.recordEvent("battery_screenshot_upload_failed", metadata: [
+                StudyTraceTelemetry.recordEvent("usage_screenshot_upload_failed", metadata: [
+                    "kind": kind,
                     "http_status": status
                 ])
                 outcome = .failed(title: "Upload Failed",
@@ -385,6 +419,12 @@ enum BatteryScreenshotUploader {
             }
             DispatchQueue.main.async { completion(outcome) }
         }.resume()
+    }
+
+    /// JSON null for a missing number.
+    private static func jsonNumber(_ value: Int?) -> Any {
+        if let value = value { return value }
+        return NSNull()
     }
 
     private static func encodedScreenshot(_ image: UIImage) -> Data? {

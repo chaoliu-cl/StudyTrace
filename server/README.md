@@ -116,31 +116,76 @@ that has not reported one yet falls back to the study's default time zone (set
 `timezone` in `POST /admin/studies`), then `DEFAULT_STUDY_TIMEZONE`, then UTC.
 `survey_quality` rows include `local_date` and `timezone` the same way.
 
-## Battery screenshot app-usage workflow
+## App-usage screenshots
 
-StudyTrace no longer depends on exporting Apple's Screen Time data from the
-device. Instead, studies can ask participants to upload an iOS Battery usage
-screenshot through an ESM photo question.
+Apple does not let apps export Screen Time, so studies ask participants to
+upload screenshots. Two kinds are supported, each with its own notification
+schedule in `/researcher/`:
 
-Participant workflow:
+| Kind | Screen | Export | Default |
+|------|--------|--------|---------|
+| Battery | Settings → Battery → View All Battery Usage | `battery_usage_apps` (per app: on-screen time and battery %) | on when a schedule is saved |
+| Screen Time activity | Settings → Screen Time → See All App & Website Activity, one day | `screen_time_activity` (daily total screen time, pickups, notifications, plus most-used apps) | off until a schedule is saved |
 
-1. The scheduled survey asks the participant to open **Settings → Battery → View
-   All Battery Usage**.
-2. The participant takes a screenshot of the app battery usage list.
-3. The participant uploads that screenshot as an in-app photo response.
-4. The server detects Battery screenshot photo rows, runs OCR, parses app names,
-   screen-time text, and battery percentages, then stores derived rows in
-   `battery_usage_apps`.
+Participant workflow on iPhone:
 
-The derived `battery_usage_apps` export includes: `id`, `study_id`,
-`device_id`, `timestamp`, `app_name`, `screen_time_seconds`,
-`screen_time_text`, `battery_percent`, `battery_percent_text`,
-`extraction_status`, `extraction_method`, `ocr_confidence`, `parse_notes`,
-`ocr_text`, `source_sensor`, `source_row_id`, `source_image_url`, and
-`created_at`.
+1. A scheduled notification opens a step-by-step guide to the right Settings
+   screen.
+2. The participant takes a screenshot and picks it in StudyTrace.
+3. The phone reads it with on-device OCR (English, plus Japanese on iOS 16+)
+   and shows an editable table: app names, minutes, battery %, the time range
+   (Last 24 Hours / Last 10 Days), or, for Screen Time, the day and totals.
+4. The participant confirms or corrects the values, and StudyTrace uploads
+   them together with the screenshot to `POST /api/v1/studies/{id}/usage-screenshots`.
+   The re-encoded image carries none of the original file's metadata; the
+   capture time is sent separately as `captured_at`.
 
-Retired app-usage exports are hidden from the dashboards. Current studies
-should use `battery_usage_apps`.
+Confirmed values are stored as-is with `extraction_method =
+participant_confirmed` and `participant_edited` set when the participant
+changed anything. Uploads without confirmed values (older app versions,
+other clients) fall back to server OCR with Tesseract; set `OCR_LANGUAGES`
+(e.g. `eng+jpn`) for non-English studies. The legacy
+`/battery-screenshots` routes still accept Battery uploads.
+
+Retired app-usage exports are hidden from the dashboards.
+
+## Derived exports
+
+All derived exports use the participant's local day (see time zones above)
+and are listed under **Sensor coverage** in `/researcher/`:
+
+| Export | Contents |
+|--------|----------|
+| `battery_usage_apps` | One row per app per Battery screenshot. |
+| `screen_time_activity` | Daily totals and most-used apps per Screen Time screenshot. |
+| `app_usage_combined` | App-level usage from every source with explicit `platform`, `construct` (`battery_on_screen_time`, `screen_time_app_total`, `foreground_time`), and `usage_window` columns. These constructs differ; filter before comparing. |
+| `phone_use_daily` | Per participant-day, from lock/unlock events (iOS `plugin_device_usage`, Android `android_screen_events`): pickups, total use, session count and median length, share of sessions under a minute, long sessions, night use (00:00–05:00 local), first/last use. On iOS these events are recorded only while StudyTrace runs; check `participant_health` for gaps. |
+| `location_daily_summary` | Daily mobility from GPS. |
+| `survey_quality` | Per answer: status (answered/dismissed/expired), latency, local date, flags. |
+| `participant_health` | Heartbeat, gaps, 7-day compliance, dismissed/expired surveys, telemetry loss, permissions, platform-specific checks. |
+
+### Whole-study export
+
+`GET /api/v1/studies/{id}/export.zip` (researcher password; add `?images=1`
+to include photo and screenshot images) or the **Download full study export**
+button returns one ZIP with:
+
+- `raw/<table>.csv` for every uploaded table (all rows, paged), with photo
+  answers replaced by `image:media/<file>` references;
+- every derived export above, plus `devices.csv` and `withdrawals.csv`;
+- `codebook.csv` describing every column of every file, and `README.txt`.
+
+Admins can use `GET /admin/studies/{id}/export.zip`. ZIP64 is not used, so a
+single export must stay under 4 GB.
+
+### Survey question templates
+
+The ESM schedule form offers optional templates from
+`public/assets/survey-templates.json`: momentary pleasantness and energy,
+stress, loneliness, a self-estimated phone-use item (to compare with logged
+use), and a morning sleep diary adapted from the Consensus Sleep Diary. Each
+lists its source. Nothing reaches participants until a researcher adds a
+template and saves the schedule; confirm instruments with your IRB.
 
 ## AWARE protocol front-end
 
@@ -227,6 +272,7 @@ On the service **Variables** tab:
 | `TRUST_PROXY_HOPS` | no      | Number of reverse-proxy hops in front of the server (default `1`, correct for Railway). Used to read the real client IP for login rate limiting. |
 | `AUTH_FAILURE_MAX` / `AUTH_FAILURE_WINDOW_MS` | no | Failed-login limit per IP (default 30 per 900000 ms). |
 | `DEFAULT_STUDY_TIMEZONE` | no | IANA time zone for local-day summaries when neither the phone nor the study has one (default `UTC`). |
+| `OCR_LANGUAGES` | no | Tesseract languages for server-side screenshot OCR, e.g. `eng+jpn` (default `eng`). Only used when a screenshot arrives without participant-confirmed values. |
 
 ### 4. Generate a public domain
 
@@ -431,6 +477,15 @@ the same suite on every pull request that touches the server
 ```bash
 npm test
 ```
+
+Preview the dashboards without a database (in-memory data, localhost only):
+
+```bash
+npm run preview
+```
+
+Then open `http://localhost:4173/researcher/` with study `demo` and researcher
+password `demo-researcher-password` (demo values from `scripts/dev-preview.mjs`).
 
 ## Security notes
 

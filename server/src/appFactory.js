@@ -36,13 +36,18 @@ import {
   getDeviceParticipant,
   recordWithdrawal,
   listWithdrawals,
+  listStudyDevices,
   rowsSince,
 } from './db.js';
+import { ZipWriter } from './zip.js';
+import { describeColumn } from './codebook.js';
 import {
   buildTimeZoneResolver,
   defaultTimeZoneForStudy,
   isValidTimeZone,
   localDateFor,
+  localMidnight,
+  nextDate,
 } from './localTime.js';
 import {
   isRateLimited,
@@ -59,6 +64,46 @@ import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 
 const BATTERY_USAGE_EXPORT_SENSOR = 'battery_usage_apps';
+const SCREEN_TIME_ACTIVITY_SENSOR = 'screen_time_activity';
+const PHONE_USE_DAILY_SENSOR = 'phone_use_daily';
+const APP_USAGE_COMBINED_SENSOR = 'app_usage_combined';
+const APP_USAGE_COMBINED_COLUMNS = [
+  'date',
+  'timezone',
+  'platform',
+  'construct',
+  'usage_window',
+  'app_name',
+  'package_name',
+  'seconds',
+  'source',
+  'extraction_method',
+  'participant_edited',
+];
+const PHONE_USE_DAILY_COLUMNS = [
+  'date',
+  'timezone',
+  'platform',
+  'pickups',
+  'total_use_seconds',
+  'session_count',
+  'median_session_seconds',
+  'short_session_share',
+  'long_session_count',
+  'night_use_seconds',
+  'first_use_at',
+  'last_use_at',
+  'source_rows',
+];
+// Night-time use window, local time: [00:00, 05:00).
+const NIGHT_END_HOUR = 5;
+const SHORT_SESSION_SECONDS = 60;
+const LONG_SESSION_SECONDS = 15 * 60;
+// iOS measures a session from the previous lock-state change; a value this
+// long means the app was not running in between, not a real session.
+const MAX_SESSION_SECONDS = 6 * 60 * 60;
+const BATTERY_PROMPT = 'battery_usage_screenshot';
+const ACTIVITY_PROMPT = 'screen_time_activity_screenshot';
 const LOCATION_DAILY_SUMMARY_SENSOR = 'location_daily_summary';
 const SURVEY_QUALITY_SENSOR = 'survey_quality';
 const PARTICIPANT_HEALTH_SENSOR = 'participant_health';
@@ -78,12 +123,34 @@ const BATTERY_USAGE_EXPORT_COLUMNS = [
   'screen_time_text',
   'battery_percent',
   'battery_percent_text',
+  'usage_window',
+  'captured_at',
+  'participant_edited',
   'extraction_status',
   'extraction_method',
   'ocr_confidence',
   'needs_review',
   'qa_reason',
   'parse_notes',
+  'ocr_text',
+];
+const SCREEN_TIME_ACTIVITY_COLUMNS = [
+  'source_sensor',
+  'source_row_id',
+  'source_image_url',
+  'row_type',
+  'activity_date',
+  'app_name',
+  'screen_time_seconds',
+  'total_screen_time_seconds',
+  'pickups',
+  'notifications',
+  'captured_at',
+  'participant_edited',
+  'extraction_status',
+  'extraction_method',
+  'needs_review',
+  'qa_reason',
   'ocr_text',
 ];
 const LOCATION_DAILY_SUMMARY_COLUMNS = [
@@ -106,6 +173,8 @@ const SURVEY_QUALITY_COLUMNS = [
   'question_trigger',
   'question_type',
   'answered',
+  'esm_status',
+  'status_label',
   'answer_kind',
   'answer_length',
   'response_latency_seconds',
@@ -116,6 +185,7 @@ const SURVEY_QUALITY_COLUMNS = [
 ];
 const PARTICIPANT_HEALTH_COLUMNS = [
   'participant',
+  'platform',
   'last_seen',
   'last_client_event',
   'last_heartbeat',
@@ -132,12 +202,15 @@ const PARTICIPANT_HEALTH_COLUMNS = [
   'prompts_delivered_7d',
   'survey_sessions_7d',
   'compliance_rate_7d',
+  'surveys_dismissed_7d',
+  'surveys_expired_7d',
   'telemetry_missing_7d',
   'permission_changes_7d',
   'location_rows',
   'esm_rows',
   'battery_screenshot_rows',
   'battery_app_rows',
+  'android_app_usage_rows',
   'upload_failures_24h',
   'notification_taps_24h',
   'health_status',
@@ -325,6 +398,16 @@ export function createApp() {
         response.study_url = `${base}/index.php/webservice/index/${encodeURIComponent(study_id)}/${encodeURIComponent(password)}`;
       }
       res.json(response);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /admin/studies/:studyId/export.zip?images=1
+  app.get('/admin/studies/:studyId/export.zip', requireAdmin, async (req, res, next) => {
+    try {
+      if (!(await getStudy(req.params.studyId))) return res.status(404).json({ error: 'study not found' });
+      await writeStudyExportZip(res, req.params.studyId, { includeImages: req.query.images === '1' });
     } catch (err) {
       next(err);
     }
@@ -524,6 +607,47 @@ export function createApp() {
     }
   });
 
+  app.get('/api/v1/studies/:studyId/screen-time-activity-schedule', requireResearcher, async (req, res, next) => {
+    try {
+      res.json(scheduleResponse(req.study, 'screen_time_activity_schedule'));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.put('/api/v1/studies/:studyId/screen-time-activity-schedule', requireResearcher, async (req, res, next) => {
+    try {
+      const activitySchedule = buildEsmScheduleFromRequest(req.body || {}, ACTIVITY_PROMPT);
+      const updated = await updateStudyConfig(req.params.studyId, { screen_time_activity_schedule: activitySchedule });
+      res.json(scheduleResponse(updated, 'screen_time_activity_schedule'));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Unified screenshot upload (Battery or Screen Time "See All Activity").
+  app.post('/api/v1/studies/:studyId/usage-screenshots', requireParticipant, async (req, res) => {
+    try {
+      return await handleUsageScreenshotUpload(req, res, req.params.studyId);
+    } catch (err) {
+      console.error(`[usage screenshot upload ${req.params.studyId}]`, err);
+      res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  app.get('/api/v1/studies/:studyId/dashboard/screen-time-activity', requireResearcher, async (req, res, next) => {
+    try {
+      await processScreenTimeActivityUploads({ studyId: req.params.studyId, limit: req.query.limit });
+      const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
+      const rows = (await tableExists(table))
+        ? await exportRows(table, { studyId: req.params.studyId, limit: req.query.limit || 200, order: 'desc' })
+        : [];
+      res.json({ ok: true, count: rows.length, rows: rows.map(rowForDashboard) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.post('/api/v1/studies/:studyId/battery-screenshots', requireParticipant, async (req, res) => {
     try {
       return await handleBatteryScreenshotUpload(req, res, req.params.studyId);
@@ -585,6 +709,25 @@ export function createApp() {
     } catch (err) {
       console.error(`[dashboard location summary ${req.params.studyId}]`, err);
       res.status(500).json({ error: 'server error' });
+    }
+  });
+
+  // Whole-study export: every raw table, every derived export, devices,
+  // withdrawals, a codebook, and a README, as CSVs in one ZIP.
+  app.get('/api/v1/studies/:studyId/export.zip', requireResearcher, async (req, res, next) => {
+    try {
+      await writeStudyExportZip(res, req.params.studyId, { includeImages: req.query.images === '1' });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get('/api/v1/studies/:studyId/dashboard/phone-use-daily', requireResearcher, async (req, res, next) => {
+    try {
+      const rows = await derivePhoneUseDaily({ studyId: req.params.studyId, limit: req.query.limit });
+      res.json({ ok: true, count: rows.length, rows: rows.map(rowForDashboard) });
+    } catch (err) {
+      next(err);
     }
   });
 
@@ -669,6 +812,9 @@ async function listAdminSensorsForDashboard() {
   const locationRows = await deriveLocationDailySummaries({ limit: BATTERY_USAGE_EXPORT_LIMIT });
   const surveyRows = await deriveSurveyQualityRows({ limit: BATTERY_USAGE_EXPORT_LIMIT });
   const healthRows = await deriveParticipantHealthRows({});
+  upsertVirtualSensor(sensors, PHONE_USE_DAILY_SENSOR, (await derivePhoneUseDaily({ limit: BATTERY_USAGE_EXPORT_LIMIT })).length, 'virtual_derived_sensor');
+  upsertVirtualSensor(sensors, APP_USAGE_COMBINED_SENSOR, (await deriveAppUsageCombined({})).length, 'virtual_derived_sensor');
+  upsertVirtualSensor(sensors, SCREEN_TIME_ACTIVITY_SENSOR, await countDerivedActivityRows({}), 'derived_from_screen_time_screenshot_esm');
   upsertVirtualSensor(sensors, LOCATION_DAILY_SUMMARY_SENSOR, locationRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(sensors, SURVEY_QUALITY_SENSOR, surveyRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(sensors, PARTICIPANT_HEALTH_SENSOR, healthRows.length, 'virtual_derived_sensor');
@@ -683,6 +829,9 @@ async function attachStudyDerivedSensors(overview, studyId) {
 
   overview.sensors = filterLegacyScreenTimeSensors(overview.sensors || []);
   upsertVirtualSensor(overview.sensors, BATTERY_USAGE_EXPORT_SENSOR, batteryDiagnostics.appRows.length, 'derived_from_battery_screenshot_esm');
+  upsertVirtualSensor(overview.sensors, SCREEN_TIME_ACTIVITY_SENSOR, await countDerivedActivityRows({ studyId }), 'derived_from_screen_time_screenshot_esm');
+  upsertVirtualSensor(overview.sensors, PHONE_USE_DAILY_SENSOR, (await derivePhoneUseDaily({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT })).length, 'virtual_derived_sensor');
+  upsertVirtualSensor(overview.sensors, APP_USAGE_COMBINED_SENSOR, (await deriveAppUsageCombined({ studyId })).length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, LOCATION_DAILY_SUMMARY_SENSOR, locationRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, SURVEY_QUALITY_SENSOR, surveyRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, PARTICIPANT_HEALTH_SENSOR, healthRows.length, 'virtual_derived_sensor');
@@ -720,6 +869,9 @@ function upsertVirtualSensor(sensors, sensorName, rows, tableName = 'virtual_der
 
 function exportColumnsForSensor(sensor) {
   if (sensor === BATTERY_USAGE_EXPORT_SENSOR) return BATTERY_USAGE_EXPORT_COLUMNS;
+  if (sensor === SCREEN_TIME_ACTIVITY_SENSOR) return SCREEN_TIME_ACTIVITY_COLUMNS;
+  if (sensor === PHONE_USE_DAILY_SENSOR) return PHONE_USE_DAILY_COLUMNS;
+  if (sensor === APP_USAGE_COMBINED_SENSOR) return APP_USAGE_COMBINED_COLUMNS;
   if (sensor === LOCATION_DAILY_SUMMARY_SENSOR) return LOCATION_DAILY_SUMMARY_COLUMNS;
   if (sensor === SURVEY_QUALITY_SENSOR) return SURVEY_QUALITY_COLUMNS;
   if (sensor === PARTICIPANT_HEALTH_SENSOR) return PARTICIPANT_HEALTH_COLUMNS;
@@ -736,6 +888,21 @@ async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, off
     const table = safeTableName(BATTERY_USAGE_EXPORT_SENSOR);
     if (!table) throw httpError(400, 'invalid sensor name');
     return exportRows(table, { studyId, deviceId, limit, offset });
+  }
+
+  if (sensor === SCREEN_TIME_ACTIVITY_SENSOR) {
+    await processScreenTimeActivityUploads({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+    const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
+    if (!(await tableExists(table))) return [];
+    return exportRows(table, { studyId, deviceId, limit, offset });
+  }
+
+  if (sensor === APP_USAGE_COMBINED_SENSOR) {
+    return derivedRowsForExport(await deriveAppUsageCombined({ studyId, deviceId }), { studyId, deviceId, offset });
+  }
+
+  if (sensor === PHONE_USE_DAILY_SENSOR) {
+    return derivedRowsForExport(await derivePhoneUseDaily({ studyId, deviceId, limit }), { studyId, deviceId, offset });
   }
 
   if (sensor === LOCATION_DAILY_SUMMARY_SENSOR) {
@@ -826,8 +993,13 @@ async function deriveSurveyQualityRows({ studyId, deviceId, limit: rawLimit } = 
         ? 0
         : (typeof answer === 'string' ? answer.length : JSON.stringify(answer).length);
       const responseLatency = responseLatencySeconds(row);
+      const status = row.data?.esm_status === undefined || row.data?.esm_status === null || row.data?.esm_status === ''
+        ? ''
+        : Number(row.data.esm_status);
       const flags = [];
-      if (!answered) flags.push('missing_answer');
+      if (status === 1) flags.push('dismissed');
+      if (status === 3) flags.push('expired');
+      if (!answered && status !== 1 && status !== 3) flags.push('missing_answer');
       if (answerKind === 'photo') flags.push('photo_response');
       if (responseLatency !== null && responseLatency > 60 * 60) flags.push('long_latency');
       if (esmJson.studytrace_required === true && !answered) flags.push('required_missing');
@@ -844,6 +1016,8 @@ async function deriveSurveyQualityRows({ studyId, deviceId, limit: rawLimit } = 
           question_trigger: row.data?.esm_trigger || esmJson.esm_trigger || '',
           question_type: Number(esmJson.esm_type || 0) || '',
           answered,
+          esm_status: status,
+          status_label: ESM_STATUS_LABELS[status] || '',
           answer_kind: answerKind,
           answer_length: answerLength,
           response_latency_seconds: responseLatency,
@@ -876,6 +1050,11 @@ async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
           .map((row) => ({ ...row, sensor: CLIENT_EVENTS_SENSOR }))
       : [];
     const deviceStates = await rowsForSensorCandidates([DEVICE_STATE_SENSOR], { studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
+    const deviceStateTable = safeTableName(DEVICE_STATE_SENSOR);
+    const recentDeviceStates = (await tableExists(deviceStateTable))
+      ? await rowsSince(deviceStateTable, { studyId: study.study_id, sinceMs: Date.now() - SEVEN_DAYS_MS })
+      : [];
+    const androidUsage = await rowsForSensorCandidates(['android_app_usage'], { studyId: study.study_id, limit: BATTERY_USAGE_EXPORT_LIMIT });
 
     for (const device of overview.devices || []) {
       if (deviceId && device.device_id !== deviceId) continue;
@@ -890,12 +1069,18 @@ async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
       const notificationTaps = recentEvents.filter((row) => row.data?.event_name === 'notification_tapped').length;
       const state = latestState?.data || {};
       const deviceEvents = clientEvents.filter((row) => row.device_id === device.device_id);
-      const telemetry = telemetryQuality(deviceEvents);
+      // Clients number client_events and device_state rows from one counter.
+      const telemetry = telemetryQuality(deviceEvents, [
+        ...deviceEvents,
+        ...recentDeviceStates.filter((row) => row.device_id === device.device_id),
+      ]);
+      const platform = platformOf(latestState?.data || {});
+      const androidUsageRows = androidUsage.filter((row) => row.device_id === device.device_id).length;
       const compliance = complianceFor({
         events: deviceEvents,
         surveyRows: surveyRows.filter((row) => row.device_id === device.device_id),
       });
-      const notes = healthNotes({ device, state, locationCount, esmCount, screenshotCount, uploadFailures, telemetry, compliance });
+      const notes = healthNotes({ device, state, platform, locationCount, esmCount, screenshotCount, androidUsageRows, uploadFailures, telemetry, compliance });
 
       rows.push({
         study_id: study.study_id,
@@ -904,6 +1089,7 @@ async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
         created_at: new Date().toISOString(),
         data: {
           participant: device.participant || '',
+          platform,
           last_seen: device.last_seen || '',
           last_client_event: latestEvent ? submittedAt(latestEvent) : '',
           last_heartbeat: telemetry.lastHeartbeat ? new Date(telemetry.lastHeartbeat).toISOString() : '',
@@ -920,12 +1106,15 @@ async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
           prompts_delivered_7d: compliance.promptsDelivered,
           survey_sessions_7d: compliance.surveySessions,
           compliance_rate_7d: compliance.rate,
+          surveys_dismissed_7d: compliance.dismissed,
+          surveys_expired_7d: compliance.expired,
           telemetry_missing_7d: telemetry.missingRows,
           permission_changes_7d: telemetry.permissionChanges,
           location_rows: locationCount,
           esm_rows: esmCount,
           battery_screenshot_rows: screenshotCount,
           battery_app_rows: appRowsCount,
+          android_app_usage_rows: androidUsageRows,
           upload_failures_24h: uploadFailures,
           notification_taps_24h: notificationTaps,
           health_status: notes.length ? 'needs_attention' : 'ok',
@@ -936,6 +1125,329 @@ async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
   }
 
   return rows.sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+}
+
+// ---- Cross-platform app usage ---------------------------------------------
+//
+// One table for app-level usage from every source, with explicit construct
+// and window columns: iOS Battery screenshots (on-screen time over the
+// selected window), iOS Screen Time screenshots (one day), and Android
+// UsageStats foreground time (one day). They measure different things.
+async function deriveAppUsageCombined({ studyId, deviceId } = {}) {
+  const resolveZone = await timeZoneResolverFor({ studyId, deviceId });
+  const out = [];
+  const add = (row, data) => out.push({
+    study_id: row.study_id,
+    device_id: row.device_id,
+    timestamp: row.timestamp,
+    created_at: row.created_at,
+    data,
+  });
+
+  await processBatteryScreenshotUploads({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  for (const row of await rowsForSensorCandidates([BATTERY_USAGE_EXPORT_SENSOR], { studyId, deviceId, limit: BATTERY_USAGE_EXPORT_LIMIT })) {
+    const data = row.data || {};
+    if (!data.app_name || !['parsed', 'confirmed'].includes(data.extraction_status)) continue;
+    const at = toEpochMs(data.captured_at) || toEpochMs(row.timestamp);
+    const timezone = resolveZone(row.study_id, row.device_id, at);
+    add(row, {
+      date: localDateFor(at, timezone),
+      timezone,
+      platform: 'ios',
+      construct: 'battery_on_screen_time',
+      usage_window: data.usage_window || 'unknown',
+      app_name: data.app_name,
+      package_name: '',
+      seconds: data.screen_time_seconds ?? '',
+      source: 'battery_screenshot',
+      extraction_method: data.extraction_method || '',
+      participant_edited: data.participant_edited === true,
+    });
+  }
+
+  await processScreenTimeActivityUploads({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  for (const row of await rowsForSensorCandidates([SCREEN_TIME_ACTIVITY_SENSOR], { studyId, deviceId, limit: BATTERY_USAGE_EXPORT_LIMIT })) {
+    const data = row.data || {};
+    if (data.row_type !== 'app' || !data.app_name) continue;
+    const at = toEpochMs(row.timestamp);
+    const timezone = resolveZone(row.study_id, row.device_id, at);
+    add(row, {
+      date: data.activity_date || localDateFor(at, timezone),
+      timezone,
+      platform: 'ios',
+      construct: 'screen_time_app_total',
+      usage_window: 'day',
+      app_name: data.app_name,
+      package_name: '',
+      seconds: data.screen_time_seconds ?? '',
+      source: 'screen_time_screenshot',
+      extraction_method: data.extraction_method || '',
+      participant_edited: data.participant_edited === true,
+    });
+  }
+
+  for (const row of await rowsForSensorCandidates(['android_app_usage'], { studyId, deviceId, limit: BATTERY_USAGE_EXPORT_LIMIT })) {
+    const data = row.data || {};
+    if (!data.package_name && !data.app_label) continue;
+    add(row, {
+      date: data.date || '',
+      timezone: data.timezone || '',
+      platform: 'android',
+      construct: 'foreground_time',
+      usage_window: 'day',
+      app_name: data.app_label || data.package_name,
+      package_name: data.package_name || '',
+      seconds: data.foreground_seconds ?? '',
+      source: 'android_usage_stats',
+      extraction_method: 'usage_stats',
+      participant_edited: false,
+    });
+  }
+
+  return out.sort((a, b) => String(b.data.date).localeCompare(String(a.data.date)));
+}
+
+const DERIVED_EXPORTS = [
+  BATTERY_USAGE_EXPORT_SENSOR,
+  SCREEN_TIME_ACTIVITY_SENSOR,
+  APP_USAGE_COMBINED_SENSOR,
+  PHONE_USE_DAILY_SENSOR,
+  LOCATION_DAILY_SUMMARY_SENSOR,
+  SURVEY_QUALITY_SENSOR,
+  PARTICIPANT_HEALTH_SENSOR,
+];
+const EXPORT_PAGE = 10000;
+const PAGED_DERIVED_EXPORTS = new Set([BATTERY_USAGE_EXPORT_SENSOR, SCREEN_TIME_ACTIVITY_SENSOR]);
+
+async function writeStudyExportZip(res, studyId, { includeImages = false } = {}) {
+  const generatedAt = new Date();
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="${studyId}-export-${generatedAt.toISOString().slice(0, 10)}.zip"`);
+  const zip = new ZipWriter(res);
+  const files = [];
+  const addCsv = async (name, csv) => {
+    files.push({ name, columns: csv.split('\r\n')[0].split(',').filter(Boolean) });
+    await zip.addFile(name, csv);
+  };
+
+  // Raw tables, paged so large studies are exported completely.
+  const derivedTables = new Set(DERIVED_EXPORTS.map((sensor) => safeTableName(sensor)));
+  const sensors = filterLegacyScreenTimeSensors(await listStudySensorTables(studyId))
+    .filter((sensor) => !derivedTables.has(sensor.table));
+  let imageCount = 0;
+  for (const sensor of sensors) {
+    const rows = [];
+    for (let offset = 0; ; offset += EXPORT_PAGE) {
+      const page = await exportRows(sensor.table, { studyId, limit: EXPORT_PAGE, offset });
+      rows.push(...page);
+      if (page.length < EXPORT_PAGE) break;
+    }
+    for (const row of rows) {
+      const image = decodeImageAnswer(row.data?.esm_user_answer);
+      if (!image) continue;
+      const file = `media/${sensor.sensor}-${row.id}.${image.extension}`;
+      row.data = { ...row.data, esm_user_answer: `image:${file}` };
+      if (includeImages) {
+        await zip.addFile(file, image.buffer);
+        imageCount += 1;
+      }
+    }
+    await addCsv(`raw/${sensor.sensor}.csv`, rowsToCsv(rows));
+  }
+
+  for (const sensor of DERIVED_EXPORTS) {
+    const rows = [];
+    for (let offset = 0; ; offset += EXPORT_PAGE) {
+      const page = await exportDashboardSensorRows(sensor, { studyId, limit: EXPORT_PAGE, offset });
+      rows.push(...page);
+      // Only table-backed exports page; the others are computed in one pass.
+      if (page.length < EXPORT_PAGE || !PAGED_DERIVED_EXPORTS.has(sensor)) break;
+    }
+    await addCsv(`${sensor}.csv`, rowsToCsv(rows, exportColumnsForSensor(sensor)));
+  }
+
+  await addCsv('devices.csv', objectsToCsv(await listStudyDevices(studyId), ['device_id', 'participant', 'first_seen', 'last_seen']));
+  await addCsv('withdrawals.csv', objectsToCsv(await listWithdrawals(studyId),
+    ['device_id', 'participant', 'source', 'delete_data', 'rows_deleted', 'requested_at']));
+
+  const codebook = [];
+  for (const file of files) {
+    for (const column of file.columns) {
+      codebook.push({ file: file.name, column, description: describeColumn(file.name, column) });
+    }
+  }
+  await zip.addFile('codebook.csv', objectsToCsv(codebook, ['file', 'column', 'description']));
+  await zip.addFile('README.txt', [
+    `StudyTrace export for study ${studyId}`,
+    `Generated ${generatedAt.toISOString()}`,
+    '',
+    'raw/            One CSV per table exactly as uploaded by the apps (JSON fields flattened into columns).',
+    'root CSVs       Derived exports computed by the server (see codebook.csv for every column).',
+    'devices.csv     Device ids and participant labels. withdrawals.csv lists withdrawals and deletions.',
+    'codebook.csv    Description of every column in every file.',
+    includeImages
+      ? `media/          ${imageCount} photo/screenshot answer image(s); answers in raw/ point to them as image:<file>.`
+      : 'Images         Not included. Photo answers are shown as image:<file>; request the export with images=1 to include them.',
+    '',
+    'Times: timestamp columns are epoch milliseconds (UTC); *_at columns are ISO 8601 UTC.',
+    'Local days: date/local_date columns use the participant\'s phone-reported time zone (timezone column).',
+    'Duplicate uploads were removed on arrival. Data of participants who asked for deletion is not included.',
+    'app_usage_combined.csv mixes different constructs (Battery on-screen time, Screen Time daily totals,',
+    'Android foreground time); filter by construct and usage_window before comparing.',
+    '',
+  ].join('\r\n'));
+  await zip.finish();
+}
+
+function objectsToCsv(rows, columns) {
+  const esc = (value) => {
+    if (value === null || value === undefined) return '';
+    const text = value instanceof Date ? value.toISOString() : (typeof value === 'object' ? JSON.stringify(value) : String(value));
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  return [columns.join(','), ...rows.map((row) => columns.map((column) => esc(row[column])).join(','))].join('\r\n');
+}
+
+// ---- Phone use from lock/unlock events --------------------------------------
+//
+// iOS (AWARE plugin_device_usage): each lock-state change writes one row.
+// elapsed_device_off > 0 marks an unlock (a pickup) after that many ms locked;
+// elapsed_device_on > 0 marks a lock ending a session of that many ms.
+// Android (android_screen_events): explicit unlock/lock (or screen_on/off)
+// events. Both become sessions, split at the participant's local midnight.
+async function derivePhoneUseDaily({ studyId, deviceId, limit: rawLimit } = {}) {
+  const limit = Math.min(Math.max(Number(rawLimit) || 1000, 1), BATTERY_USAGE_EXPORT_LIMIT);
+  const iosRows = await rowsForSensorCandidates(['plugin_device_usage'], { studyId, deviceId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  const androidRows = await rowsForSensorCandidates(['android_screen_events'], { studyId, deviceId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  if (!iosRows.length && !androidRows.length) return [];
+  const resolveZone = await timeZoneResolverFor({ studyId, deviceId });
+
+  const byDevice = new Map();
+  const deviceEntry = (row, platform) => {
+    const key = `${row.study_id}::${row.device_id}`;
+    if (!byDevice.has(key)) {
+      byDevice.set(key, { study_id: row.study_id, device_id: row.device_id, platform, sessions: [], pickups: [], rows: 0 });
+    }
+    const entry = byDevice.get(key);
+    entry.rows += 1;
+    return entry;
+  };
+
+  for (const row of iosRows) {
+    const at = toEpochMs(row.timestamp ?? row.data?.timestamp);
+    if (!at) continue;
+    const entry = deviceEntry(row, 'ios');
+    const onMs = Number(row.data?.elapsed_device_on ?? row.data?.double_elapsed_device_on) || 0;
+    const offMs = Number(row.data?.elapsed_device_off ?? row.data?.double_elapsed_device_off) || 0;
+    if (offMs > 0) entry.pickups.push(at);
+    if (onMs > 0 && onMs <= MAX_SESSION_SECONDS * 1000) entry.sessions.push([at - onMs, at]);
+  }
+
+  const androidByDevice = new Map();
+  for (const row of androidRows) {
+    const at = toEpochMs(row.timestamp ?? row.data?.timestamp);
+    if (!at) continue;
+    const key = `${row.study_id}::${row.device_id}`;
+    if (!androidByDevice.has(key)) androidByDevice.set(key, []);
+    androidByDevice.get(key).push({ row, at, event: String(row.data?.event || '') });
+  }
+  for (const events of androidByDevice.values()) {
+    events.sort((a, b) => a.at - b.at);
+    // Prefer keyguard events; fall back to screen on/off on phones with no lock screen.
+    const hasKeyguard = events.some((item) => item.event === 'unlock' || item.event === 'lock');
+    const startEvent = hasKeyguard ? 'unlock' : 'screen_on';
+    const endEvents = hasKeyguard ? ['lock', 'screen_off'] : ['screen_off'];
+    let openAt = null;
+    for (const item of events) {
+      const entry = deviceEntry(item.row, 'android');
+      if (item.event === startEvent) {
+        entry.pickups.push(item.at);
+        openAt = item.at;
+      } else if (endEvents.includes(item.event) && openAt !== null) {
+        if (item.at - openAt <= MAX_SESSION_SECONDS * 1000) entry.sessions.push([openAt, item.at]);
+        openAt = null;
+      }
+    }
+  }
+
+  const days = new Map();
+  const dayEntry = (device, timestamp) => {
+    const timezone = resolveZone(device.study_id, device.device_id, timestamp);
+    const date = localDateFor(timestamp, timezone);
+    const key = `${device.study_id}::${device.device_id}::${date}`;
+    if (!days.has(key)) {
+      days.set(key, {
+        study_id: device.study_id,
+        device_id: device.device_id,
+        platform: device.platform,
+        date,
+        timezone,
+        pickups: 0,
+        sessions: [],
+        useMs: 0,
+        nightMs: 0,
+        first: null,
+        last: null,
+        rows: device.rows,
+      });
+    }
+    return days.get(key);
+  };
+
+  for (const device of byDevice.values()) {
+    for (const at of device.pickups) dayEntry(device, at).pickups += 1;
+    for (const [start, end] of device.sessions) {
+      // A session belongs to the day it started for counts and lengths...
+      dayEntry(device, start).sessions.push(end - start);
+      // ...while use time is split at local midnight.
+      let cursor = start;
+      while (cursor < end) {
+        const day = dayEntry(device, cursor);
+        const dayStart = localMidnight(day.date, day.timezone);
+        const dayEnd = localMidnight(nextDate(day.date), day.timezone);
+        const segmentEnd = Math.min(end, dayEnd);
+        day.useMs += segmentEnd - cursor;
+        const nightEnd = dayStart + NIGHT_END_HOUR * 3600000;
+        day.nightMs += Math.max(0, Math.min(segmentEnd, nightEnd) - Math.max(cursor, dayStart));
+        day.first = day.first === null ? cursor : Math.min(day.first, cursor);
+        day.last = day.last === null ? segmentEnd : Math.max(day.last, segmentEnd);
+        if (segmentEnd <= cursor) break;
+        cursor = segmentEnd;
+      }
+    }
+  }
+
+  return [...days.values()]
+    .map((day) => {
+      const lengths = day.sessions.map((ms) => ms / 1000).sort((a, b) => a - b);
+      const median = lengths.length
+        ? (lengths.length % 2 ? lengths[(lengths.length - 1) / 2] : (lengths[lengths.length / 2 - 1] + lengths[lengths.length / 2]) / 2)
+        : null;
+      return {
+        study_id: day.study_id,
+        device_id: day.device_id,
+        timestamp: localMidnight(day.date, day.timezone),
+        created_at: new Date().toISOString(),
+        data: {
+          date: day.date,
+          timezone: day.timezone,
+          platform: day.platform,
+          pickups: day.pickups,
+          total_use_seconds: Math.round(day.useMs / 1000),
+          session_count: lengths.length,
+          median_session_seconds: median === null ? '' : Math.round(median),
+          short_session_share: lengths.length ? Math.round((lengths.filter((l) => l < SHORT_SESSION_SECONDS).length / lengths.length) * 100) / 100 : '',
+          long_session_count: lengths.filter((l) => l >= LONG_SESSION_SECONDS).length,
+          night_use_seconds: Math.round(day.nightMs / 1000),
+          first_use_at: day.first === null ? '' : new Date(day.first).toISOString(),
+          last_use_at: day.last === null ? '' : new Date(day.last).toISOString(),
+          source_rows: day.rows,
+        },
+      };
+    })
+    .sort((a, b) => String(b.data.date).localeCompare(String(a.data.date)) || String(a.device_id).localeCompare(String(b.device_id)))
+    .slice(0, limit);
 }
 
 async function rowsForSensorCandidates(sensors, { studyId, deviceId, limit } = {}) {
@@ -1098,7 +1610,12 @@ function rowsInLastHours(rows, hours) {
   return rows.filter((row) => (toEpochMs(row.timestamp ?? row.created_at) || 0) >= cutoff);
 }
 
-function healthNotes({ device, state, locationCount, esmCount, screenshotCount, uploadFailures, telemetry = {}, compliance = {} }) {
+function platformOf(state) {
+  if (state.platform) return String(state.platform).toLowerCase();
+  return /android/i.test(String(state.system_name || '')) ? 'android' : 'ios';
+}
+
+function healthNotes({ device, state, platform = 'ios', locationCount, esmCount, screenshotCount, androidUsageRows = 0, uploadFailures, telemetry = {}, compliance = {} }) {
   const notes = [];
   const lastSeen = toEpochMs(device.last_seen);
   if (!lastSeen || Date.now() - lastSeen > 48 * 60 * 60 * 1000) notes.push('device not seen in 48h');
@@ -1106,7 +1623,12 @@ function healthNotes({ device, state, locationCount, esmCount, screenshotCount, 
   if (state.location_authorization && state.location_authorization !== 'authorized_always') notes.push('location not always authorized');
   if (locationCount === 0) notes.push('no location rows');
   if (esmCount === 0) notes.push('no ESM responses');
-  if (screenshotCount === 0) notes.push('no Battery screenshots');
+  if (platform === 'android') {
+    if (androidUsageRows === 0) notes.push('no Android app usage rows');
+    if (state.usage_access && state.usage_access !== 'granted') notes.push('usage access not granted');
+  } else if (screenshotCount === 0) {
+    notes.push('no Battery screenshots');
+  }
   if (uploadFailures > 0) notes.push(`${uploadFailures} upload failure(s) in 24h`);
   if (telemetry.lastHeartbeat && Date.now() - telemetry.lastHeartbeat > 6 * 60 * 60 * 1000) notes.push('no heartbeat in 6h (app may have been killed)');
   if (telemetry.maxGapHours24h !== '' && telemetry.maxGapHours24h >= 12) notes.push(`telemetry gap of ${telemetry.maxGapHours24h}h in last 24h`);
@@ -1118,6 +1640,8 @@ function healthNotes({ device, state, locationCount, esmCount, screenshotCount, 
 }
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+// AWARE ESM status codes.
+const ESM_STATUS_LABELS = { 0: 'new', 1: 'dismissed', 2: 'answered', 3: 'expired' };
 const PROMPT_EVENTS = new Set(['notification_delivered', 'notification_presented', 'notification_tapped']);
 
 function eventMetadata(row) {
@@ -1127,7 +1651,7 @@ function eventMetadata(row) {
 
 // Heartbeat recency, the longest silence in the last 24h, and rows lost in
 // transit (the client numbers every telemetry row with a sequence number).
-function telemetryQuality(events) {
+function telemetryQuality(events, sequencedRows = events) {
   const now = Date.now();
   const times = events
     .map((row) => toEpochMs(row.timestamp ?? row.created_at))
@@ -1146,7 +1670,7 @@ function telemetryQuality(events) {
       maxGapMs = Math.max(maxGapMs, windowTimes[i] - windowTimes[i - 1]);
     }
   }
-  const seqs = [...new Set(events.map((row) => Number(row.data?.seq)).filter(Number.isInteger))].sort((a, b) => a - b);
+  const seqs = [...new Set(sequencedRows.map((row) => Number(row.data?.seq)).filter(Number.isInteger))].sort((a, b) => a - b);
   const missingRows = seqs.length > 1 ? (seqs[seqs.length - 1] - seqs[0] + 1) - seqs.length : 0;
   const launches = events
     .filter((row) => row.data?.event_name === 'app_launch')
@@ -1185,9 +1709,13 @@ function complianceFor({ events, surveyRows }) {
     if (t - lastAnswer > 15 * 60 * 1000) sessions += 1;
     lastAnswer = t;
   }
+  const recentStatus = (code) => surveyRows.filter((row) => row.data?.esm_status === code &&
+    (toEpochMs(row.data?.submitted_at) || toEpochMs(row.timestamp) || 0) >= since).length;
   return {
     promptsDelivered: prompts.size,
     surveySessions: sessions,
+    dismissed: recentStatus(1),
+    expired: recentStatus(3),
     rate: prompts.size ? Math.round(Math.min(1, sessions / prompts.size) * 100) / 100 : '',
   };
 }
@@ -1279,16 +1807,21 @@ function scheduleForKey(study, key = 'esm_schedule') {
   const batterySchedule = Array.isArray(config.battery_screenshot_schedule) ? config.battery_screenshot_schedule : [];
   if (key === 'battery_screenshot_schedule') {
     return batterySchedule.length
-      ? batterySchedule.filter((item) => schedulePromptType(item) === 'battery_usage_screenshot')
-      : esmSchedule.filter((item) => schedulePromptType(item) === 'battery_usage_screenshot');
+      ? batterySchedule.filter((item) => schedulePromptType(item) === BATTERY_PROMPT)
+      : esmSchedule.filter((item) => schedulePromptType(item) === BATTERY_PROMPT);
   }
-  return esmSchedule.filter((item) => schedulePromptType(item) !== 'battery_usage_screenshot');
+  if (key === 'screen_time_activity_schedule') {
+    const activitySchedule = Array.isArray(config.screen_time_activity_schedule) ? config.screen_time_activity_schedule : [];
+    return activitySchedule.filter((item) => schedulePromptType(item) === ACTIVITY_PROMPT);
+  }
+  return esmSchedule.filter((item) => schedulePromptType(item) === 'esm_survey');
 }
 
 function schedulePromptType(item) {
   if (item?.studytrace_prompt_type) return normalizePromptType(item.studytrace_prompt_type);
   const scheduleId = String(item?.schedule_id || '').toLowerCase();
-  if (scheduleId.includes('battery_screenshot') || scheduleId.includes('battery_usage')) return 'battery_usage_screenshot';
+  if (scheduleId.includes('screen_time_activity')) return ACTIVITY_PROMPT;
+  if (scheduleId.includes('battery_screenshot') || scheduleId.includes('battery_usage')) return BATTERY_PROMPT;
   return 'esm_survey';
 }
 
@@ -1324,21 +1857,26 @@ function buildEsmScheduleFromRequest(body, defaultPromptType = 'esm_survey') {
 function normalizePromptType(value) {
   const text = String(value || '').trim().toLowerCase();
   if (text === 'esm' || text === 'esm_survey' || text === 'survey') return 'esm_survey';
-  return 'battery_usage_screenshot';
+  if (text === ACTIVITY_PROMPT || text === 'screen_time_activity') return ACTIVITY_PROMPT;
+  return BATTERY_PROMPT;
 }
 
 function scheduleSlugForPrompt(promptType) {
-  return promptType === 'esm_survey' ? 'esm_survey' : 'battery_screenshot';
+  if (promptType === 'esm_survey') return 'esm_survey';
+  if (promptType === ACTIVITY_PROMPT) return 'screen_time_activity';
+  return 'battery_screenshot';
 }
 
 function defaultNotificationTitle(promptType) {
-  return promptType === 'esm_survey' ? 'StudyTrace survey available' : 'StudyTrace Battery screenshot';
+  if (promptType === 'esm_survey') return 'StudyTrace survey available';
+  if (promptType === ACTIVITY_PROMPT) return 'StudyTrace Screen Time screenshot';
+  return 'StudyTrace Battery screenshot';
 }
 
 function defaultNotificationBody(promptType) {
-  return promptType === 'esm_survey'
-    ? 'Please complete your scheduled study survey.'
-    : 'Please upload your iOS Battery usage screenshot.';
+  if (promptType === 'esm_survey') return 'Please complete your scheduled study survey.';
+  if (promptType === ACTIVITY_PROMPT) return "Please upload yesterday's Screen Time activity screenshot.";
+  return 'Please upload your iOS Battery usage screenshot.';
 }
 
 function parsePromptTimes(value) {
@@ -1431,6 +1969,20 @@ function defaultEsmQuestions(promptType = 'battery_usage_screenshot') {
       },
     ];
   }
+  if (promptType === ACTIVITY_PROMPT) {
+    return [
+      {
+        esm_type: 14,
+        esm_title: 'Screen Time activity screenshot',
+        esm_instructions: 'Open iPhone Settings → Screen Time → See All App & Website Activity, choose Day, tap yesterday, and take a screenshot showing screen time, pickups, and notifications. Then upload that screenshot here.',
+        esm_trigger: ACTIVITY_PROMPT,
+        esm_submit: 'Submit',
+        esm_na: true,
+        studytrace_required: true,
+        studytrace_quality_check: 'participant_confirmed',
+      },
+    ];
+  }
   return [
     {
       esm_type: 14,
@@ -1469,6 +2021,35 @@ function httpError(statusCode, message) {
 }
 
 async function handleBatteryScreenshotUpload(req, res, studyId) {
+  return handleUsageScreenshotUpload(req, res, studyId, 'battery');
+}
+
+const SCREENSHOT_KINDS = {
+  battery: {
+    trigger: BATTERY_PROMPT,
+    esmJson: {
+      esm_type: 14,
+      esm_title: 'Battery usage screenshot',
+      esm_instructions: 'Open Settings > Battery > View All Battery Usage, then upload the screenshot.',
+      esm_trigger: BATTERY_PROMPT,
+      esm_submit: 'Submit',
+      esm_na: true,
+    },
+  },
+  screen_time_activity: {
+    trigger: ACTIVITY_PROMPT,
+    esmJson: {
+      esm_type: 14,
+      esm_title: 'Screen Time activity screenshot',
+      esm_instructions: 'Open Settings > Screen Time > See All App & Website Activity, choose one day, then upload the screenshot.',
+      esm_trigger: ACTIVITY_PROMPT,
+      esm_submit: 'Submit',
+      esm_na: true,
+    },
+  },
+};
+
+async function handleUsageScreenshotUpload(req, res, studyId, forcedKind) {
   const payload = req.body || {};
   const deviceId = String(payload.device_id || '').trim();
   const screenshotBase64 = normalizeBase64Image(payload.screenshot_base64 || payload.esm_user_answer);
@@ -1478,21 +2059,16 @@ async function handleBatteryScreenshotUpload(req, res, studyId) {
   if (!screenshotBase64) {
     return res.status(400).json({ error: 'screenshot_base64 is required' });
   }
+  const kindName = forcedKind || (payload.screenshot_kind === 'screen_time_activity' ? 'screen_time_activity' : 'battery');
+  const kind = SCREENSHOT_KINDS[kindName];
 
   const timestamp = Number(payload.timestamp) || Date.now();
-  const esmJson = {
-    esm_type: 14,
-    esm_title: 'Battery usage screenshot',
-    esm_instructions: 'Open Settings > Battery > View All Battery Usage, then upload the screenshot.',
-    esm_trigger: 'battery_usage_screenshot',
-    esm_submit: 'Submit',
-    esm_na: true,
-  };
   const row = {
     timestamp,
     device_id: deviceId,
-    esm_trigger: 'battery_usage_screenshot',
-    esm_json: JSON.stringify(esmJson),
+    screenshot_kind: kindName,
+    esm_trigger: kind.trigger,
+    esm_json: JSON.stringify(kind.esmJson),
     esm_user_answer: screenshotBase64,
     double_esm_user_answer_timestamp: timestamp,
     esm_status: 2,
@@ -1505,21 +2081,68 @@ async function handleBatteryScreenshotUpload(req, res, studyId) {
   const uploadId = typeof payload.upload_id === 'string' ? payload.upload_id.trim().slice(0, 128) : '';
   if (uploadId) row.upload_id = uploadId;
   if (isValidTimeZone(payload.timezone)) row.timezone = payload.timezone;
+  Object.assign(row, confirmedScreenshotFields(payload, kindName));
 
   const table = safeTableName('plugin_ios_esm');
   await createSensorTable(table);
   const inserted = await insertRows(table, studyId, deviceId, [row]);
   const source = await findLatestBatteryScreenshotSource(table, { studyId, deviceId, timestamp });
-  const processed = await processBatteryScreenshotUploads({ studyId, limit: 25 });
-  const feedback = source
-    ? await batteryScreenshotUploadFeedback(source)
-    : {
-        app_rows_detected: 0,
-        needs_review: true,
-        qa_reason: 'uploaded screenshot could not be located for OCR feedback',
-        message: 'Screenshot uploaded, but StudyTrace could not confirm OCR quality yet.',
-      };
+  let processed;
+  let feedback;
+  if (kindName === 'screen_time_activity') {
+    processed = await processScreenTimeActivityUploads({ studyId, limit: 25 });
+    feedback = source ? await screenTimeActivityUploadFeedback(source) : null;
+  } else {
+    processed = await processBatteryScreenshotUploads({ studyId, limit: 25 });
+    feedback = source ? await batteryScreenshotUploadFeedback(source) : null;
+  }
+  feedback = feedback || {
+    app_rows_detected: 0,
+    needs_review: true,
+    qa_reason: 'uploaded screenshot could not be located for OCR feedback',
+    message: 'Screenshot uploaded, but StudyTrace could not confirm OCR quality yet.',
+  };
   return res.status(inserted ? 201 : 200).json({ ok: true, inserted, duplicate: inserted === 0, processed, feedback });
+}
+
+// Values the participant reviewed on the phone (on-device OCR, then edited
+// or accepted). Sanitized here because they come straight from the client.
+function confirmedScreenshotFields(payload, kindName) {
+  const fields = {};
+  const window = String(payload.usage_window || '');
+  if (['last_24_hours', 'last_10_days'].includes(window)) fields.usage_window = window;
+  const capturedAt = Number(payload.captured_at);
+  if (Number.isFinite(capturedAt) && capturedAt > 0) fields.captured_at = new Date(capturedAt).toISOString();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(payload.activity_date || ''))) fields.activity_date = String(payload.activity_date);
+  if (typeof payload.device_ocr_text === 'string') fields.device_ocr_text = payload.device_ocr_text.slice(0, 20000);
+  if (!Array.isArray(payload.confirmed_rows)) return fields;
+
+  const maxSeconds = kindName === 'battery' && fields.usage_window === 'last_10_days' ? 10 * 86400 : 86400;
+  fields.participant_confirmed = true;
+  fields.participant_edited = payload.participant_edited === true;
+  fields.confirmed_rows = payload.confirmed_rows.slice(0, 100)
+    .map((item) => ({
+      app_name: String(item?.app_name || '').trim().slice(0, 80),
+      screen_time_seconds: boundedNumber(item?.screen_time_seconds, 0, maxSeconds),
+      battery_percent: kindName === 'battery' ? boundedNumber(item?.battery_percent, 0, 100) : null,
+    }))
+    .filter((item) => item.app_name);
+  if (kindName === 'screen_time_activity') {
+    const summary = payload.summary || {};
+    fields.confirmed_summary = {
+      total_screen_time_seconds: boundedNumber(summary.total_screen_time_seconds, 0, 86400),
+      pickups: boundedNumber(summary.pickups, 0, 5000),
+      notifications: boundedNumber(summary.notifications, 0, 20000),
+    };
+  }
+  return fields;
+}
+
+function boundedNumber(value, min, max) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Math.round(Number(value));
+  if (!Number.isFinite(number) || number < min || number > max) return null;
+  return number;
 }
 
 async function findLatestBatteryScreenshotSource(table, { studyId, deviceId, timestamp }) {
@@ -1558,7 +2181,7 @@ async function batteryScreenshotUploadFeedback(source) {
   );
   const parsedRows = rows
     .map((row) => row.data || {})
-    .filter((row) => row.extraction_status === 'parsed' && row.app_name);
+    .filter((row) => ['parsed', 'confirmed'].includes(row.extraction_status) && row.app_name);
   const needsReview = rows.some((row) => row.data?.needs_review === true || row.data?.needs_review === 'true') ||
     parsedRows.length === 0;
   const qaReason = [...new Set(rows.map((row) => row.data?.qa_reason).filter(Boolean))].join('; ');
@@ -1647,12 +2270,24 @@ async function processBatteryScreenshotUploads({ studyId, limit: rawLimit } = {}
       continue;
     }
 
+    const sourceImageUrl = `/api/v1/studies/${encodeURIComponent(source.study_id)}/media/${encodeURIComponent(source.sensor)}/${encodeURIComponent(source.id)}/image`;
+    if (Array.isArray(source.data?.confirmed_rows)) {
+      // Participant reviewed the on-device OCR result; store what they
+      // confirmed instead of re-running server OCR.
+      inserted += await insertRows(table, source.study_id, source.device_id,
+        confirmedBatteryRows(source, sourceImageUrl).map((row, index) => ({
+          timestamp: source.timestamp,
+          dedupe_key: `battery:${source.sensor}:${source.id}:${index}`,
+          ...row,
+        })));
+      continue;
+    }
+
     const image = decodeImageAnswer(source.data?.esm_user_answer);
     const ocr = image
       ? await extractBatteryUsageOcrText(source.data, image.buffer)
       : { text: '', confidence: null, method: 'none', status: 'no_image' };
     const parsedRows = parseBatteryUsageOcrText(ocr.text);
-    const sourceImageUrl = `/api/v1/studies/${encodeURIComponent(source.study_id)}/media/${encodeURIComponent(source.sensor)}/${encodeURIComponent(source.id)}/image`;
     const qa = batteryOcrQa({ ocr, parsedRows });
     const base = {
       source_sensor: source.sensor,
@@ -1699,6 +2334,221 @@ async function processBatteryScreenshotUploads({ studyId, limit: rawLimit } = {}
   return { screenshots: screenshotRows.length, inserted, skipped };
 }
 
+function confirmedBatteryRows(source, sourceImageUrl) {
+  const data = source.data || {};
+  const base = {
+    source_sensor: source.sensor,
+    source_row_id: String(source.id),
+    source_image_url: sourceImageUrl,
+    usage_window: data.usage_window || '',
+    captured_at: data.captured_at || '',
+    participant_edited: data.participant_edited === true,
+    extraction_method: 'participant_confirmed',
+    ocr_confidence: null,
+    ocr_text: data.device_ocr_text || '',
+  };
+  if (!data.confirmed_rows.length) {
+    return [{
+      ...base,
+      app_name: '',
+      screen_time_seconds: null,
+      screen_time_text: '',
+      battery_percent: null,
+      battery_percent_text: '',
+      extraction_status: 'confirmed_empty',
+      needs_review: true,
+      qa_reason: 'participant confirmed no app rows',
+      parse_notes: 'participant confirmed an empty table',
+    }];
+  }
+  return data.confirmed_rows.map((item) => ({
+    ...base,
+    app_name: item.app_name,
+    screen_time_seconds: item.screen_time_seconds,
+    screen_time_text: item.screen_time_seconds === null ? '' : formatSecondsText(item.screen_time_seconds),
+    battery_percent: item.battery_percent,
+    battery_percent_text: item.battery_percent === null ? '' : `${item.battery_percent}%`,
+    extraction_status: 'confirmed',
+    needs_review: false,
+    qa_reason: '',
+    parse_notes: data.participant_edited ? 'edited by participant' : 'confirmed by participant',
+  }));
+}
+
+function formatSecondsText(seconds) {
+  const minutes = Math.round(Number(seconds) / 60);
+  const hours = Math.floor(minutes / 60);
+  return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+}
+
+// ---- Screen Time "See All Activity" screenshots ---------------------------
+
+function isScreenTimeActivityEsmRow(row) {
+  const data = row?.data || {};
+  if (data.screenshot_kind === 'screen_time_activity' || data.esm_trigger === ACTIVITY_PROMPT) return true;
+  return parseEsmJson(data.esm_json).esm_trigger === ACTIVITY_PROMPT;
+}
+
+async function findScreenTimeActivityRows({ studyId, limit: rawLimit } = {}) {
+  const limit = Math.min(Math.max(Number(rawLimit) || 100, 1), BATTERY_USAGE_EXPORT_LIMIT);
+  const rows = [];
+  const sensors = studyId ? await listStudySensorTables(studyId) : await listSensorTables();
+  for (const sensor of sensors.filter((item) => isKnownEsmSensor(item.sensor))) {
+    const sensorRows = await exportRows(sensor.table, { studyId, limit, order: 'desc' });
+    for (const row of sensorRows) {
+      const candidate = { ...row, sensor: sensor.sensor };
+      if (decodeImageAnswer(candidate.data?.esm_user_answer) && isScreenTimeActivityEsmRow(candidate)) rows.push(candidate);
+    }
+  }
+  return rows.slice(0, limit);
+}
+
+async function countDerivedActivityRows({ studyId } = {}) {
+  const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
+  if (!(await tableExists(table))) return 0;
+  await processScreenTimeActivityUploads({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
+  const { rows } = await getPool().query(
+    `SELECT count(*)::int AS n FROM ${table}${studyId ? ' WHERE study_id = $1' : ''}`,
+    studyId ? [studyId] : []
+  );
+  return rows[0].n;
+}
+
+async function processScreenTimeActivityUploads({ studyId, limit } = {}) {
+  const sources = await findScreenTimeActivityRows({ studyId, limit });
+  const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
+  await createSensorTable(table);
+  let inserted = 0;
+  for (const source of sources) {
+    if (await batteryUsageSourceAlreadyProcessed(table, source)) continue;
+    const data = source.data || {};
+    const sourceImageUrl = `/api/v1/studies/${encodeURIComponent(source.study_id)}/media/${encodeURIComponent(source.sensor)}/${encodeURIComponent(source.id)}/image`;
+    let parsed;
+    let method;
+    if (Array.isArray(data.confirmed_rows)) {
+      parsed = { summary: data.confirmed_summary || {}, apps: data.confirmed_rows };
+      method = 'participant_confirmed';
+    } else {
+      const image = decodeImageAnswer(data.esm_user_answer);
+      const ocr = image
+        ? await extractBatteryUsageOcrText(data, image.buffer)
+        : { text: '', method: 'none' };
+      parsed = parseScreenTimeActivityOcrText(ocr.text);
+      parsed.ocrText = ocr.text;
+      method = ocr.method;
+    }
+    const summary = parsed.summary || {};
+    const needsReview = method !== 'participant_confirmed' &&
+      (summary.total_screen_time_seconds == null || !parsed.apps?.length);
+    const base = {
+      source_sensor: source.sensor,
+      source_row_id: String(source.id),
+      source_image_url: sourceImageUrl,
+      activity_date: data.activity_date || '',
+      captured_at: data.captured_at || '',
+      participant_edited: data.participant_edited === true,
+      extraction_method: method,
+      extraction_status: method === 'participant_confirmed' ? 'confirmed' : (needsReview ? 'needs_review' : 'parsed'),
+      needs_review: needsReview,
+      qa_reason: needsReview ? 'total screen time or app rows not found' : '',
+      ocr_text: data.device_ocr_text || parsed.ocrText || '',
+    };
+    const rows = [{
+      ...base,
+      row_type: 'summary',
+      app_name: '',
+      screen_time_seconds: null,
+      total_screen_time_seconds: summary.total_screen_time_seconds ?? null,
+      pickups: summary.pickups ?? null,
+      notifications: summary.notifications ?? null,
+      dedupe_key: `activity:${source.sensor}:${source.id}:summary`,
+    }, ...(parsed.apps || []).map((app, index) => ({
+      ...base,
+      row_type: 'app',
+      app_name: app.app_name,
+      screen_time_seconds: app.screen_time_seconds ?? null,
+      total_screen_time_seconds: null,
+      pickups: null,
+      notifications: null,
+      dedupe_key: `activity:${source.sensor}:${source.id}:app:${index}`,
+    }))];
+    inserted += await insertRows(table, source.study_id, source.device_id,
+      rows.map((row) => ({ timestamp: source.timestamp, ...row })));
+  }
+  return { screenshots: sources.length, inserted };
+}
+
+async function screenTimeActivityUploadFeedback(source) {
+  const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
+  const { rows } = await getPool().query(
+    `SELECT data FROM ${table}
+     WHERE study_id = $1 AND data->>'source_sensor' = $2 AND data->>'source_row_id' = $3`,
+    [source.study_id, source.sensor, String(source.id)]
+  );
+  const apps = rows.filter((row) => row.data?.row_type === 'app').length;
+  const summary = rows.find((row) => row.data?.row_type === 'summary')?.data || {};
+  const needsReview = rows.some((row) => row.data?.needs_review === true);
+  return {
+    app_rows_detected: apps,
+    needs_review: needsReview,
+    qa_reason: summary.qa_reason || '',
+    message: needsReview
+      ? 'Screenshot uploaded, but StudyTrace could not read the screen time totals. Please retake it if possible.'
+      : `Screenshot uploaded with ${apps} app${apps === 1 ? '' : 's'}.`,
+  };
+}
+
+// Parses Settings > Screen Time > See All Activity (one day, English or
+// Japanese): total screen time, total pickups/notifications, and the
+// "Most Used" app list.
+function parseScreenTimeActivityOcrText(text) {
+  const lines = String(text || '').split(/\r?\n/).map(cleanOcrLine).filter(Boolean);
+  const lower = lines.map((line) => line.toLowerCase());
+  const indexOf = (pattern, from = 0) => {
+    for (let i = from; i < lower.length; i += 1) if (pattern.test(lower[i])) return i;
+    return -1;
+  };
+  const countNear = (pattern) => {
+    const at = indexOf(pattern);
+    if (at < 0) return null;
+    for (let i = at; i < Math.min(lines.length, at + 4); i += 1) {
+      const match = lines[i].replace(/,/g, '').match(/(?:^|\s)(\d{1,5})(?:\s*(?:回|件))?$/);
+      if (match && !parseBatteryDuration(lines[i])) return Number(match[1]);
+    }
+    return null;
+  };
+
+  const mostUsed = indexOf(/most used|よく使われた/);
+  const pickupsAt = indexOf(/pickup|持ち上げ/);
+  const notificationsAt = indexOf(/notification|通知/);
+  let total = null;
+  for (let i = 0; i < (mostUsed > 0 ? mostUsed : lines.length); i += 1) {
+    const duration = parseBatteryDuration(lines[i]);
+    if (duration && !/^\d{1,2}:\d{2}$/.test(lines[i])) {
+      total = duration.seconds;
+      break;
+    }
+  }
+
+  const apps = [];
+  if (mostUsed >= 0) {
+    const stop = [pickupsAt, notificationsAt].filter((i) => i > mostUsed).sort((a, b) => a - b)[0] ?? lines.length;
+    for (let i = mostUsed + 1; i < stop; i += 1) {
+      if (!looksLikeBatteryAppNameLine(lines[i])) continue;
+      const next = [lines[i + 1], lines[i + 2]].map((line) => parseBatteryDuration(line)).find(Boolean);
+      if (next) apps.push({ app_name: cleanAppName(lines[i]), screen_time_seconds: next.seconds });
+    }
+  }
+  return {
+    summary: {
+      total_screen_time_seconds: total,
+      pickups: countNear(/total pickups|pickups|持ち上げ/),
+      notifications: countNear(/notifications|通知/),
+    },
+    apps,
+  };
+}
+
 async function batteryUsageSourceAlreadyProcessed(table, source) {
   const { rows } = await getPool().query(
     `SELECT 1
@@ -1738,6 +2588,7 @@ async function findBatteryScreenshotRows({ studyId, limit: rawLimit } = {}) {
 
 function isBatteryScreenshotEsmRow(row) {
   if (!row?.data || !decodeImageAnswer(row.data.esm_user_answer)) return false;
+  if (isScreenTimeActivityEsmRow(row)) return false;
   const esmJson = parseEsmJson(row.data.esm_json);
   const text = [
     row.data.esm_trigger,
@@ -1778,7 +2629,8 @@ async function extractBatteryUsageOcrText(data, imageBuffer) {
 
   try {
     const tesseract = await import('tesseract.js');
-    const worker = await tesseract.createWorker('eng');
+    // e.g. OCR_LANGUAGES=eng+jpn for Japanese studies (downloads traineddata once).
+    const worker = await tesseract.createWorker((process.env.OCR_LANGUAGES || 'eng').split('+'));
     const result = await worker.recognize(imageBuffer);
     await worker.terminate();
     return {
@@ -1890,8 +2742,9 @@ function batteryDurationLinePriority(line) {
 function parseBatteryDuration(value) {
   const text = String(value || '').replace(/[·•]/g, ' ');
   const patterns = [
-    /(\d{1,2})\s*(?:h|hr|hrs|hour|hours)\s*(\d{1,2})?\s*(?:m|min|mins|minute|minutes)?/i,
-    /(\d{1,3})\s*(?:m|min|mins|minute|minutes)\b/i,
+    // Longest unit first: with `h` first, "1 hour 5 min" stopped at "1 h".
+    /(\d{1,2})\s*(?:hours|hour|hrs|hr|h|時間)(?![a-z])\s*(?:(\d{1,2})\s*(?:minutes|minute|mins|min|m|分)(?![a-z]))?/i,
+    /(\d{1,3})\s*(?:minutes|minute|mins|min|m|分)(?![a-z])/i,
     /\b(\d{1,2}):(\d{2})\b/,
   ];
   for (const pattern of patterns) {
@@ -1915,7 +2768,7 @@ function parseBatteryDuration(value) {
 }
 
 function parseBatteryPercent(value) {
-  const match = String(value || '').match(/\b(\d{1,3})\s*%/);
+  const match = String(value || '').match(/(\d{1,3})\s*[%％]/);
   if (!match) return null;
   const valueNumber = Number(match[1]);
   if (!Number.isInteger(valueNumber) || valueNumber < 0 || valueNumber > 100) return null;
@@ -1930,9 +2783,10 @@ function cleanOcrLine(value) {
 }
 
 function cleanAppName(value) {
+  // Unicode-aware so Japanese app names (e.g. 写真, メッセージ) survive.
   return String(value || '')
-    .replace(/^[^A-Za-z0-9]+/, '')
-    .replace(/[^A-Za-z0-9).]+$/, '')
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .replace(/[^\p{L}\p{N}).]+$/u, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -1946,7 +2800,7 @@ function looksLikeBatteryAppNameLine(line) {
 function isUsableAppName(value) {
   const text = cleanAppName(value);
   if (text.length < 2 || text.length > 60) return false;
-  if (!/[A-Za-z]/.test(text)) return false;
+  if (!/\p{L}/u.test(text)) return false;
   const lower = text.toLowerCase();
   return ![
     'settings',
@@ -1965,6 +2819,17 @@ function isUsableAppName(value) {
     'activity by app',
     'battery level',
     'insights and suggestions',
+    'バッテリー',
+    'バッテリーの使用状況',
+    'アプリごとのバッテリー使用状況',
+    'アプリごとのアクティビティ',
+    '過去24時間',
+    '過去10日間',
+    'アクティビティを表示',
+    'バッテリー使用状況を表示',
+    '画面オン',
+    '画面オフ',
+    'バッテリー残量',
     'show activity',
     'show battery usage',
   ].includes(lower);
