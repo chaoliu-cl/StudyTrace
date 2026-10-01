@@ -70,7 +70,7 @@ export function createAwareRouter(getPublicBaseUrl) {
       const deviceId = req.body.device_id;
       const participant = participantLabel(req.query.participant);
       if (deviceId) {
-        await upsertDevice(deviceId, req.params.studyId, participant);
+        await upsertDevice(deviceId, req.params.studyId, participant, { joined: true });
       }
       const config = buildStudyConfig({
         studyId: req.params.studyId,

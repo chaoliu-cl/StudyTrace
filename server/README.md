@@ -368,7 +368,8 @@ Response:
 
 - `study_url` — paste/QR into the StudyTrace app (AWARE protocol). Because the
   password is stored hashed, the URL is only returned when you send `password`
-  in the request, so save it when you create the study.
+  in the request. The response also carries `qr_svg`, a QR code of the URL, and
+  `/admin/` shows both after you save.
 - `api_base` — base path for the generic JSON API.
 
 Posting again for an existing study changes **only the fields you send**. To set
@@ -420,6 +421,15 @@ To add a participant identifier, append `?participant=<ID>`:
 ```
 https://YOUR-APP.up.railway.app/index.php/webservice/index/pilot1/PASSWORD?participant=P001
 ```
+
+Both dashboards can rebuild the URL and its QR code later: **Join link and QR
+code** in `/admin/`, and **Participant join link** in `/researcher/`. Enter the
+participant study password (only its hash is stored) and, optionally, a
+participant ID; you can copy the URL or download the QR as SVG or PNG. The API
+is `POST /admin/studies/{id}/join-link` (admin token) or
+`POST /api/v1/studies/{id}/join-link` (researcher password), with body
+`{"password": "...", "participant": "P001"}`. A wrong password counts toward
+the failed-login rate limit.
 
 ## Inspect collected data
 
@@ -476,8 +486,14 @@ curl "https://YOUR-APP.up.railway.app/api/v1/studies/pilot1/export/locations?for
   already uploaded, then calls `POST /api/v1/studies/{id}/withdrawal`. The
   request is always recorded in the `withdrawals` audit table; with
   `delete_data: true`, every row that device uploaded is removed from every
-  sensor table (raw and derived) and the device is unregistered.
-- Researchers can delete a participant from the **Enrolled devices** table in
+  sensor table (raw and derived) and the device is unregistered. Without
+  deletion the device stays listed (status **Withdrawn**) but no longer counts
+  as enrolled; joining again re-enrolls it.
+- Device counts on both dashboards are enrolled (not withdrawn) devices and
+  refresh every minute while the page is open. Every upload path registers its
+  device, and on boot the server registers any device found in sensor data
+  but missing from the `devices` table.
+- Researchers can delete a participant from the **Devices** table in
   `/researcher/` (or `DELETE /api/v1/studies/{id}/participants/{device_id}`).
   Admins can use `DELETE /admin/studies/{id}/participants/{device_id}`.
 - The dashboard's **Withdrawals and deletions** table lists every request.

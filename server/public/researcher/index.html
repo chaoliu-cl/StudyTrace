@@ -56,7 +56,26 @@
       </section>
       <section class="panel">
         <div class="section-head">
-          <h2>Enrolled devices</h2>
+          <div>
+            <h2>Participant join link</h2>
+            <p class="section-note">Generate the study URL and a QR code that participants scan or paste in the StudyTrace app. Enter the participant study password (the one in the join link, not your researcher password); only its hash is stored, so it cannot be shown without it. Add a participant ID to label that participant's device.</p>
+          </div>
+        </div>
+        <form id="researcher-join-link" class="stack">
+          <label><span>Participant study password</span><input name="password" type="password" autocomplete="off" required></label>
+          <label><span>Participant ID, optional</span><input name="participant" placeholder="P001" maxlength="128"></label>
+          <button class="button button-primary" type="submit">Generate join link and QR code</button>
+        </form>
+        <p id="researcher-join-link-message" class="status-line"></p>
+        <div id="researcher-join-link-result" class="hidden"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Devices</h2>
+            <p class="section-note" id="researcher-devices-updated"></p>
+          </div>
         </div>
         <div class="table-wrap">
           <table id="researcher-devices"></table>

@@ -50,14 +50,35 @@
           <p class="section-note">New studies need both passwords. For an existing study, fill in only what you want to change. Leave the participant password blank to keep enrolled phones working.</p>
           <button class="button button-primary" type="submit">Save study</button>
         </form>
+        <div id="admin-create-link" class="hidden"></div>
         <pre id="admin-create-result" class="result-box"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Join link and QR code</h2>
+            <p class="section-note">Get the study URL and a scannable QR code for an existing study. The participant study password is stored hashed, so enter it here to rebuild the link. Add a participant ID to label that participant's device.</p>
+          </div>
+        </div>
+        <form id="admin-join-link" class="stack">
+          <label><span>Study ID</span><input name="study_id" placeholder="pilot1" required></label>
+          <label><span>Participant study password</span><input name="password" type="password" autocomplete="off" required></label>
+          <label><span>Participant ID, optional</span><input name="participant" placeholder="P001" maxlength="128"></label>
+          <button class="button button-primary" type="submit">Generate join link and QR code</button>
+        </form>
+        <p id="admin-join-link-message" class="status-line"></p>
+        <div id="admin-join-link-result" class="hidden"></div>
       </section>
 
       <div class="metric-grid" id="admin-metrics"></div>
 
       <section class="panel">
         <div class="section-head">
-          <h2>Studies</h2>
+          <div>
+            <h2>Studies</h2>
+            <p class="section-note">Enrolled devices excludes participants who withdrew from the app. <span id="admin-studies-updated"></span></p>
+          </div>
         </div>
         <div class="table-wrap">
           <table id="admin-studies"></table>

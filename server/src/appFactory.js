@@ -38,6 +38,7 @@ import {
   listWithdrawals,
   listStudyDevices,
   rowsSince,
+  upsertDevice,
 } from './db.js';
 import { ZipWriter } from './zip.js';
 import { describeColumn } from './codebook.js';
@@ -62,6 +63,7 @@ import {
 } from './auth.js';
 import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
+import { buildJoinLink } from './joinLink.js';
 import { buildConsentDocument, CONSENT_FIELDS, publishedConsent } from './consent.js';
 
 const BATTERY_USAGE_EXPORT_SENSOR = 'battery_usage_apps';
@@ -393,12 +395,49 @@ export function createApp() {
         api_base: `${base}/api/v1/studies/${encodeURIComponent(study_id)}`,
       };
       if (password) {
-        // AWARE-protocol study URL (paste/QR into the StudyTrace app). Only
-        // returned when the participant password was supplied in this call,
-        // since the server stores it hashed.
-        response.study_url = `${base}/index.php/webservice/index/${encodeURIComponent(study_id)}/${encodeURIComponent(password)}`;
+        // AWARE-protocol study URL and its QR code (paste/scan into the
+        // StudyTrace app). Only returned when the participant password was
+        // supplied in this call, since the server stores it hashed.
+        const { study_url: studyUrl, qr_svg: qrSvg } = buildJoinLink(base, study_id, password);
+        response.study_url = studyUrl;
+        response.qr_svg = qrSvg;
       }
       res.json(response);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Join link + QR code for an existing study, optionally labeled for one
+  // participant (?participant=). Needs the participant password because only
+  // its hash is stored; a wrong password counts as a failed auth attempt.
+  //   body (JSON): { "password", "participant"? }
+  function sendJoinLink(req, res, study) {
+    const { password, participant } = req.body || {};
+    if (!password) {
+      return res.status(400).json({ error: 'password (the participant study password) is required' });
+    }
+    if (!studyAcceptsParticipantPassword(study, String(password))) {
+      recordAuthFailure(req);
+      return res.status(403).json({ error: 'that is not the participant study password for this study' });
+    }
+    const base = publicBaseUrl || `${req.protocol}://${req.get('host')}`;
+    res.json({ ok: true, ...buildJoinLink(base, study.study_id, String(password), participant) });
+  }
+
+  app.post('/admin/studies/:studyId/join-link', requireAdmin, async (req, res, next) => {
+    try {
+      const study = await getStudy(req.params.studyId);
+      if (!study) return res.status(404).json({ error: 'study not found' });
+      sendJoinLink(req, res, study);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/v1/studies/:studyId/join-link', requireResearcher, (req, res, next) => {
+    try {
+      sendJoinLink(req, res, req.study);
     } catch (err) {
       next(err);
     }
@@ -2103,6 +2142,7 @@ async function handleUsageScreenshotUpload(req, res, studyId, forcedKind) {
   const table = safeTableName('plugin_ios_esm');
   await createSensorTable(table);
   const inserted = await insertRows(table, studyId, deviceId, [row]);
+  await upsertDevice(deviceId, studyId);
   const source = await findLatestBatteryScreenshotSource(table, { studyId, deviceId, timestamp });
   let processed;
   let feedback;
