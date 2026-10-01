@@ -4,8 +4,8 @@
 //
 //  Participant-submitted usage screenshots: iOS Settings > Battery and
 //  Settings > Screen Time > See All Activity. The phone reads the screenshot
-//  with on-device OCR, shows the extracted values for the participant to
-//  confirm or correct, then uploads the confirmed values with the image.
+//  with on-device OCR and uploads the recognized text with the image; the
+//  server extracts the values. Participants cannot view or edit the values.
 //
 
 import UIKit
@@ -56,9 +56,9 @@ enum UsageScreenshotKind: String {
     var instructionDetail: String {
         switch self {
         case .battery:
-            return loc("shot_battery_detail", "Apple does not let apps read Screen Time directly, so the study uses the iOS Battery screen. StudyTrace reads the screenshot on your iPhone and shows you what it found before anything is uploaded.")
+            return loc("shot_battery_detail", "Apple does not let apps read Screen Time directly, so the study uses the iOS Battery screen. StudyTrace uploads the screenshot you choose to the study server.")
         case .screenTimeActivity:
-            return loc("shot_activity_detail", "This screen shows one day of screen time, pickups, and notifications. StudyTrace reads the screenshot on your iPhone and shows you what it found before anything is uploaded.")
+            return loc("shot_activity_detail", "This screen shows one day of screen time, pickups, and notifications. StudyTrace uploads the screenshot you choose to the study server.")
         }
     }
 
@@ -68,7 +68,7 @@ enum UsageScreenshotKind: String {
             return [
                 loc("shot_battery_step1", "1. Leave StudyTrace and open iPhone Settings."),
                 loc("shot_battery_step2", "2. Tap Battery."),
-                loc("shot_battery_step3", "3. Tap View All Battery Usage so app rows are visible."),
+                loc("shot_battery_step3", "3. Keep Last 24 Hours selected and tap View All Battery Usage so app rows are visible."),
                 loc("shot_battery_step4", "4. Take a screenshot."),
                 loc("shot_battery_step5", "5. Return here and choose that screenshot.")
             ]
@@ -394,42 +394,35 @@ enum UsageScreenshotOCR {
     }
 }
 
-// MARK: - What the participant confirmed
+// MARK: - What gets uploaded
 
+/// The screenshot's context sent with the image. App rows and totals are
+/// extracted on the server from `ocrText`; the participant never edits them.
 struct UsageScreenshotSubmission {
-    struct Row {
-        var appName: String
-        var minutes: Int?
-        var percent: Int?
-    }
-
     var kind: UsageScreenshotKind
-    var rows: [Row]
+    /// Battery screenshots: the tab the instructions ask participants to keep selected.
     var usageWindow = "last_24_hours"
+    /// Screen Time screenshots: the day shown (yesterday unless the text says otherwise).
     var activityDate = Date()
-    var totalMinutes: Int?
-    var pickups: Int?
-    var notifications: Int?
     var capturedAt: Date?
     var ocrText = ""
-    var edited = false
 
-    init(kind: UsageScreenshotKind, rows: [Row]) {
+    init(kind: UsageScreenshotKind) {
         self.kind = kind
-        self.rows = rows
     }
 }
 
 // MARK: - Coordinator
 
 /// Drives the whole flow: instructions → photo picker → on-device OCR →
-/// review → upload. Owned by the presenting screen.
+/// upload. Owned by the presenting screen.
 final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate {
 
     private weak var presenter: UIViewController?
     private var kind: UsageScreenshotKind = .battery
     private var completion: ((UsageScreenshotKind, UsageScreenshotUploader.Outcome) -> Void)?
     private(set) var isBusy = false
+    private var progress: UIViewController?
 
     func start(kind: UsageScreenshotKind,
                from presenter: UIViewController,
@@ -492,76 +485,140 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
     }
 
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true)
-        guard let provider = results.first?.itemProvider else { return }
+        guard let provider = results.first?.itemProvider else {
+            // Cancelled, possibly after "Choose another screenshot".
+            isBusy = false
+            picker.dismiss(animated: true)
+            return
+        }
         isBusy = true
+        picker.dismiss(animated: true) { [weak self] in
+            self?.showProgress { self?.read(provider) }
+        }
+    }
+
+    private func read(_ provider: NSItemProvider) {
         provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { [weak self] data, _ in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 guard let data = data, let image = UIImage(data: data) else {
-                    self.isBusy = false
-                    self.finish(.failed(title: loc("shot_failed_title", "Upload Failed"),
-                                        message: loc("shot_unreadable", "StudyTrace could not read the selected screenshot.")))
+                    self.end(.failed(title: loc("shot_failed_title", "Upload Failed"),
+                                     message: loc("shot_unreadable", "StudyTrace could not read the selected screenshot.")))
                     return
                 }
                 let capturedAt = UsageScreenshotOCR.captureDate(from: data)
                 UsageScreenshotOCR.recognizeLines(in: image) { text in
-                    self.presentReview(image: image, text: text, capturedAt: capturedAt)
+                    self.submit(image: image, text: text, capturedAt: capturedAt)
                 }
             }
         }
     }
 
-    private func presentReview(image: UIImage, text: String, capturedAt: Date?) {
-        guard let presenter = presenter else {
-            isBusy = false
-            return
-        }
-        var draft = UsageScreenshotSubmission(kind: kind, rows: [])
-        draft.capturedAt = capturedAt
-        draft.ocrText = text
-        switch kind {
-        case .battery:
-            draft.rows = UsageScreenshotParser.batteryRows(from: text).map {
-                UsageScreenshotSubmission.Row(appName: $0.appName, minutes: $0.seconds.map { $0 / 60 }, percent: $0.percent)
-            }
-        case .screenTimeActivity:
-            let parsed = UsageScreenshotParser.activity(from: text)
-            draft.rows = parsed.apps.map {
-                UsageScreenshotSubmission.Row(appName: $0.appName, minutes: $0.seconds.map { $0 / 60 }, percent: nil)
-            }
-            draft.totalMinutes = parsed.summary.totalSeconds.map { $0 / 60 }
-            draft.pickups = parsed.summary.pickups
-            draft.notifications = parsed.summary.notifications
+    private func submit(image: UIImage, text: String, capturedAt: Date?) {
+        var submission = UsageScreenshotSubmission(kind: kind)
+        submission.capturedAt = capturedAt
+        submission.ocrText = text
+        if kind == .screenTimeActivity {
             // Participants are asked for yesterday; the screenshot may say otherwise.
             let offset = UsageScreenshotParser.dayOffsetHint(in: text) ?? -1
             let base = capturedAt ?? Date()
-            draft.activityDate = Calendar.current.date(byAdding: .day, value: offset, to: base) ?? base
+            submission.activityDate = Calendar.current.date(byAdding: .day, value: offset, to: base) ?? base
         }
-        let looksRight = UsageScreenshotParser.isLikelyScreenshot(of: kind, text: text)
-        let review = UsageScreenshotReviewViewController(image: image, draft: draft, looksRight: looksRight)
-        review.onSubmit = { [weak self, weak review] submission in
-            review?.dismiss(animated: true) { self?.upload(image: image, submission: submission) }
+        if UsageScreenshotParser.isLikelyScreenshot(of: kind, text: text) {
+            upload(image: image, submission: submission)
+        } else {
+            confirmUnexpectedScreenshot(image: image, submission: submission)
         }
-        review.onChooseAnother = { [weak self, weak review] in
-            review?.dismiss(animated: true) { self?.presentPicker() }
+    }
+
+    /// The picked image does not look like the requested Settings screen.
+    /// Offers another pick; no values are shown.
+    private func confirmUnexpectedScreenshot(image: UIImage, submission: UsageScreenshotSubmission) {
+        hideProgress { [weak self] in
+            guard let self = self, let presenter = self.presenter else {
+                self?.isBusy = false
+                return
+            }
+            let alert = UIAlertController(
+                title: loc("shot_unexpected_title", "Is this the right screenshot?"),
+                message: self.kind == .battery
+                    ? loc("shot_unexpected_battery", "This does not look like the Battery usage screen. Choose another screenshot, or upload this one anyway.")
+                    : loc("shot_unexpected_activity", "This does not look like the Screen Time activity screen. Choose another screenshot, or upload this one anyway."),
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: loc("shot_choose_again", "Choose another screenshot"), style: .default) { _ in
+                self.presentPicker()
+            })
+            alert.addAction(UIAlertAction(title: loc("shot_upload_anyway", "Upload anyway"), style: .default) { _ in
+                self.showProgress { self.upload(image: image, submission: submission) }
+            })
+            alert.addAction(UIAlertAction(title: loc("shot_cancel", "Cancel"), style: .cancel) { _ in
+                self.isBusy = false
+            })
+            presenter.present(alert, animated: true)
         }
-        review.onCancel = { [weak self, weak review] in
-            self?.isBusy = false
-            review?.dismiss(animated: true)
-        }
-        presenter.present(UINavigationController(rootViewController: review), animated: true)
     }
 
     private func upload(image: UIImage, submission: UsageScreenshotSubmission) {
         UsageScreenshotUploader.upload(image, submission: submission) { [weak self] outcome in
-            self?.isBusy = false
-            self?.finish(outcome)
+            self?.end(outcome)
         }
     }
 
-    private func finish(_ outcome: UsageScreenshotUploader.Outcome) {
-        completion?(kind, outcome)
+    private func end(_ outcome: UsageScreenshotUploader.Outcome) {
+        hideProgress { [weak self] in
+            guard let self = self else { return }
+            self.isBusy = false
+            self.completion?(self.kind, outcome)
+        }
+    }
+
+    // MARK: Progress
+
+    private func showProgress(then next: @escaping () -> Void) {
+        guard let presenter = presenter, progress == nil else {
+            next()
+            return
+        }
+        let controller = UIViewController()
+        controller.modalPresentationStyle = .overFullScreen
+        controller.modalTransitionStyle = .crossDissolve
+        controller.view.backgroundColor = UIColor.black.withAlphaComponent(0.35)
+        let card = UIStackView()
+        card.axis = .vertical
+        card.alignment = .center
+        card.spacing = 12
+        card.isLayoutMarginsRelativeArrangement = true
+        card.layoutMargins = UIEdgeInsets(top: 22, left: 24, bottom: 22, right: 24)
+        card.backgroundColor = AWARETheme.canvas
+        card.layer.cornerRadius = 16
+        card.translatesAutoresizingMaskIntoConstraints = false
+        let spinner = UIActivityIndicatorView(style: .large)
+        spinner.startAnimating()
+        let label = Self.label(loc("shot_uploading", "Uploading your screenshot…"), style: .body, color: AWARETheme.ink)
+        label.textAlignment = .center
+        card.addArrangedSubview(spinner)
+        card.addArrangedSubview(label)
+        controller.view.addSubview(card)
+        NSLayoutConstraint.activate([
+            card.centerXAnchor.constraint(equalTo: controller.view.centerXAnchor),
+            card.centerYAnchor.constraint(equalTo: controller.view.centerYAnchor),
+            card.widthAnchor.constraint(lessThanOrEqualTo: controller.view.widthAnchor, constant: -64)
+        ])
+        controller.view.accessibilityViewIsModal = true
+        progress = controller
+        presenter.present(controller, animated: true) {
+            UIAccessibility.post(notification: .screenChanged, argument: label)
+            next()
+        }
+    }
+
+    private func hideProgress(then next: @escaping () -> Void) {
+        guard let controller = progress else {
+            next()
+            return
+        }
+        progress = nil
+        controller.dismiss(animated: true, completion: next)
     }
 
     // MARK: Layout helpers
@@ -619,194 +676,5 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
             stack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
         ])
         return controller
-    }
-}
-
-// MARK: - Review screen
-
-/// Shows what on-device OCR read from the screenshot and lets the
-/// participant correct it before upload.
-final class UsageScreenshotReviewViewController: UIViewController {
-
-    var onSubmit: ((UsageScreenshotSubmission) -> Void)?
-    var onChooseAnother: (() -> Void)?
-    var onCancel: (() -> Void)?
-
-    private let image: UIImage
-    private let original: UsageScreenshotSubmission
-    private let looksRight: Bool
-    private let rowsStack = UIStackView()
-    private var rowFields: [(name: UITextField, minutes: UITextField, percent: UITextField?)] = []
-    private let windowControl = UISegmentedControl(items: [
-        loc("shot_window_24h", "Last 24 Hours"),
-        loc("shot_window_10d", "Last 10 Days")
-    ])
-    private let datePicker = UIDatePicker()
-    private let totalField = UITextField()
-    private let pickupsField = UITextField()
-    private let notificationsField = UITextField()
-
-    init(image: UIImage, draft: UsageScreenshotSubmission, looksRight: Bool) {
-        self.image = image
-        self.original = draft
-        self.looksRight = looksRight
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = AWARETheme.canvas
-        title = loc("shot_review_title", "Check what StudyTrace read")
-        navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak self] _ in
-            self?.onCancel?()
-        })
-
-        let imageView = UIImageView(image: image)
-        imageView.contentMode = .scaleAspectFit
-        imageView.backgroundColor = UIColor.black.withAlphaComponent(0.04)
-        imageView.layer.cornerRadius = 14
-        imageView.clipsToBounds = true
-        imageView.heightAnchor.constraint(equalToConstant: 260).isActive = true
-        imageView.isAccessibilityElement = true
-        imageView.accessibilityLabel = loc("shot_image_a11y", "Selected screenshot")
-
-        let status = UsageScreenshotCoordinator.label(
-            looksRight
-                ? loc("shot_status_ok", "Please check the values below and fix anything that does not match your screenshot.")
-                : loc("shot_status_check", "This may not be the right screenshot. You can still fix the values below, or choose another screenshot."),
-            style: .subheadline,
-            color: looksRight ? AWARETheme.secondaryInk : AWARETheme.warmAccent)
-
-        var views: [UIView] = [imageView, status]
-        switch original.kind {
-        case .battery:
-            windowControl.selectedSegmentIndex = original.usageWindow == "last_10_days" ? 1 : 0
-            windowControl.accessibilityLabel = loc("shot_window_a11y", "Time range shown in the screenshot")
-            views.append(UsageScreenshotCoordinator.label(loc("shot_window_label", "Which tab is selected in the screenshot?"),
-                                                         style: .headline, color: AWARETheme.ink))
-            views.append(windowControl)
-        case .screenTimeActivity:
-            datePicker.datePickerMode = .date
-            datePicker.preferredDatePickerStyle = .compact
-            datePicker.maximumDate = Date()
-            datePicker.date = original.activityDate
-            views.append(fieldRow(loc("shot_day_label", "Day shown"), control: datePicker))
-            views.append(fieldRow(loc("shot_total_label", "Total screen time (minutes)"),
-                                  control: numberField(totalField, value: original.totalMinutes, a11y: loc("shot_total_label", "Total screen time (minutes)"))))
-            views.append(fieldRow(loc("shot_pickups_label", "Pickups"),
-                                  control: numberField(pickupsField, value: original.pickups, a11y: loc("shot_pickups_label", "Pickups"))))
-            views.append(fieldRow(loc("shot_notifications_label", "Notifications"),
-                                  control: numberField(notificationsField, value: original.notifications, a11y: loc("shot_notifications_label", "Notifications"))))
-        }
-
-        let appsHeader = UsageScreenshotCoordinator.label(
-            original.kind == .battery
-                ? loc("shot_apps_header_battery", "Apps: minutes on screen and battery %")
-                : loc("shot_apps_header_activity", "Most used apps: minutes"),
-            style: .headline, color: AWARETheme.ink)
-        rowsStack.axis = .vertical
-        rowsStack.spacing = 8
-        original.rows.forEach { addRow($0) }
-        if original.rows.isEmpty { addRow(UsageScreenshotSubmission.Row(appName: "", minutes: nil, percent: nil)) }
-
-        let addButton = UIButton(type: .system)
-        addButton.setTitle(loc("shot_add_row", "+ Add an app"), for: .normal)
-        addButton.contentHorizontalAlignment = .leading
-        addButton.addAction(UIAction { [weak self] _ in
-            self?.addRow(UsageScreenshotSubmission.Row(appName: "", minutes: nil, percent: nil))
-        }, for: .touchUpInside)
-
-        let hint = UsageScreenshotCoordinator.label(loc("shot_row_hint", "Leave an app name empty to remove that row."),
-                                                    style: .footnote, color: AWARETheme.secondaryInk)
-        let uploadButton = UsageScreenshotCoordinator.primaryButton(loc("shot_upload", "Upload"), symbol: "icloud.and.arrow.up")
-        uploadButton.addAction(UIAction { [weak self] _ in self?.submit() }, for: .touchUpInside)
-        let chooseAgain = UIButton(type: .system)
-        chooseAgain.setTitle(loc("shot_choose_again", "Choose another screenshot"), for: .normal)
-        chooseAgain.addAction(UIAction { [weak self] _ in self?.onChooseAnother?() }, for: .touchUpInside)
-
-        views += [appsHeader, rowsStack, addButton, hint, uploadButton, chooseAgain]
-        UsageScreenshotCoordinator.scrollingController(self, views: views)
-    }
-
-    private func addRow(_ row: UsageScreenshotSubmission.Row) {
-        let index = rowFields.count + 1
-        let name = UITextField()
-        name.borderStyle = .roundedRect
-        name.placeholder = loc("shot_app_placeholder", "App name")
-        name.text = row.appName
-        name.font = UIFont.preferredFont(forTextStyle: .body)
-        name.adjustsFontForContentSizeCategory = true
-        name.accessibilityLabel = String(format: loc("shot_app_a11y", "App name, row %d"), index)
-        let minutes = numberField(UITextField(), value: row.minutes,
-                                  a11y: String(format: loc("shot_minutes_a11y", "Minutes, row %d"), index))
-        minutes.placeholder = loc("shot_minutes_placeholder", "min")
-        minutes.widthAnchor.constraint(equalToConstant: 72).isActive = true
-        var percentField: UITextField?
-        let line = UIStackView(arrangedSubviews: [name, minutes])
-        if original.kind == .battery {
-            let percent = numberField(UITextField(), value: row.percent,
-                                      a11y: String(format: loc("shot_percent_a11y", "Battery percent, row %d"), index))
-            percent.placeholder = "%"
-            percent.widthAnchor.constraint(equalToConstant: 60).isActive = true
-            line.addArrangedSubview(percent)
-            percentField = percent
-        }
-        line.axis = .horizontal
-        line.spacing = 8
-        rowsStack.addArrangedSubview(line)
-        rowFields.append((name, minutes, percentField))
-    }
-
-    private func numberField(_ field: UITextField, value: Int?, a11y: String) -> UITextField {
-        field.borderStyle = .roundedRect
-        field.keyboardType = .numberPad
-        field.textAlignment = .right
-        field.font = UIFont.preferredFont(forTextStyle: .body)
-        field.adjustsFontForContentSizeCategory = true
-        field.text = value.map(String.init) ?? ""
-        field.accessibilityLabel = a11y
-        return field
-    }
-
-    private func fieldRow(_ title: String, control: UIView) -> UIView {
-        let label = UsageScreenshotCoordinator.label(title, style: .body, color: AWARETheme.ink)
-        let stack = UIStackView(arrangedSubviews: [label, control])
-        stack.axis = .horizontal
-        stack.spacing = 12
-        stack.alignment = .center
-        if let field = control as? UITextField {
-            field.widthAnchor.constraint(equalToConstant: 96).isActive = true
-        }
-        return stack
-    }
-
-    private func submit() {
-        view.endEditing(true)
-        var submission = original
-        submission.rows = rowFields.compactMap { fields in
-            let name = (fields.name.text ?? "").trimmingCharacters(in: .whitespaces)
-            guard !name.isEmpty else { return nil }
-            return UsageScreenshotSubmission.Row(appName: name,
-                                                 minutes: Int(fields.minutes.text ?? ""),
-                                                 percent: fields.percent.flatMap { Int($0.text ?? "") })
-        }
-        switch original.kind {
-        case .battery:
-            submission.usageWindow = windowControl.selectedSegmentIndex == 1 ? "last_10_days" : "last_24_hours"
-        case .screenTimeActivity:
-            submission.activityDate = datePicker.date
-            submission.totalMinutes = Int(totalField.text ?? "")
-            submission.pickups = Int(pickupsField.text ?? "")
-            submission.notifications = Int(notificationsField.text ?? "")
-        }
-        let originalRows = original.rows.map { "\($0.appName)|\($0.minutes ?? -1)|\($0.percent ?? -1)" }
-        let finalRows = submission.rows.map { "\($0.appName)|\($0.minutes ?? -1)|\($0.percent ?? -1)" }
-        submission.edited = originalRows != finalRows
-            || submission.totalMinutes != original.totalMinutes
-            || submission.pickups != original.pickups
-            || submission.notifications != original.notifications
-        onSubmit?(submission)
     }
 }

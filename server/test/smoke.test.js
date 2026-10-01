@@ -1021,6 +1021,49 @@ try {
   assert.ok(activityCsv.json.split('\r\n')[0].includes('pickups'), 'screen_time_activity CSV export');
   console.log('✓ Screen Time activity screenshots: schedule, confirmed values, and OCR parsing');
 
+  // 34.5. The iOS app's current upload: phone OCR text, no participant
+  // review, so the server parses the values and they are not "confirmed".
+  const phoneTextBattery = await request('POST', `${apiBase}/usage-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-phone-text',
+      timestamp: 9500,
+      upload_id: 'phone-text-battery',
+      screenshot_kind: 'battery',
+      screenshot_base64: tinyPngBase64,
+      usage_window: 'last_24_hours',
+      captured_at: Date.UTC(2026, 8, 29, 21, 5),
+      ocr_text: ['BATTERY USAGE BY APP', 'TikTok', '32m On Screen', '8%', 'Safari', '1h 5m', '4%'].join('\n'),
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(phoneTextBattery.status, 201, 'phone-text Battery upload stored');
+  assert.ok(phoneTextBattery.json.feedback.app_rows_detected >= 2, 'server parsed the phone text');
+  const phoneTextExport = await request('GET', `${apiBase}/export/battery_usage_apps?format=json&device_id=dev-phone-text`, { headers: researcherAuth });
+  const tiktok = phoneTextExport.json.rows.find((row) => row.data.app_name === 'TikTok');
+  assert.strictEqual(tiktok.data.extraction_method, 'provided_text', 'phone text is not marked participant-confirmed');
+  assert.strictEqual(tiktok.data.screen_time_seconds, 1920, 'phone text minutes parsed');
+  assert.strictEqual(tiktok.data.usage_window, 'last_24_hours', 'usage window kept without confirmed rows');
+  assert.strictEqual(tiktok.data.participant_edited, false, 'no participant edits');
+  const phoneTextActivity = await request('POST', `${apiBase}/usage-screenshots`, {
+    body: JSON.stringify({
+      device_id: 'dev-phone-text',
+      timestamp: 9600,
+      screenshot_kind: 'screen_time_activity',
+      screenshot_base64: tinyPngBase64,
+      activity_date: '2026-09-27',
+      ocr_text: ['Screen Time', 'Yesterday', '3h 10m', 'MOST USED', 'Messages', '40m',
+        'PICKUPS', 'Total Pickups', '55', 'NOTIFICATIONS', 'Total Notifications', '90'].join('\n'),
+    }),
+    headers: jsonAuth,
+  });
+  assert.strictEqual(phoneTextActivity.status, 201, 'phone-text activity upload stored');
+  const phoneTextActivityRows = await request('GET', `${apiBase}/dashboard/screen-time-activity`, { headers: researcherAuth });
+  const phoneTextSummary = phoneTextActivityRows.json.rows.find((row) => row.row_type === 'summary' && row.device_id === 'dev-phone-text');
+  assert.strictEqual(phoneTextSummary.extraction_method, 'provided_text', 'activity values parsed by the server');
+  assert.strictEqual(phoneTextSummary.activity_date, '2026-09-27', 'activity date kept without confirmed rows');
+  assert.strictEqual(phoneTextSummary.pickups, 55, 'activity pickups parsed from phone text');
+  console.log('✓ unreviewed phone OCR text is parsed by the server, not marked confirmed');
+
   // 35. Phone use from lock/unlock events, split at local midnight.
   await request('POST', `${apiBase}/sensors/device_state/data`, {
     body: JSON.stringify({ device_id: 'dev-use', rows: [{ timestamp: Date.UTC(2026, 0, 15, 12), timezone: 'America/New_York' }] }),

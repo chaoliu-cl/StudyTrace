@@ -2333,6 +2333,10 @@ async function processBatteryScreenshotUploads({ studyId, limit: rawLimit } = {}
       source_sensor: source.sensor,
       source_row_id: String(source.id),
       source_image_url: sourceImageUrl,
+      // Context the phone sends even when nobody reviews the values.
+      usage_window: source.data?.usage_window || '',
+      captured_at: source.data?.captured_at || '',
+      participant_edited: false,
       extraction_method: ocr.method,
       ocr_confidence: ocr.confidence,
       needs_review: qa.needsReview,
