@@ -83,28 +83,19 @@
 "headphone_motion_detail" = "ヘッドフォンに搭載されたモーションセンサのデータ";
 
 // onboarding
-"onbording_overview_title" = "AWAREについて";
-"onbording_overview_body"  = "AWAREはスマートフォンのセンサデータ及びコンテキストを手軽に記録・可視化し、必要に応じて研究者と共有するためのフレームワークです。";
+"onbording_overview_title" = "StudyTraceについて";
+"onbording_overview_body" = "StudyTraceは、大学や研究チームが実施する研究に参加するためのアプリです。研究によっては、短いアンケートへの回答、位置情報の共有、スマートフォンの利用状況を示すスクリーンショットの送信をお願いすることがあります。";
 
-"onbording_data_title" = "個人利用：行動記録";
-"onbording_data_body"  = "AWAREを使えば、スマートフォンに搭載された物理・仮想センサのデータをアプリを使っていない時でも自動的に記録できます。例えば、あなたの位置情報を24時間記録し、後から振り返ることができます。データはあなたのスマートフォンの中（SQLite）に保存されています。\n一部のセンサ（HealthKitや環境音、位置情報、行動認識など）の利用には、許可が必要なため、必要に応じて許可を求めます。";
+"onbording_data_title" = "あなたのデータ";
+"onbording_data_body" = "研究に参加して同意書に同意するまで、データは一切収集されません。同意書には、研究で収集する内容、データを閲覧できる人、研究の期間が記載されています。研究への参加はいつでもやめることができ、送信済みのデータを削除するかどうかも選べます。";
 
-"onbording_study_title" = "研究者：実験の実施";
-"onbording_study_body" = "スマートフォンを使った調査研究を3ステップで実施できます。（1）参加者のスマートフォンにAWAREをインストールし、（2）ウェブダッシュボードから収集するデータを選択、最後に（3）参加者にQRコードを配布し、AWAREで読み込むだけです。\n\n収集したデータは、一旦スマートフォン上のストレージに保存され、WiFiに接続・充電が行われている時に自動的にアップロードされます。また、AWAREはプライバシーに考慮した設計になっており、個人情報は保存しません。";
 
-"onboarding_permission_loc_title" = "許可：位置情報";
-"onboarding_permission_loc_body" = "バックグランドでデータ収集を行う為に、AWAREは「常に」位置情報センサを利用する必要があります。「許可」ボタンを押して位置情報センサの利用を許可して下さい。\n（注意：あなたが、位置情報センサへの利用を許可しない限り、AWAREはバックグランド状態の時にデータを収集できません。）";
 
-"onboarding_permission_notif_title" = "許可：Push通知";
-"onboarding_permission_notif_body" = "「アンケート調査のリマインド」や「実験の開始・終了」、「最新のアプリ情報」を受け取る為に、AWAREはPush通知を利用します。「許可」ボタンを押して、Push通知の利用を許可して下さい。";
 
-"onboarding_welcome_title" = "AWARE Frameworkへようこそ！";
-"onboarding_welcome_body" = "AWARE Framework の詳細は、以下のリンクからアクセスできます。\nhttp://www.awareframework.com/";
 
 
 /// general
 "Next" = "次へ";
-"Allow" = "許可";
 "Cancel" = "キャンセル";
 "Execute" = "実行";
 "Update" = "アップデート";
@@ -137,10 +128,6 @@
 "Tap to answer survey(s)" = "タップして調査に回答";
 "No pending survey(s)" = "未回答の調査はありません";
 // consent
-"onboarding_consent_title" = "研究参加への同意";
-"onboarding_consent_body" = "本研究に参加することにより、研究チームが設定した研究データ（位置情報、アンケートへの回答、およびあなたが選択した特定のアプリ・Webサイト・カテゴリのスクリーンタイム概要（任意）など）をStudyTraceが収集することに同意したものとみなされます。\n\nスクリーンタイムの収集にはiOSの別途の許可が必要であり、承認された研究のためにのみ使用され、広告やアプリ間のトラッキングには使用されません。\n\nあなたのデータは安全に保管され、研究目的にのみ使用されます。設定画面から研究への参加をやめることで、いつでも参加を撤回できます。\n\n内容を理解し、研究への参加に同意することを確認してください。";
-"onboarding_consent_agree" = "同意して参加する";
-"onboarding_consent_decline" = "同意しない";
 
 // insecure server URL
 "Insecure Server URL" = "安全でないサーバーURL";
@@ -184,3 +171,73 @@
 "shot_upload_anyway" = "このまま送信";
 "shot_cancel" = "キャンセル";
 "shot_uploading" = "スクリーンショットを送信しています…";
+
+// Per-study consent, joining, and settings
+"OK" = "OK";
+"consent_screen_title" = "研究参加への同意";
+"consent_updated_notice" = "研究チームがこの研究の同意書を更新しました。内容を読み、参加を続けるかどうか選んでください。";
+"consent_source" = "研究用サーバー：%@";
+"consent_purpose" = "研究の目的";
+"consent_duration" = "参加期間";
+"consent_procedures" = "参加者が行うこととアプリが収集するもの";
+"consent_risks" = "リスクと不快感";
+"consent_benefits" = "利益";
+"consent_data_handling" = "秘密保持、データの保存、データを閲覧できる人";
+"consent_withdrawal" = "参加のやめ方";
+"consent_additional" = "その他の情報";
+"consent_contact" = "研究に関するお問い合わせ";
+"consent_email_button" = "%@ にメールする";
+"consent_email_copied" = "メールアドレスをコピーしました";
+"consent_ethics" = "倫理審査";
+"consent_agree_note" = "「同意する」を選ぶと研究に参加します。続いて、位置情報や通知など、研究に必要な権限についてiOSから確認があります。参加は設定からいつでもやめられます。";
+"consent_agree_note_update" = "「同意する」を選ぶと参加を続けます。同意しない場合は、研究への参加をやめることができます。";
+"consent_agree" = "同意する";
+"consent_decline" = "同意しない";
+"join_already_title" = "参加済みです";
+"join_already_message" = "このiPhoneは、すでにこの研究に参加しています。";
+"join_switch_title" = "研究を切り替えますか？";
+"join_switch_message" = "このiPhoneは別の研究に参加中です。この研究に参加すると、現在の研究への参加は終了します。送信済みのデータは残ります。削除を希望する場合は、先に設定から現在の研究への参加をやめてください。";
+"join_switch_continue" = "続ける";
+"join_loading" = "研究を開いています…";
+"join_joining" = "研究に参加しています…";
+"join_failed_title" = "参加できませんでした";
+"join_failed_message" = "研究用サーバーに接続できませんでした。インターネット接続を確認し、もう一度研究のリンクを開いてください。";
+"join_not_ready_title" = "研究の準備ができていません";
+"join_not_ready_message" = "研究チームがまだこの研究の同意書を公開していません。研究チームに連絡してから、もう一度研究のリンクを開いてください。";
+"join_rejected_title" = "研究のリンクを確認できません";
+"join_rejected_message" = "このリンクに一致する研究がサーバーにありません。研究チームから受け取ったリンクまたはQRコードを使用しているか確認してください。";
+"join_link_title" = "研究に参加する";
+"join_link_message" = "研究チームから受け取った研究のリンクを貼り付けてください。";
+"join_link_join" = "参加する";
+"join_options_message" = "研究チームから受け取ったQRコードまたはリンクを使用します。";
+"join_scan" = "QRコードを読み取る";
+"join_enter_link" = "研究のリンクを入力する";
+"location_not_now" = "今はしない";
+"onboarding_join_title" = "研究に参加する";
+"onboarding_join_body" = "研究チームから研究のリンクまたはQRコードが届きます。このiPhoneでリンクを開くか、「アンケート」タブからQRコードを読み取ってください。何かが始まる前に、研究の同意書を確認できます。";
+"onboarding_get_started" = "はじめる";
+"onboarding_skip" = "スキップ";
+"qr_prompt" = "研究のQRコードを読み取ってください";
+"qr_join" = "研究に参加する";
+"qr_unrecognized" = "StudyTraceの研究コードではありません";
+"qr_camera_off_title" = "カメラを使用できません";
+"qr_camera_off_message" = "研究のQRコードを読み取るにはカメラが必要です。iOSの設定でカメラへのアクセスを許可するか、研究チームから届いた研究のリンクを開いてください。";
+"qr_open_settings" = "設定を開く";
+"quit_study_title" = "研究への参加をやめる";
+"settings_study" = "研究";
+"settings_study_none" = "未参加です。タップして研究に参加します。";
+"settings_surveys" = "アンケート";
+"settings_privacy_policy" = "プライバシーポリシー";
+"settings_leave_detail" = "参加をやめて、送信済みデータを削除するかどうかを選びます";
+"settings_version" = "バージョン";
+"settings_about" = "StudyTraceについて";
+"settings_about_message" = "StudyTraceを使うと、研究に参加できます。研究によっては、アンケートへの回答、位置情報の共有、バッテリーやスクリーンタイムのスクリーンショットの送信をお願いすることがあります。\n\n研究に参加して同意書に同意するまで、データは一切収集されません。データはその研究のサーバーにのみ送信され、広告やトラッキングには使用されません。研究への参加はいつでもやめられます。";
+"settings_support" = "ヘルプとサポート";
+"settings_support_message" = "アンケート、データ、参加のやめ方など研究に関するご質問は、研究の同意書に記載された研究チームにお問い合わせください。\n\nStudyTraceアプリについてのお問い合わせは、chaoliu@cedarville.edu までメールするか、サポートページをご覧ください。";
+"settings_support_page" = "サポートページを開く";
+"study_reloaded" = "研究の設定を更新しました。";
+"surveys_title" = "アンケート";
+"surveys_none" = "現在、回答できるアンケートはありません。アンケートがあるときは通知でお知らせします。";
+"surveys_not_joined" = "まだ研究に参加していません。研究チームから受け取ったQRコードまたはリンクを使用してください。";
+"surveys_available_one" = " 回答できるアンケートが%d件あります";
+"surveys_available_many" = " 回答できるアンケートが%d件あります";

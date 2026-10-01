@@ -105,7 +105,7 @@
                             </connections>
                         </barButtonItem>
                         <rightBarButtonItems>
-                            <barButtonItem title="Item" image="qrcode.viewfinder" catalog="system" id="FFP-Dc-506">
+                            <barButtonItem title="Scan Study QR Code" image="qrcode.viewfinder" catalog="system" id="FFP-Dc-506">
                                 <connections>
                                     <segue destination="em1-vI-sMk" kind="popoverPresentation" popoverAnchorBarButtonItem="FFP-Dc-506" id="6KN-e0-ggQ">
                                         <popoverArrowDirection key="popoverArrowDirection" up="YES" down="YES" left="YES" right="YES"/>
@@ -281,7 +281,7 @@
         <!--Code Reader View Controller-->
         <scene sceneID="kDd-X9-eZF">
             <objects>
-                <viewController id="em1-vI-sMk" customClass="QRCodeReaderViewController" customModule="StudyTrace" customModuleProvider="target" sceneMemberID="viewController">
+                <viewController storyboardIdentifier="QRCodeReader" id="em1-vI-sMk" customClass="QRCodeReaderViewController" customModule="StudyTrace" customModuleProvider="target" sceneMemberID="viewController">
                     <view key="view" contentMode="scaleToFill" id="Bgj-nQ-JLk">
                         <rect key="frame" x="0.0" y="0.0" width="320" height="548"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
@@ -373,7 +373,7 @@
                             <stackView opaque="NO" contentMode="scaleToFill" axis="vertical" translatesAutoresizingMaskIntoConstraints="NO" id="hzr-d2-yau">
                                 <rect key="frame" x="20" y="10" width="280" height="548"/>
                                 <subviews>
-                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="For using AWARE, following operations are required:" textAlignment="natural" lineBreakMode="tailTruncation" numberOfLines="2" baselineAdjustment="alignBaselines" adjustsFontForContentSizeCategory="YES" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="6XA-zK-eJ9">
+                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="To record your study activity in the background:" textAlignment="natural" lineBreakMode="tailTruncation" numberOfLines="2" baselineAdjustment="alignBaselines" adjustsFontForContentSizeCategory="YES" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="6XA-zK-eJ9">
                                         <rect key="frame" x="0.0" y="0.0" width="280" height="60"/>
                                         <constraints>
                                             <constraint firstAttribute="height" constant="60" id="kZb-Pk-WTF"/>
@@ -382,7 +382,7 @@
                                         <nil key="textColor"/>
                                         <nil key="highlightedColor"/>
                                     </label>
-                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Please give permission to AWARE for accessing your location &quot;Always&quot; for recording your activities continuously." textAlignment="natural" lineBreakMode="tailTruncation" numberOfLines="3" baselineAdjustment="alignBaselines" adjustsFontForContentSizeCategory="YES" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="4IM-LI-dIX">
+                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Your study collects location in the background. If you want to take part in that, allow StudyTrace to use your location &quot;Always&quot;. You can keep your current choice; the rest of the study still works." textAlignment="natural" lineBreakMode="tailTruncation" numberOfLines="3" baselineAdjustment="alignBaselines" adjustsFontForContentSizeCategory="YES" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="4IM-LI-dIX">
                                         <rect key="frame" x="0.0" y="60" width="280" height="60"/>
                                         <constraints>
                                             <constraint firstAttribute="height" constant="60" id="kTm-pr-qs1"/>
@@ -485,7 +485,7 @@
                                                             <constraint firstAttribute="height" constant="10" id="9cy-XB-GjT"/>
                                                         </constraints>
                                                     </view>
-                                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Chose &quot;Always&quot; from the options " textAlignment="natural" lineBreakMode="tailTruncation" numberOfLines="2" baselineAdjustment="alignBaselines" adjustsFontForContentSizeCategory="YES" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="1fm-Eq-Z1o">
+                                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Choose &quot;Always&quot; from the options" textAlignment="natural" lineBreakMode="tailTruncation" numberOfLines="2" baselineAdjustment="alignBaselines" adjustsFontForContentSizeCategory="YES" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="1fm-Eq-Z1o">
                                                         <rect key="frame" x="0.0" y="195" width="252" height="60"/>
                                                         <constraints>
                                                             <constraint firstAttribute="height" constant="60" id="mbB-PZ-TJ4"/>

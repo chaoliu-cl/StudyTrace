@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import SafariServices
 import AWAREFramework
 import CoreLocation
 
@@ -130,7 +131,7 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
                 
             }))
             alert.popoverPresentationController?.sourceView = tableView.cellForRow(at: indexPath)?.contentView
-            alert.popoverPresentationController?.sourceRect = (tableView.cellForRow(at: indexPath)?.contentView.frame)!
+            alert.popoverPresentationController?.sourceRect = tableView.cellForRow(at: indexPath)?.contentView.frame ?? .zero
             self.present(alert, animated: true, completion: nil)
         case AdvancedSettingsIdentifiers.autoSync.rawValue:
             let alert = UIAlertController(title: "Turn On or Off automatic data upload to a remote server?", message: "The current status is \(AWAREStudy.shared().isAutoDBSync() ? "On" :"Off" )", preferredStyle: .actionSheet)
@@ -152,7 +153,7 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
             }))
             alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel, handler: nil))
             alert.popoverPresentationController?.sourceView = tableView.cellForRow(at: indexPath)?.contentView
-            alert.popoverPresentationController?.sourceRect = (tableView.cellForRow(at: indexPath)?.contentView.frame)!
+            alert.popoverPresentationController?.sourceRect = tableView.cellForRow(at: indexPath)?.contentView.frame ?? .zero
             self.present(alert, animated: true, completion: nil)
             break
         // upload interval
@@ -257,17 +258,9 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
             self.present(alert, animated: true, completion: nil)
         // quit
         case AdvancedSettingsIdentifiers.quit.rawValue:
-            let alert = UIAlertController(title: row.title,
-                                          message: NSLocalizedString("quit_study_message", comment: ""),
-                                          preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: NSLocalizedString("quit_study_delete_uploaded", comment: ""), style: .destructive, handler: { _ in
-                self.quitStudy(deleteUploadedData: true)
-            }))
-            alert.addAction(UIAlertAction(title: NSLocalizedString("quit_study_keep_uploaded", comment: ""), style: .default, handler: { _ in
-                self.quitStudy(deleteUploadedData: false)
-            }))
-            alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel, handler: nil))
-            self.present(alert, animated: true, completion: nil)
+            StudyParticipationController.presentLeaveStudy(from: self) { [weak self] in
+                self?.refresh()
+            }
         case AdvancedSettingsIdentifiers.export.rawValue:
             var activityItems = Array<URL>();
             
@@ -326,13 +319,12 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
             }
             break
         case AdvancedSettingsIdentifiers.version.rawValue:
-            let studyURL = AWAREStudy.shared().getURL() ?? ""
             showInfoAlert(title: "StudyTrace Version",
                           message: """
                           App: StudyTrace
                           Version: \(getAppVersion()) (\(getAppBuildNumber()))
                           Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unavailable")
-                          Study URL: \(studyURL.isEmpty ? "Not configured" : studyURL)
+                          Study: \(StudyTraceTelemetry.studyContext()?.studyId ?? "Not joined")
                           """)
             break
         case AdvancedSettingsIdentifiers.uiMode.rawValue:
@@ -436,38 +428,24 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
             }))
             alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel, handler: nil))
             alert.popoverPresentationController?.sourceView = tableView.cellForRow(at: indexPath)?.contentView
-            alert.popoverPresentationController?.sourceRect = (tableView.cellForRow(at: indexPath)?.contentView.frame)!
+            alert.popoverPresentationController?.sourceRect = tableView.cellForRow(at: indexPath)?.contentView.frame ?? .zero
             self.present(alert, animated: true, completion: nil)
             break
         case AdvancedSettingsIdentifiers.team.rawValue:
-            showInfoAlert(title: "StudyTrace Team",
-                          message: """
-                          StudyTrace is configured by your research team.
-
-                          For study-specific questions, consent updates, or withdrawal requests, please contact the coordinator who invited you to this study.
-                          """)
+            let alert = UIAlertController(
+                title: NSLocalizedString("settings_support", value: "Help & Support", comment: ""),
+                message: NSLocalizedString("settings_support_message", value: "For questions about your study, such as surveys, data, or leaving the study, contact the research team listed in the study's consent form.\n\nFor help with the StudyTrace app, email chaoliu@cedarville.edu or visit the support page.", comment: ""),
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: NSLocalizedString("settings_support_page", value: "Open Support Page", comment: ""), style: .default) { [weak self] _ in
+                self?.openLink(StudyTraceLinks.support)
+            })
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Close", comment: ""), style: .cancel))
+            present(alert, animated: true)
         case AdvancedSettingsIdentifiers.aboutStudyTrace.rawValue:
-            showInfoAlert(title: "About StudyTrace",
-                          message: """
-                          StudyTrace is a research data collection app for surveys, location, and optional device-use data.
-
-                          If a study requests app-usage context, StudyTrace asks you to upload an iOS Battery usage screenshot as a survey photo response. StudyTrace collects this app-usage context only from participant-submitted screenshots.
-
-                          It stores data on-device and uploads only to the study server you configure in the app. StudyTrace does not use study data for advertising or cross-app tracking.
-                          """)
-            break
+            showInfoAlert(title: NSLocalizedString("settings_about", value: "About StudyTrace", comment: ""),
+                          message: NSLocalizedString("settings_about_message", value: "StudyTrace lets you take part in research studies. A study can ask you to answer surveys, share your location, and upload Battery or Screen Time screenshots.\n\nNothing is collected until you join a study and agree to its consent form. Data is uploaded only to that study's server, is never used for advertising or tracking, and you can leave the study at any time.", comment: ""))
         case AdvancedSettingsIdentifiers.privacy.rawValue:
-            showInfoAlert(title: "StudyTrace Privacy",
-                          message: """
-                          StudyTrace collects only the data streams enabled for your study after consent.
-
-                          Data is stored locally on your device first and may then be uploaded to your configured study server.
-
-                          Optional app-usage context is collected through participant-submitted Battery screenshots when requested by a study survey. You can skip or decline this upload when the study protocol allows it.
-
-                          You can review permissions in iOS Settings, quit a study, and export your local database from this screen at any time.
-                          """)
-            break
+            openLink(StudyTraceLinks.privacyPolicy)
         default:
             break
         }
@@ -478,25 +456,9 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
         self.viewDidAppear(false)
     }
 
-    private func quitStudy(deleteUploadedData: Bool) {
-        StudyParticipationController.revokeParticipation(
-            clearStudySettings: true,
-            notifyServer: true,
-            deleteUploadedData: deleteUploadedData
-        ) { [weak self] result in
-            guard let self = self else { return }
-            self.refresh()
-            let message: String
-            switch result {
-            case .notApplicable:
-                message = NSLocalizedString("quit_study_done_local", comment: "")
-            case .recorded:
-                message = NSLocalizedString(deleteUploadedData ? "quit_study_done_deleted" : "quit_study_done_kept", comment: "")
-            case .pending(let deviceId):
-                message = String(format: NSLocalizedString("quit_study_pending", comment: ""), deviceId)
-            }
-            self.showInfoAlert(title: NSLocalizedString("quit_study_done_title", comment: ""), message: message)
-        }
+    private func openLink(_ link: String) {
+        guard let url = URL(string: link) else { return }
+        present(SFSafariViewController(url: url), animated: true)
     }
 
     func getFilePathOnDocument(with fileName:String) -> String {
@@ -508,60 +470,65 @@ extension AdvancedSettingsViewController:UITableViewDelegate{
 extension AdvancedSettingsViewController {
     
     func getAdvancedSettings() -> Array<TableRowContent>{
+        var settings: [TableRowContent] = []
+        #if DEBUG
+        // Development tools: AWARE storage, sync tuning, raw database export.
         let study = AWAREStudy.shared()
-        let settings = [TableRowContent(type: .setting,
-                                        title: "Debug Mode",
-                                        details: study.isDebug() ? "On":"Off",
-                                        identifier: AdvancedSettingsIdentifiers.debugMode.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "Storage",
-                                        details: "\(convertStorageTypeToString(study.getDBType()))",
-                                        identifier: AdvancedSettingsIdentifiers.storage.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "Auto Upload",
-                                        details: "\(AWAREStudy.shared().isAutoDBSync() ? "On" :"Off" )",
-                                        identifier: AdvancedSettingsIdentifiers.autoSync.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "Upload Interval",
-                                        details: "\(study.getAutoDBSyncIntervalSecond()/60)",
-                                        identifier: AdvancedSettingsIdentifiers.uploadInterval.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "DB Fetch Count",
-                                        details: "\(study.getMaximumNumberOfRecordsForDBSync())",
-                                        identifier: AdvancedSettingsIdentifiers.dbFetchCount.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "DB Clean Interval",
-                                        details: getDBCleanModeAsString(),
-                                        identifier: AdvancedSettingsIdentifiers.dbCleanInterval.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "Export DB",
-                                        details: "",
-                                        identifier: AdvancedSettingsIdentifiers.export.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "Start Onboarding",
-                                        details: "",
-                                        identifier: AdvancedSettingsIdentifiers.onboarding.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "Compliance Check",
-                                        details: "",
-                                        identifier: AdvancedSettingsIdentifiers.complianceCheck.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "Quit Study",
-                                        identifier: AdvancedSettingsIdentifiers.quit.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "Version",
-                                        details: "\(getAppVersion()) (\(getAppBuildNumber()))"),
-                        TableRowContent(type: .setting,
-                                        title: "About StudyTrace",
-                                        identifier: AdvancedSettingsIdentifiers.aboutStudyTrace.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "Team",
-                                        identifier: AdvancedSettingsIdentifiers.team.rawValue),
-                        TableRowContent(type: .setting,
-                                        title: "Privacy Policy",
-                                        identifier: AdvancedSettingsIdentifiers.privacy.rawValue)
-        ]
-        return settings;
+        settings += [TableRowContent(type: .setting,
+                                     title: "Debug Mode",
+                                     details: study.isDebug() ? "On":"Off",
+                                     identifier: AdvancedSettingsIdentifiers.debugMode.rawValue),
+                     TableRowContent(type: .setting,
+                                     title: "Storage",
+                                     details: "\(convertStorageTypeToString(study.getDBType()))",
+                                     identifier: AdvancedSettingsIdentifiers.storage.rawValue),
+                     TableRowContent(type: .setting,
+                                     title: "Auto Upload",
+                                     details: "\(AWAREStudy.shared().isAutoDBSync() ? "On" :"Off" )",
+                                     identifier: AdvancedSettingsIdentifiers.autoSync.rawValue),
+                     TableRowContent(type: .setting,
+                                     title: "Upload Interval",
+                                     details: "\(study.getAutoDBSyncIntervalSecond()/60)",
+                                     identifier: AdvancedSettingsIdentifiers.uploadInterval.rawValue),
+                     TableRowContent(type: .setting,
+                                     title: "DB Fetch Count",
+                                     details: "\(study.getMaximumNumberOfRecordsForDBSync())",
+                                     identifier: AdvancedSettingsIdentifiers.dbFetchCount.rawValue),
+                     TableRowContent(type: .setting,
+                                     title: "DB Clean Interval",
+                                     details: getDBCleanModeAsString(),
+                                     identifier: AdvancedSettingsIdentifiers.dbCleanInterval.rawValue),
+                     TableRowContent(type: .setting,
+                                     title: "Export DB",
+                                     details: "",
+                                     identifier: AdvancedSettingsIdentifiers.export.rawValue),
+                     TableRowContent(type: .setting,
+                                     title: "Start Onboarding",
+                                     details: "",
+                                     identifier: AdvancedSettingsIdentifiers.onboarding.rawValue),
+                     TableRowContent(type: .setting,
+                                     title: "Compliance Check",
+                                     details: "",
+                                     identifier: AdvancedSettingsIdentifiers.complianceCheck.rawValue)]
+        #endif
+        if StudyParticipationController.hasConsent() {
+            settings.append(TableRowContent(type: .setting,
+                                            title: NSLocalizedString("quit_study_title", value: "Leave Study", comment: ""),
+                                            identifier: AdvancedSettingsIdentifiers.quit.rawValue))
+        }
+        settings += [TableRowContent(type: .setting,
+                                     title: NSLocalizedString("settings_version", value: "Version", comment: ""),
+                                     details: "\(getAppVersion()) (\(getAppBuildNumber()))"),
+                     TableRowContent(type: .setting,
+                                     title: NSLocalizedString("settings_about", value: "About StudyTrace", comment: ""),
+                                     identifier: AdvancedSettingsIdentifiers.aboutStudyTrace.rawValue),
+                     TableRowContent(type: .setting,
+                                     title: NSLocalizedString("settings_support", value: "Help & Support", comment: ""),
+                                     identifier: AdvancedSettingsIdentifiers.team.rawValue),
+                     TableRowContent(type: .setting,
+                                     title: NSLocalizedString("settings_privacy_policy", value: "Privacy Policy", comment: ""),
+                                     identifier: AdvancedSettingsIdentifiers.privacy.rawValue)]
+        return settings
     }
     
     func convertStorageTypeToString(_ type:AwareDBType) -> String {
@@ -632,11 +599,11 @@ extension AdvancedSettingsViewController {
     }
     
     func getAppVersion() -> String {
-        return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as! String
+        return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     }
     
     func getAppBuildNumber() -> String {
-        return Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as! String
+        return Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
     }
 
     private func buildComplianceSummary() -> String {

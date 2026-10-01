@@ -47,7 +47,7 @@ class MapCard: ContextCard{
         self.titleLabel.text = locationSensor.getName()
         if let storage = locationSensor.storage {
             storage.fetchTodaysData(handler: { (name, results, start, end, error) in
-                DispatchQueue.main.sync {
+                DispatchQueue.main.async {
                     self.setPinsOnMapView(results)
                 }
             })
@@ -60,7 +60,7 @@ class MapCard: ContextCard{
             let toDate:Date   = AWAREUtils.getTargetNSDate(targetDateTime, hour: 0, nextDay: true)
             if let storage = locationSensor.storage {
                 storage.fetchData(from: fromDate, to: toDate) { (name, results, from, to, error) in
-                    DispatchQueue.main.sync {
+                    DispatchQueue.main.async {
                         self.setPinsOnMapView(results)
                     }
                 }
@@ -74,7 +74,7 @@ class MapCard: ContextCard{
             let toDate:Date   = AWAREUtils.getTargetNSDate(targetDateTime, hour: 0, nextDay: true)
             if let storage = locationSensor.storage {
                 storage.fetchData(from: fromDate, to: toDate) { (name, results, from, to, error) in
-                    DispatchQueue.main.sync {
+                    DispatchQueue.main.async {
                         self.setPinsOnMapView(results)
                     }
                 }
@@ -101,13 +101,14 @@ class MapCard: ContextCard{
             var weight:Float = 0.1;
             var pins:[MyPointAnnotation] = Array<MyPointAnnotation>()
             
-            for result in results as! Array<Dictionary<String, Any>> {
-                // double_latitude
-                // double_longitude
-                let latitude = result["double_latitude"] as! Double?
-                let longitude = result["double_longitude"] as! Double?
+            for result in results as? Array<Dictionary<String, Any>> ?? [] {
+                // Skip rows without a coordinate instead of crashing.
+                guard let latitude = (result["double_latitude"] as? NSNumber)?.doubleValue,
+                      let longitude = (result["double_longitude"] as? NSNumber)?.doubleValue else {
+                    continue
+                }
                 // show artwork on map
-                let loc = CLLocationCoordinate2DMake(latitude!, longitude!)
+                let loc = CLLocationCoordinate2DMake(latitude, longitude)
                 
                 // filter location data
                 if let lastLoc = self.lastLocation {

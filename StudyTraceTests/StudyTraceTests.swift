@@ -169,4 +169,43 @@ class StudyTraceTests: XCTestCase {
         XCTAssertTrue(UsageScreenshotParser.isLikelyScreenshot(of: .screenTimeActivity, text: text))
     }
 
+
+    func testStudyConsentDecodesServerPayload() {
+        // Shape returned by GET {study URL}/consent (server/src/consent.js).
+        let json = """
+        {"ok": true, "consent": {"study_id": "pilot", "study_name": "Pilot", "version": 3,
+         "published_at": "2026-10-01T12:00:00.000Z", "title": "Daily phone use",
+         "sections": [{"key": "purpose", "heading": "Purpose of the research", "body": "To learn."},
+                      {"key": "future_field", "heading": "Server heading", "body": "Text."}],
+         "contact": {"name": "Dr. Example", "email": "research@example.edu", "phone": null},
+         "ethics": {"board": "Example IRB", "protocol": "IRB-1"}}}
+        """
+        guard let consent = StudyConsentAPI.decode(Data(json.utf8)) else {
+            return XCTFail("consent did not decode")
+        }
+        XCTAssertEqual(consent.studyId, "pilot")
+        XCTAssertEqual(consent.version, 3)
+        XCTAssertEqual(consent.contact.email, "research@example.edu")
+        XCTAssertNil(consent.contact.phone)
+        XCTAssertEqual(consent.ethics.protocol, "IRB-1")
+        XCTAssertEqual(consent.sections.count, 2)
+        XCTAssertEqual(StudyConsent.localizedHeading(for: consent.sections[1]), "Server heading",
+                       "unknown sections fall back to the server's heading")
+        XCTAssertNil(StudyConsentAPI.decode(Data("{\"ok\": true}".utf8)))
+    }
+
+    func testStudyConsentURLsAndStudyKeys() {
+        let link = "https://study.example.edu/index.php/webservice/index/pilot/secret?participant=P001"
+        XCTAssertEqual(StudyConsentAPI.consentURL(for: link)?.absoluteString,
+                       "https://study.example.edu/index.php/webservice/index/pilot/secret/consent?participant=P001")
+        XCTAssertNil(StudyConsentAPI.consentURL(for: "http://study.example.edu/index.php/webservice/index/pilot/secret"),
+                     "consent is only fetched over HTTPS")
+        XCTAssertEqual(StudyConsentStore.studyKey(for: link), "study.example.edu/pilot")
+        XCTAssertEqual(StudyConsentStore.studyKey(for: "https://STUDY.example.edu/index.php/webservice/index/pilot/secret"),
+                       "study.example.edu/pilot", "participant labels and host case do not make a different study")
+        XCTAssertNotEqual(StudyConsentStore.studyKey(for: "https://study.example.edu:8443/index.php/webservice/index/pilot/secret"),
+                          StudyConsentStore.studyKey(for: link), "a different server is a different study")
+        XCTAssertNil(StudyConsentStore.studyKey(for: "https://study.example.edu/not-a-study"))
+    }
+
 }

@@ -390,6 +390,23 @@ those studies stays **locked** (`researcher_password_not_set`) until an admin
 sets a researcher password as shown above. The `/admin/` studies table shows
 which studies still need one.
 
+## Participant consent
+
+The iOS app shows each study's informed consent before joining and joins only
+if the participant agrees, so **publish a consent before sharing the join
+link**: `/researcher/` → Participant consent. Every element App Store
+Guideline 5.1.3 requires is a required field (purpose, duration, procedures,
+risks, benefits, data handling, withdrawal, contact, IRB name and approval
+number). Until it is published, the app tells participants the study is not
+ready.
+
+Changing the wording publishes a new version; enrolled participants are asked
+to agree to it the next time they open the app. Each agreement is stored in the
+`study_consent` export (device, consent version, time, participant label).
+
+API: `GET`/`PUT /api/v1/studies/{id}/consent` (researcher password). The app
+uses `GET {study URL}/consent` and records agreement with `POST {study URL}/consent`.
+
 ## Connect the app
 
 The `study_url` above is what the StudyTrace client joins. You can:

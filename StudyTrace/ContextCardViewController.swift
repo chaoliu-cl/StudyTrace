@@ -78,7 +78,7 @@ class ContextCardViewController: UIViewController {
             refreshVisibleContextCards()
         }
         if StudyParticipationController.hasConsent() {
-            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+            LocationPermissionManager().explainAlwaysIfNeeded(from: self)
         }
     }
     
@@ -105,7 +105,7 @@ class ContextCardViewController: UIViewController {
             }
         }
         if StudyParticipationController.hasConsent() {
-            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+            LocationPermissionManager().explainAlwaysIfNeeded(from: self)
         }
     }
 

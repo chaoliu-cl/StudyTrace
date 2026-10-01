@@ -1,0 +1,6 @@
+/* 権限の確認メッセージ。StudyTrace/Info.plist と内容をそろえてください。 */
+"NSCameraUsageDescription" = "StudyTraceは、研究のQRコードを読み取るため、またアンケートで求められた場合に写真で回答するために、カメラを使用します。";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "参加している研究では、1日の移動距離などを調べるため、バックグラウンドで位置情報を記録し、研究用サーバーに送信します。StudyTraceが位置情報を収集するのは研究の同意書に同意した後だけで、研究への参加をやめると停止します。";
+"NSLocationAlwaysUsageDescription" = "参加している研究では、1日の移動距離などを調べるため、バックグラウンドで位置情報を記録し、研究用サーバーに送信します。StudyTraceが位置情報を収集するのは研究の同意書に同意した後だけで、研究への参加をやめると停止します。";
+"NSLocationWhenInUseUsageDescription" = "参加している研究では、1日の移動距離などを調べるため、位置情報を記録し、研究用サーバーに送信します。StudyTraceが位置情報を収集するのは研究の同意書に同意した後だけで、研究への参加をやめると停止します。";
+"NSPhotoLibraryUsageDescription" = "アンケートの回答に添付する画像（研究で求められたスクリーンショットなど）を選べるよう、StudyTraceは写真ライブラリを開きます。";

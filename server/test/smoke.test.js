@@ -1306,6 +1306,88 @@ try {
   assert.strictEqual(enrollSummary.summary.device_count, 4, 'backfilled device counted');
   console.log('✓ device counts track joins, uploads, withdrawals, and re-joins');
 
+  // 41. Per-study informed consent: researchers publish it, the app fetches
+  // it before joining and records each participant's agreement.
+  const consentPath = `${studyPath}/consent`;
+  const unpublished = await request('GET', consentPath);
+  assert.strictEqual(unpublished.status, 404, 'no consent until published');
+  assert.strictEqual(unpublished.json.error, 'consent_not_published', 'unpublished reason');
+  const consentBody = {
+    title: 'Daily phone use and mobility',
+    purpose: 'To learn how phone use relates to daily routines.',
+    duration: 'Four weeks.',
+    procedures: 'Location in the background, short surveys, and optional screenshots.',
+    risks: 'Minimal; location is sensitive.',
+    benefits: 'No direct benefit.',
+    data_handling: 'Stored on university servers; only the research team has access.',
+    withdrawal: 'Settings > Leave Study, with the option to delete uploaded data.',
+    contact_name: 'Dr. Example',
+    contact_email: 'research@example.edu',
+    irb_name: 'Example University IRB',
+    irb_protocol: 'IRB-2026-001',
+  };
+  const incomplete = await request('PUT', `${apiBase}/consent`, {
+    body: JSON.stringify({ ...consentBody, risks: '' }),
+    headers: researcherAuth,
+  });
+  assert.strictEqual(incomplete.status, 400, 'every required consent element is enforced');
+  assert.match(incomplete.json.error, /Risks/, 'missing element named');
+  const badEmail = await request('PUT', `${apiBase}/consent`, {
+    body: JSON.stringify({ ...consentBody, contact_email: 'not-an-email' }),
+    headers: researcherAuth,
+  });
+  assert.strictEqual(badEmail.status, 400, 'contact email validated');
+  const participantPut = await request('PUT', `${apiBase}/consent`, { body: JSON.stringify(consentBody), headers: jsonAuth });
+  assert.ok([401, 403].includes(participantPut.status), 'participants cannot publish consent');
+  const published = await request('PUT', `${apiBase}/consent`, { body: JSON.stringify(consentBody), headers: researcherAuth });
+  assert.strictEqual(published.status, 200, 'consent published');
+  assert.strictEqual(published.json.consent.version, 1, 'first version');
+  const republished = await request('PUT', `${apiBase}/consent`, { body: JSON.stringify(consentBody), headers: researcherAuth });
+  assert.strictEqual(republished.json.consent.version, 1, 'unchanged wording keeps the version');
+  assert.strictEqual(republished.json.changed, false, 'no change reported');
+  const fetched = await request('GET', consentPath);
+  assert.strictEqual(fetched.status, 200, 'participant fetches consent');
+  assert.strictEqual(fetched.json.consent.title, consentBody.title, 'title delivered');
+  assert.strictEqual(fetched.json.consent.contact.email, 'research@example.edu', 'contact delivered');
+  assert.strictEqual(fetched.json.consent.ethics.protocol, 'IRB-2026-001', 'IRB protocol delivered');
+  assert.deepStrictEqual(fetched.json.consent.sections.map((section) => section.key),
+    ['purpose', 'duration', 'procedures', 'risks', 'benefits', 'data_handling', 'withdrawal'], 'sections in order, optional empty ones omitted');
+  const wrongPasswordConsent = await request('GET', '/index.php/webservice/index/demo/wrong/consent');
+  assert.strictEqual(wrongPasswordConsent.status, 403, 'consent needs the study password');
+
+  const jsonHeaders = { 'Content-Type': 'application/json' };
+  const accepted = await request('POST', `${consentPath}?participant=P-C`, {
+    body: JSON.stringify({ device_id: 'dev-consent', version: 1, accepted_at: Date.now() }),
+    headers: jsonHeaders,
+  });
+  assert.strictEqual(accepted.status, 201, 'agreement recorded');
+  assert.strictEqual(accepted.json.recorded, true, 'stored once');
+  const acceptedAgain = await request('POST', consentPath, {
+    body: JSON.stringify({ device_id: 'dev-consent', version: 1 }),
+    headers: jsonHeaders,
+  });
+  assert.strictEqual(acceptedAgain.json.recorded, false, 'retries are deduplicated');
+  const stale = await request('POST', consentPath, {
+    body: JSON.stringify({ device_id: 'dev-consent', version: 0 }),
+    headers: jsonHeaders,
+  });
+  assert.strictEqual(stale.status, 409, 'outdated consent version rejected');
+  const revised = await request('PUT', `${apiBase}/consent`, {
+    body: JSON.stringify({ ...consentBody, duration: 'Six weeks.' }),
+    headers: researcherAuth,
+  });
+  assert.strictEqual(revised.json.consent.version, 2, 'changed wording bumps the version');
+  const consentLog = await request('GET', `${apiBase}/export/study_consent?format=json`, { headers: researcherAuth });
+  const consentRow = consentLog.json.rows.find((row) => row.device_id === 'dev-consent');
+  assert.strictEqual(consentRow.data.consent_version, 1, 'consent log keeps the version agreed to');
+  assert.strictEqual(consentRow.data.participant, 'P-C', 'consent log keeps the participant label');
+  // AWARE appends sensor paths after the join link's query string.
+  await post(`${studyPath}?participant=P-AWARE/aware_device/create_table`, form({ device_id: 'dev-aware-label' }), formHeaders);
+  const labelled = await request('GET', `${apiBase}/dashboard/summary`, { headers: researcherAuth });
+  assert.strictEqual(labelled.json.devices.find((row) => row.device_id === 'dev-aware-label').participant, 'P-AWARE',
+    'participant label ignores the sensor path AWARE appends');
+  console.log('✓ per-study consent: required elements, versions, and participant agreement log');
+
   // 28. Repeated failed logins are throttled (run last: it blocks this IP).
   let limited = null;
   for (let attempt = 0; attempt < 40 && !limited; attempt += 1) {

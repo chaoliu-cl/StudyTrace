@@ -29,6 +29,7 @@ import {
   getStudy,
 } from './db.js';
 import { buildStudyConfig } from './studyConfig.js';
+import { CONSENT_TABLE, consentForParticipant, publishedConsent } from './consent.js';
 import {
   isRateLimited,
   recordAuthFailure,
@@ -67,7 +68,7 @@ export function createAwareRouter(getPublicBaseUrl) {
   router.post(STUDY_PREFIX, requireStudy, async (req, res, next) => {
     try {
       const deviceId = req.body.device_id;
-      const participant = req.query.participant;
+      const participant = participantLabel(req.query.participant);
       if (deviceId) {
         await upsertDevice(deviceId, req.params.studyId, participant, { joined: true });
       }
@@ -77,6 +78,52 @@ export function createAwareRouter(getPublicBaseUrl) {
         webserviceUrl: webserviceUrlFor(req),
       });
       res.json(config);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ---- Informed consent ----------------------------------------------------
+  // The app fetches this before joining and joins only if the participant
+  // agrees; it then records the agreement below.
+  router.get(`${STUDY_PREFIX}/consent`, requireStudy, (req, res) => {
+    const consent = consentForParticipant(req.study);
+    if (!consent) {
+      return res.status(404).json({
+        error: 'consent_not_published',
+        message: 'This study has not published its consent form yet.',
+      });
+    }
+    res.json({ ok: true, consent });
+  });
+
+  //   body (JSON): { device_id, version, accepted_at (epoch ms) }
+  router.post(`${STUDY_PREFIX}/consent`, requireStudy, async (req, res, next) => {
+    try {
+      const body = normalizeAwareBody(req.body);
+      const deviceId = String(body.device_id || '').trim();
+      if (!deviceId) return res.status(400).json({ error: 'device_id is required' });
+      const consent = publishedConsent(req.study);
+      if (!consent) return res.status(404).json({ error: 'consent_not_published' });
+      const version = Number(body.version);
+      if (version !== Number(consent.version)) {
+        // Consent changed after the app fetched it: the app shows the new one.
+        return res.status(409).json({ error: 'consent_version_outdated', current_version: consent.version });
+      }
+      const now = Date.now();
+      const claimed = Number(body.accepted_at);
+      const acceptedAt = Number.isFinite(claimed) && claimed > 0 ? Math.min(claimed, now) : now;
+      const table = safeTableName(CONSENT_TABLE);
+      await createSensorTable(table);
+      const inserted = await insertRows(table, req.params.studyId, deviceId, [{
+        timestamp: acceptedAt,
+        dedupe_key: `consent:${version}`,
+        consent_version: version,
+        consent_title: consent.title,
+        consent_published_at: consent.published_at,
+        participant: participantLabel(req.query.participant) || null,
+      }]);
+      res.status(201).json({ ok: true, recorded: inserted === 1, version });
     } catch (err) {
       next(err);
     }
@@ -142,6 +189,15 @@ export function createAwareRouter(getPublicBaseUrl) {
   });
 
   return router;
+}
+
+// AWARE builds sensor URLs by appending paths to the study URL, query string
+// included, so a join link's ?participant=P001 arrives as
+// "P001/aware_device/create_table". Keep the label the research team set.
+export function participantLabel(value) {
+  if (typeof value !== 'string') return undefined;
+  const label = value.split('/')[0].trim().slice(0, 128);
+  return label || undefined;
 }
 
 function normalizeAwareBody(body) {

@@ -64,6 +64,7 @@ import {
 import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 import { buildJoinLink } from './joinLink.js';
+import { buildConsentDocument, CONSENT_FIELDS, publishedConsent } from './consent.js';
 
 const BATTERY_USAGE_EXPORT_SENSOR = 'battery_usage_apps';
 const SCREEN_TIME_ACTIVITY_SENSOR = 'screen_time_activity';
@@ -659,6 +660,22 @@ export function createApp() {
       const activitySchedule = buildEsmScheduleFromRequest(req.body || {}, ACTIVITY_PROMPT);
       const updated = await updateStudyConfig(req.params.studyId, { screen_time_activity_schedule: activitySchedule });
       res.json(scheduleResponse(updated, 'screen_time_activity_schedule'));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Informed consent shown to participants when they join (see consent.js).
+  app.get('/api/v1/studies/:studyId/consent', requireResearcher, (req, res) => {
+    res.json({ ok: true, consent: publishedConsent(req.study), fields: CONSENT_FIELDS });
+  });
+
+  app.put('/api/v1/studies/:studyId/consent', requireResearcher, async (req, res, next) => {
+    try {
+      const previous = publishedConsent(req.study);
+      const consent = buildConsentDocument(req.body || {}, previous);
+      if (consent !== previous) await updateStudyConfig(req.params.studyId, { consent });
+      res.json({ ok: true, consent, fields: CONSENT_FIELDS, changed: consent !== previous });
     } catch (err) {
       next(err);
     }

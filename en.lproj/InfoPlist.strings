@@ -1,0 +1,6 @@
+/* Permission prompts. Keep in sync with StudyTrace/Info.plist. */
+"NSCameraUsageDescription" = "StudyTrace uses the camera to scan your study's QR code and, if a survey asks for one, to take a photo answer.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "The research study you joined records your location in the background, for example how far you travel each day, and uploads it to the study's server. StudyTrace collects location only after you agree to the study's consent, and stops when you leave the study.";
+"NSLocationAlwaysUsageDescription" = "The research study you joined records your location in the background, for example how far you travel each day, and uploads it to the study's server. StudyTrace collects location only after you agree to the study's consent, and stops when you leave the study.";
+"NSLocationWhenInUseUsageDescription" = "The research study you joined records your location, for example how far you travel each day, and uploads it to the study's server. StudyTrace collects location only after you agree to the study's consent, and stops when you leave the study.";
+"NSPhotoLibraryUsageDescription" = "StudyTrace opens your photo library so you can choose a picture to attach to a survey answer, such as a screenshot your study asks for.";

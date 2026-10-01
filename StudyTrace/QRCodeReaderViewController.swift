@@ -91,7 +91,7 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        configureActionButton(title: "Please scan a QR Code", enabled: false)
+        configureActionButton(title: NSLocalizedString("qr_prompt", value: "Scan your study's QR code", comment: ""), enabled: false)
         
         qrcodeFrameView = UIView(frame: CGRect.zero)
         if let qrcodeFrameView = qrcodeFrameView {
@@ -117,10 +117,10 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                     }
                 }
             }
-        case .denied: // The user has previously denied access.
-            return
-        case .restricted: // The user can't grant access due to restrictions.
-            return
+        case .denied, .restricted:
+            showCameraUnavailableAlert()
+        @unknown default:
+            showCameraUnavailableAlert()
         }
     }
     
@@ -141,10 +141,14 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
     func setupCaptureSession(){
         captureSession.beginConfiguration()
         
-        guard
-            let videoDeviceInput = try? AVCaptureDeviceInput(device: videoDevice!),
-            captureSession.canAddInput(videoDeviceInput)
-            else { return }
+        guard let device = videoDevice,
+              let videoDeviceInput = try? AVCaptureDeviceInput(device: device),
+              captureSession.canAddInput(videoDeviceInput),
+              captureSession.canAddOutput(captureMetadataOutput) else {
+            captureSession.commitConfiguration()
+            showCameraUnavailableAlert()
+            return
+        }
         captureSession.addInput(videoDeviceInput)
         
         if captureSession.canSetSessionPreset(.hd4K3840x2160){
@@ -153,12 +157,15 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
         
         captureMetadataOutput.setMetadataObjectsDelegate(self, queue: .main)
         captureSession.addOutput(captureMetadataOutput)
-        captureMetadataOutput.metadataObjectTypes = [.qr, .face]
+        if captureMetadataOutput.availableMetadataObjectTypes.contains(.qr) {
+            captureMetadataOutput.metadataObjectTypes = [.qr]
+        }
         
-        previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
-        previewLayer?.videoGravity = AVLayerVideoGravity.resizeAspectFill
-        previewLayer?.frame = self.previewView.layer.bounds
-         self.previewView.layer.addSublayer(previewLayer!)
+        let layer = AVCaptureVideoPreviewLayer(session: captureSession)
+        layer.videoGravity = AVLayerVideoGravity.resizeAspectFill
+        layer.frame = self.previewView.layer.bounds
+        self.previewView.layer.addSublayer(layer)
+        previewLayer = layer
         
         captureSession.commitConfiguration()
         
@@ -184,13 +191,18 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                     /// Checking "URL" or "JSON for ESM"
                     if let str = qrcode {
                         scannedContent = QRCodeReaderViewController.classifyScannedContent(str)
+                        #if !DEBUG
+                        // Survey schedules come from the study server; importing
+                        // them from a QR code is a development tool only.
+                        if scannedContent == .json { scannedContent = .unknown }
+                        #endif
                         switch scannedContent {
                         case .url:
-                            configureActionButton(title: "Join Study", enabled: true)
+                            configureActionButton(title: NSLocalizedString("qr_join", value: "Join Study", comment: ""), enabled: true)
                         case .json:
                             configureActionButton(title: "Import ESM Settings", enabled: true)
                         case .unknown:
-                            configureActionButton(title: "Unrecognized QR Code", enabled: false)
+                            configureActionButton(title: NSLocalizedString("qr_unrecognized", value: "Not a StudyTrace study code", comment: ""), enabled: false)
                         }
                     }
                 }
@@ -208,50 +220,20 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
     
     @IBAction func didPushJoinButton(_ sender: UIButton) {
         if let qr = qrcode {
-            let study   = AWAREStudy.shared()
-            
             switch scannedContent {
             case .url:
                 guard let secureURL = normalizedSecureStudyURL(QRCodeReaderViewController.normalizedURLCandidate(qr)) else {
                     showInsecureURLAlert()
                     return
                 }
-                startIndicator()
-                study.join(withURL: secureURL, completion: { (settings, status, error) in
-                    DispatchQueue.main.async {
-                        
-                        switch status {
-                        case AwareStudyStateNetworkConnectionError, AwareStudyStateDataFormatError:
-                            let alert = UIAlertController(title: "Error", message: "Could not join this study \"\(qr)\" due to a network connection error. Please join this study again.", preferredStyle: .alert)
-                            alert.addAction(UIAlertAction.init(title: NSLocalizedString("Cancel", comment: ""), style: .cancel, handler: { (action) in
-                                self.dismissIndicator()
-                            }))
-                            self.present(alert, animated: true) { }
-                            return
-                        default:
-                            break
-                        }
-
-                        if StudyParticipationController.hasConsent() {
-                            let core = AWARECore.shared()
-                            core.requestPermissionForPushNotification { (_, _) in
-                                core.requestPermissionForBackgroundSensing { _ in
-                                    StudyParticipationController.refreshCollectionState(
-                                        fitbitPresenter: self,
-                                        createRemoteTables: true
-                                    )
-                                    self.dismiss(animated: true) {
-                                        self.dismissIndicator()
-                                    }
-                                }
-                            }
-                        } else {
-                            self.dismiss(animated: true) {
-                                self.dismissIndicator()
-                            }
-                        }
+                // The consent screen (and any study-switch confirmation) is
+                // shown from the screen underneath the scanner.
+                let presenter = presentingViewController
+                dismiss(animated: true) {
+                    if let presenter = presenter {
+                        StudyJoinCoordinator.shared.join(studyURL: secureURL, from: presenter)
                     }
-                })
+                }
                 break
             case .json:
                 
@@ -266,7 +248,7 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                             esmManager.removeAllSchedulesFromDB()
                             esmManager.removeAllESMHitoryFromDB()
                             if ESMScheduleManager.shared().setScheduleByConfig(jsonArray) {
-                                let alert = UIAlertController(title: "Succees",
+                                let alert = UIAlertController(title: "Success",
                                                               message: "The ESM setting is set correctly!",
                                                               preferredStyle: .alert)
                                 alert.addAction(UIAlertAction(title: NSLocalizedString("Close", comment: ""),
@@ -301,6 +283,22 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                 break
             }
         }
+    }
+
+    private func showCameraUnavailableAlert() {
+        let alert = UIAlertController(
+            title: NSLocalizedString("qr_camera_off_title", value: "Camera Not Available", comment: ""),
+            message: NSLocalizedString("qr_camera_off_message", value: "StudyTrace needs the camera to scan your study's QR code. You can allow camera access in iOS Settings, or open the study link your research team sent you instead.", comment: ""),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("qr_open_settings", value: "Open Settings", comment: ""), style: .default) { _ in
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        })
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Close", comment: ""), style: .cancel) { [weak self] _ in
+            self?.dismiss(animated: true)
+        })
+        present(alert, animated: true)
     }
 
     private func configureActionButton(title: String, enabled: Bool) {
