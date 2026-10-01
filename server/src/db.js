@@ -103,7 +103,43 @@ export async function initSchema() {
       PRIMARY KEY (device_id, study_id)
     );
   `);
+  // joined_at: last join/re-join from the app. withdrawn_at: set when the
+  // participant withdraws without deleting data, cleared on re-join, so the
+  // dashboards count only devices that are still enrolled.
+  await getPool().query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ`);
+  await getPool().query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ`);
   return true;
+}
+
+// Register devices that have stored rows but no devices entry (data uploaded
+// before every ingestion path registered its device), so device counts match
+// the data. Existing registrations are left untouched.
+export async function backfillDevicesFromSensorTables() {
+  const countDevices = async () => (await getPool().query(`SELECT count(*)::int AS n FROM devices`)).rows[0].n;
+  const before = await countDevices();
+  for (const table of await listAwareTables()) {
+    await getPool().query(
+      `INSERT INTO devices (device_id, study_id, first_seen, last_seen)
+       SELECT device_id, study_id, COALESCE(min(created_at), now()), COALESCE(max(created_at), now())
+       FROM ${table}
+       WHERE study_id IS NOT NULL AND device_id IS NOT NULL AND device_id <> ''
+       GROUP BY device_id, study_id
+       ON CONFLICT (device_id, study_id) DO NOTHING`
+    );
+  }
+  const added = (await countDevices()) - before;
+  if (added > 0) console.log(`Registered ${added} device(s) found in sensor data but missing from the devices table.`);
+  return added;
+}
+
+async function listAwareTables() {
+  const { rows } = await getPool().query(
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = current_schema()`
+  );
+  return rows
+    .map((row) => row.table_name)
+    .filter((table) => table.startsWith('aware_') && /^[a-z0-9_]+$/.test(table));
 }
 
 // One-time upgrade: hash any study password still stored in plaintext.
@@ -290,7 +326,22 @@ export async function countRows(table, { studyId, deviceId } = {}) {
   }
 }
 
-export async function upsertDevice(deviceId, studyId, participant) {
+// Record that a device was seen. `joined` marks a join/re-join from the app,
+// which also reverses an earlier withdrawal.
+export async function upsertDevice(deviceId, studyId, participant, { joined = false } = {}) {
+  if (joined) {
+    await getPool().query(
+      `INSERT INTO devices (device_id, study_id, participant, joined_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (device_id, study_id)
+       DO UPDATE SET last_seen = now(),
+                     joined_at = now(),
+                     withdrawn_at = NULL,
+                     participant = COALESCE(EXCLUDED.participant, devices.participant)`,
+      [deviceId, studyId, participant || null]
+    );
+    return;
+  }
   await getPool().query(
     `INSERT INTO devices (device_id, study_id, participant)
      VALUES ($1, $2, $3)
@@ -298,6 +349,18 @@ export async function upsertDevice(deviceId, studyId, participant) {
      DO UPDATE SET last_seen = now(),
                    participant = COALESCE(EXCLUDED.participant, devices.participant)`,
     [deviceId, studyId, participant || null]
+  );
+}
+
+// Mark a device withdrawn as of `at`, unless it re-joined after that moment
+// (a queued withdrawal can be retried after the participant re-enrolled).
+export async function markDeviceWithdrawn(studyId, deviceId, at) {
+  const when = new Date(at || Date.now()).toISOString();
+  await getPool().query(
+    `UPDATE devices SET withdrawn_at = $3::timestamptz
+     WHERE study_id = $1 AND device_id = $2
+       AND (joined_at IS NULL OR joined_at <= $3::timestamptz)`,
+    [studyId, deviceId, when]
   );
 }
 
@@ -354,13 +417,8 @@ export async function upsertStudy(studyId, { password, researcherPassword, name 
 // re-enrolled must not delete their new data.
 export async function deleteDeviceData(studyId, deviceId, { before } = {}) {
   const cutoff = before ? new Date(before).toISOString() : null;
-  const { rows: tables } = await getPool().query(
-    `SELECT table_name FROM information_schema.tables
-     WHERE table_schema = current_schema()`
-  );
   let deleted = 0;
-  for (const { table_name: table } of tables) {
-    if (!table.startsWith('aware_') || !/^[a-z0-9_]+$/.test(table)) continue;
+  for (const table of await listAwareTables()) {
     const result = cutoff
       ? await getPool().query(
         `DELETE FROM ${table} WHERE study_id = $1 AND device_id = $2 AND created_at <= $3::timestamptz`,
@@ -474,7 +532,8 @@ export async function listStudies() {
       s.name,
       s.created_at,
       (s.researcher_password_hash IS NOT NULL) AS researcher_password_set,
-      count(d.device_id)::int AS device_count,
+      COALESCE(sum(CASE WHEN d.device_id IS NOT NULL AND d.withdrawn_at IS NULL THEN 1 ELSE 0 END), 0)::int AS device_count,
+      COALESCE(sum(CASE WHEN d.withdrawn_at IS NOT NULL THEN 1 ELSE 0 END), 0)::int AS withdrawn_device_count,
       max(d.last_seen) AS last_seen
     FROM studies s
     LEFT JOIN devices d ON d.study_id = s.study_id
@@ -486,7 +545,7 @@ export async function listStudies() {
 
 export async function listStudyDevices(studyId) {
   const { rows } = await getPool().query(
-    `SELECT device_id, participant, first_seen, last_seen
+    `SELECT device_id, participant, first_seen, last_seen, withdrawn_at
      FROM devices
      WHERE study_id = $1
      ORDER BY last_seen DESC, device_id ASC`,
@@ -502,6 +561,7 @@ export async function getStudyOverview(studyId) {
   const devices = await listStudyDevices(studyId);
   const sensors = await listStudySensorTables(studyId);
   const totalRows = sensors.reduce((sum, sensor) => sum + sensor.rows, 0);
+  const enrolled = devices.filter((device) => !device.withdrawn_at);
 
   return {
     study: {
@@ -511,7 +571,10 @@ export async function getStudyOverview(studyId) {
       config: study.config || {},
     },
     summary: {
-      device_count: devices.length,
+      // Enrolled (not withdrawn) devices; withdrawn ones stay listed with their data.
+      device_count: enrolled.length,
+      withdrawn_device_count: devices.length - enrolled.length,
+      participant_count: new Set(enrolled.map((device) => device.participant).filter(Boolean)).size,
       sensor_count: sensors.length,
       total_rows: totalRows,
       last_seen: devices[0]?.last_seen || null,

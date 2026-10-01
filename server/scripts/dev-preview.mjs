@@ -121,6 +121,13 @@ async function seed(base) {
     timestamp: now - 30 * hour, date: new Date(now - 30 * hour).toISOString().slice(0, 10), timezone: 'America/Chicago',
     package_name: 'com.whatsapp', app_label: 'WhatsApp', foreground_seconds: 2700, platform: 'android', construct: 'foreground_time',
   }] }, auth);
+  // A participant who withdrew but kept their data: listed, not counted as enrolled.
+  await fetch(`${base}/index.php/webservice/index/demo/demo-participant?participant=P003`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'device_id=demo-withdrawn-device',
+  });
+  await call(base, `${api}/withdrawal`, { device_id: 'demo-withdrawn-device', delete_data: false }, auth);
 }
 
 process.on('SIGINT', () => server.close(() => process.exit(0)));

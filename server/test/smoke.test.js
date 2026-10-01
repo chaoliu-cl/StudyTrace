@@ -1200,6 +1200,112 @@ try {
   assert.strictEqual(zipAsParticipant.status, 403, 'participant password cannot download the study export');
   console.log('✓ whole-study ZIP export with codebook, README, and image references');
 
+  // 39. Join links: URL + QR on creation, and rebuilt on request when the
+  // participant password is supplied (only its hash is stored).
+  const enrollCreate = await post('/admin/studies', JSON.stringify({
+    study_id: 'enroll', password: 'enroll-pw', researcher_password: 'enroll-researcher-pw', name: 'Enroll',
+  }), adminJson);
+  assert.strictEqual(enrollCreate.status, 200, 'create enroll study');
+  assert.strictEqual(enrollCreate.json.study_url, 'https://example.up.railway.app/index.php/webservice/index/enroll/enroll-pw', 'study url on create');
+  assert.match(enrollCreate.json.qr_svg, /^<svg[^>]+viewBox=/, 'QR code SVG on create');
+  const renamed = await post('/admin/studies', JSON.stringify({ study_id: 'enroll', name: 'Enroll study' }), adminJson);
+  assert.strictEqual(renamed.json.study_url, undefined, 'no url without the participant password');
+  assert.strictEqual(renamed.json.qr_svg, undefined, 'no QR without the participant password');
+  const enrollResearcher = { 'Content-Type': 'application/json', 'x-researcher-password': 'enroll-researcher-pw' };
+  const researcherLink = await request('POST', '/api/v1/studies/enroll/join-link', {
+    body: JSON.stringify({ password: 'enroll-pw', participant: 'P 001' }),
+    headers: enrollResearcher,
+  });
+  assert.strictEqual(researcherLink.status, 200, 'researcher join link ok');
+  assert.strictEqual(researcherLink.json.study_url,
+    'https://example.up.railway.app/index.php/webservice/index/enroll/enroll-pw?participant=P%20001', 'participant-labeled url');
+  assert.strictEqual(researcherLink.json.participant, 'P 001', 'participant echoed');
+  assert.match(researcherLink.json.qr_svg, /<path d="M/, 'QR modules drawn');
+  const wrongLinkPassword = await request('POST', '/api/v1/studies/enroll/join-link', {
+    body: JSON.stringify({ password: 'enroll-researcher-pw' }),
+    headers: enrollResearcher,
+  });
+  assert.strictEqual(wrongLinkPassword.status, 403, 'join link needs the participant password');
+  const noLinkPassword = await request('POST', '/api/v1/studies/enroll/join-link', { body: '{}', headers: enrollResearcher });
+  assert.strictEqual(noLinkPassword.status, 400, 'join link password required');
+  const participantLink = await request('POST', '/api/v1/studies/enroll/join-link', {
+    body: JSON.stringify({ password: 'enroll-pw' }),
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer enroll-pw' },
+  });
+  assert.ok([401, 403].includes(participantLink.status), 'participants cannot use the researcher join-link endpoint');
+  const adminLink = await request('POST', '/admin/studies/enroll/join-link', {
+    body: JSON.stringify({ password: 'enroll-pw' }),
+    headers: adminJson,
+  });
+  assert.strictEqual(adminLink.status, 200, 'admin join link ok');
+  assert.strictEqual(adminLink.json.study_url, enrollCreate.json.study_url, 'admin join link matches creation url');
+  const missingStudyLink = await request('POST', '/admin/studies/nope/join-link', {
+    body: JSON.stringify({ password: 'x' }),
+    headers: adminJson,
+  });
+  assert.strictEqual(missingStudyLink.status, 404, 'join link for unknown study');
+  console.log('✓ join URL and QR code on creation and on request');
+
+  // 40. Device counts track enrollment: every upload path registers its
+  // device, withdrawn devices stop counting (until they re-join), and devices
+  // only present in sensor data are backfilled.
+  const enrollPath = '/index.php/webservice/index/enroll/enroll-pw';
+  const enrollJson = { 'Content-Type': 'application/json', Authorization: 'Bearer enroll-pw' };
+  const enrollCounts = async () => {
+    const summary = await request('GET', '/api/v1/studies/enroll/dashboard/summary', { headers: enrollResearcher });
+    const listed = (await request('GET', '/admin/studies', { headers: adminJson })).json.studies.find((s) => s.study_id === 'enroll');
+    assert.strictEqual(listed.device_count, summary.json.summary.device_count, 'admin and researcher counts agree');
+    assert.strictEqual(listed.withdrawn_device_count, summary.json.summary.withdrawn_device_count, 'withdrawn counts agree');
+    return summary.json;
+  };
+  await post(`${enrollPath}?participant=E1`, form({ device_id: 'enroll-a' }), formHeaders);
+  await post(`${enrollPath}?participant=E2`, form({ device_id: 'enroll-b' }), formHeaders);
+  let enrollSummary = await enrollCounts();
+  assert.strictEqual(enrollSummary.summary.device_count, 2, 'joined devices counted');
+  assert.strictEqual(enrollSummary.summary.participant_count, 2, 'participants counted');
+
+  const screenshotOnly = await request('POST', '/api/v1/studies/enroll/battery-screenshots', {
+    body: JSON.stringify({ device_id: 'enroll-shot', timestamp: 5, screenshot_base64: tinyPngBase64, battery_usage_ocr_text: 'Battery Usage by App\nTikTok\n32m On Screen' }),
+    headers: enrollJson,
+  });
+  assert.strictEqual(screenshotOnly.status, 201, 'screenshot upload ok');
+  enrollSummary = await enrollCounts();
+  assert.strictEqual(enrollSummary.summary.device_count, 3, 'screenshot uploads register their device');
+
+  const withdrawB = await request('POST', '/api/v1/studies/enroll/withdrawal', {
+    body: JSON.stringify({ device_id: 'enroll-b', delete_data: false }),
+    headers: enrollJson,
+  });
+  assert.strictEqual(withdrawB.status, 200, 'withdrawal ok');
+  enrollSummary = await enrollCounts();
+  assert.strictEqual(enrollSummary.summary.device_count, 2, 'withdrawn device no longer counted as enrolled');
+  assert.strictEqual(enrollSummary.summary.withdrawn_device_count, 1, 'withdrawn device counted separately');
+  assert.ok(enrollSummary.devices.find((row) => row.device_id === 'enroll-b').withdrawn_at, 'withdrawn device still listed');
+
+  const withdrawnAt = Date.now();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await post(`${enrollPath}?participant=E2`, form({ device_id: 'enroll-b' }), formHeaders);
+  enrollSummary = await enrollCounts();
+  assert.strictEqual(enrollSummary.summary.device_count, 3, 're-join restores enrollment');
+  const staleWithdrawal = await request('POST', '/api/v1/studies/enroll/withdrawal', {
+    body: JSON.stringify({ device_id: 'enroll-b', delete_data: false, withdrawn_at: withdrawnAt }),
+    headers: enrollJson,
+  });
+  assert.strictEqual(staleWithdrawal.status, 200, 'stale withdrawal retry ok');
+  enrollSummary = await enrollCounts();
+  assert.strictEqual(enrollSummary.summary.device_count, 3, 'a withdrawal retried after re-join does not un-enroll');
+
+  await db.createSensorTable('aware_locations');
+  await pool.query(
+    `INSERT INTO aware_locations (study_id, device_id, timestamp, data, created_at)
+     VALUES ('enroll', 'enroll-legacy', 1, '{}'::jsonb, now())`
+  );
+  assert.ok((await db.backfillDevicesFromSensorTables()) >= 1, 'backfill registers unlisted devices');
+  assert.strictEqual(await db.backfillDevicesFromSensorTables(), 0, 'backfill is idempotent');
+  enrollSummary = await enrollCounts();
+  assert.strictEqual(enrollSummary.summary.device_count, 4, 'backfilled device counted');
+  console.log('✓ device counts track joins, uploads, withdrawals, and re-joins');
+
   // 28. Repeated failed logins are throttled (run last: it blocks this IP).
   let limited = null;
   for (let attempt = 0; attempt < 40 && !limited; attempt += 1) {
