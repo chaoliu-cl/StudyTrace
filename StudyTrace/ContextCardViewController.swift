@@ -215,7 +215,7 @@ class ContextCardViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    /// Same flow as the Surveys tab (on-device OCR, review, upload), minus
+    /// Same flow as the Surveys tab (on-device OCR, upload), minus
     /// the instructions screen: the participant already has the screenshot.
     private func presentBatteryScreenshotUploader() {
         screenshotCoordinator.start(kind: .battery, from: self, showInstructions: false) { [weak self] _, outcome in

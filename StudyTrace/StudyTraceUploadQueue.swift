@@ -294,8 +294,9 @@ extension StudyTraceUploadQueue: URLSessionDataDelegate {
 
 // MARK: - Usage screenshot uploads
 
-/// Uploads a Battery or Screen Time screenshot together with the values the
-/// participant confirmed on the review screen. Tries a foreground upload
+/// Uploads a Battery or Screen Time screenshot together with the text the
+/// phone recognized in it; the server extracts the values from that text
+/// and flags unclear screenshots for review. Tries a foreground upload
 /// first so the participant gets immediate feedback; if the network or
 /// server is unavailable, the upload is saved to the queue and sent later.
 enum UsageScreenshotUploader {
@@ -336,16 +337,13 @@ enum UsageScreenshotUploader {
             "upload_id": uploadId,
             "screenshot_kind": submission.kind.rawValue,
             "screenshot_base64": imageData.base64EncodedString(),
-            "timezone": TimeZone.current.identifier,
-            "device_ocr_text": submission.ocrText,
-            "participant_edited": submission.edited,
-            "confirmed_rows": submission.rows.map { row -> [String: Any] in
-                var item: [String: Any] = ["app_name": row.appName]
-                item["screen_time_seconds"] = jsonNumber(row.minutes.map { $0 * 60 })
-                item["battery_percent"] = jsonNumber(row.percent)
-                return item
-            }
+            "timezone": TimeZone.current.identifier
         ]
+        // No confirmed_rows: the participant does not review the values, so
+        // the server parses this text (and OCRs the image if it is empty).
+        if !submission.ocrText.isEmpty {
+            payload["ocr_text"] = submission.ocrText
+        }
         if let capturedAt = submission.capturedAt {
             payload["captured_at"] = capturedAt.timeIntervalSince1970 * 1000
         }
@@ -357,11 +355,6 @@ enum UsageScreenshotUploader {
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = "yyyy-MM-dd"
             payload["activity_date"] = formatter.string(from: submission.activityDate)
-            payload["summary"] = [
-                "total_screen_time_seconds": jsonNumber(submission.totalMinutes.map { $0 * 60 }),
-                "pickups": jsonNumber(submission.pickups),
-                "notifications": jsonNumber(submission.notifications)
-            ] as [String: Any]
         }
         guard JSONSerialization.isValidJSONObject(payload),
               let body = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
@@ -373,8 +366,7 @@ enum UsageScreenshotUploader {
         StudyTraceTelemetry.recordEvent("usage_screenshot_upload_started", metadata: [
             "kind": kind,
             "image_bytes": imageData.count,
-            "rows": submission.rows.count,
-            "participant_edited": submission.edited
+            "ocr_characters": submission.ocrText.count
         ])
 
         var request = URLRequest(url: context.baseURL
@@ -419,12 +411,6 @@ enum UsageScreenshotUploader {
             }
             DispatchQueue.main.async { completion(outcome) }
         }.resume()
-    }
-
-    /// JSON null for a missing number.
-    private static func jsonNumber(_ value: Int?) -> Any {
-        if let value = value { return value }
-        return NSNull()
     }
 
     private static func encodedScreenshot(_ image: UIImage) -> Data? {

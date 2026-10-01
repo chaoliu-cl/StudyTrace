@@ -132,20 +132,24 @@ Participant workflow on iPhone:
 1. A scheduled notification opens a step-by-step guide to the right Settings
    screen.
 2. The participant takes a screenshot and picks it in StudyTrace.
-3. The phone reads it with on-device OCR (English, plus Japanese on iOS 16+)
-   and shows an editable table: app names, minutes, battery %, the time range
-   (Last 24 Hours / Last 10 Days), or, for Screen Time, the day and totals.
-4. The participant confirms or corrects the values, and StudyTrace uploads
-   them together with the screenshot to `POST /api/v1/studies/{id}/usage-screenshots`.
-   The re-encoded image carries none of the original file's metadata; the
-   capture time is sent separately as `captured_at`.
+3. The phone reads it with on-device OCR (English, plus Japanese on iOS 16+).
+   Participants do not see or edit the values. If the image does not look
+   like the requested Settings screen, the app offers to choose another one.
+4. StudyTrace uploads the screenshot with the recognized text (`ocr_text`) to
+   `POST /api/v1/studies/{id}/usage-screenshots`, and the server extracts the
+   app rows and totals (`extraction_method = provided_text`). Unclear
+   screenshots are flagged `needs_review`, and the app asks the participant
+   to retake them. Battery uploads report `usage_window = last_24_hours` (the
+   instructions ask participants to keep that tab selected); Screen Time
+   uploads report the day shown as `activity_date`. The re-encoded image
+   carries none of the original file's metadata; the capture time is sent
+   separately as `captured_at`.
 
-Confirmed values are stored as-is with `extraction_method =
-participant_confirmed` and `participant_edited` set when the participant
-changed anything. Uploads without confirmed values (older app versions,
-other clients) fall back to server OCR with Tesseract; set `OCR_LANGUAGES`
-(e.g. `eng+jpn`) for non-English studies. The legacy
-`/battery-screenshots` routes still accept Battery uploads.
+Older app versions that showed a review screen send `confirmed_rows`; those
+are still stored as-is with `extraction_method = participant_confirmed`.
+Uploads with neither confirmed values nor text fall back to server OCR with
+Tesseract; set `OCR_LANGUAGES` (e.g. `eng+jpn`) for non-English studies. The
+legacy `/battery-screenshots` routes still accept Battery uploads.
 
 Retired app-usage exports are hidden from the dashboards.
 
@@ -272,7 +276,7 @@ On the service **Variables** tab:
 | `TRUST_PROXY_HOPS` | no      | Number of reverse-proxy hops in front of the server (default `1`, correct for Railway). Used to read the real client IP for login rate limiting. |
 | `AUTH_FAILURE_MAX` / `AUTH_FAILURE_WINDOW_MS` | no | Failed-login limit per IP (default 30 per 900000 ms). |
 | `DEFAULT_STUDY_TIMEZONE` | no | IANA time zone for local-day summaries when neither the phone nor the study has one (default `UTC`). |
-| `OCR_LANGUAGES` | no | Tesseract languages for server-side screenshot OCR, e.g. `eng+jpn` (default `eng`). Only used when a screenshot arrives without participant-confirmed values. |
+| `OCR_LANGUAGES` | no | Tesseract languages for server-side screenshot OCR, e.g. `eng+jpn` (default `eng`). Only used when a screenshot arrives without phone-recognized text or participant-confirmed values. |
 
 ### 4. Generate a public domain
 
