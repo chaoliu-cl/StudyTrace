@@ -61,7 +61,7 @@ const FILES = {
     location_accuracy_authorization: 'Precise (full) or approximate (reduced) location.',
     background_refresh_status: 'iOS Background App Refresh: available, denied, or restricted.',
     usage_access: 'Android usage-access permission: granted or denied.',
-    free_disk_mb: 'Free storage in MB.',
+    free_disk_mb: 'Free storage in MB (older iOS app versions only; no longer reported).',
     system_name: 'Operating system name.',
     system_version: 'Operating system version.',
     device_model: 'Device model family.',
@@ -179,6 +179,13 @@ const FILES = {
     participant: 'Participant label from the join link (?participant=...).',
     first_seen: 'First contact, ISO 8601 UTC.',
     last_seen: 'Last contact, ISO 8601 UTC.',
+  },
+  'raw/study_consent': {
+    consent_version: 'Version of the study consent the participant agreed to (increases each time the researchers change the wording).',
+    consent_title: 'Study title on that consent version.',
+    consent_published_at: 'When that consent version was published, ISO 8601 UTC.',
+    participant: 'Participant label from the join link, if any.',
+    dedupe_key: 'Idempotency key (one row per device and consent version).',
   },
   withdrawals: {
     participant: 'Participant label at the time of withdrawal.',

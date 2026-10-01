@@ -19,10 +19,12 @@ class ESMViewController: UIViewController {
     private var promptButtons: [UsageScreenshotKind: UIButton] = [:]
     private var activeScreenshotSchedules: [UsageScreenshotKind: EntityESMSchedule] = [:]
     private let screenshotCoordinator = UsageScreenshotCoordinator()
+    private let emptyStateLabel = UILabel()
+    private let joinButton = UIButton(type: .system)
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Surveys"
+        title = NSLocalizedString("surveys_title", value: "Surveys", comment: "")
         view.backgroundColor = AWARETheme.canvas
         surveyButton.backgroundColor = AWARETheme.accent
         surveyButton.setTitleColor(.white, for: .normal)
@@ -40,6 +42,9 @@ class ESMViewController: UIViewController {
 
         setupEmptyState()
         setupScreenshotPrompts()
+        NotificationCenter.default.addObserver(forName: .studyTraceParticipationChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.checkESMSchedules()
+        }
 
         if OnboardingManager.needsOnboarding() {
             OnboardingManager().startOnboarding(with: self)
@@ -59,18 +64,27 @@ class ESMViewController: UIViewController {
         iconView.heightAnchor.constraint(equalToConstant: 48).isActive = true
         iconView.widthAnchor.constraint(equalToConstant: 48).isActive = true
 
-        let label = UILabel()
-        label.text = "No surveys scheduled"
-        label.font = UIFont.preferredFont(forTextStyle: .subheadline)
-        label.textColor = AWARETheme.secondaryInk
-        label.textAlignment = .center
+        emptyStateLabel.font = UIFont.preferredFont(forTextStyle: .subheadline)
+        emptyStateLabel.adjustsFontForContentSizeCategory = true
+        emptyStateLabel.textColor = AWARETheme.secondaryInk
+        emptyStateLabel.textAlignment = .center
+        emptyStateLabel.numberOfLines = 0
+
+        joinButton.setTitle(NSLocalizedString("join_link_title", value: "Join a Study", comment: ""), for: .normal)
+        joinButton.titleLabel?.font = UIFont.preferredFont(forTextStyle: .headline)
+        joinButton.addAction(UIAction { [weak self] _ in
+            guard let self = self else { return }
+            StudyJoinCoordinator.shared.presentJoinOptions(from: self, sourceView: self.joinButton)
+        }, for: .touchUpInside)
 
         emptyStateStack.addArrangedSubview(iconView)
-        emptyStateStack.addArrangedSubview(label)
+        emptyStateStack.addArrangedSubview(emptyStateLabel)
+        emptyStateStack.addArrangedSubview(joinButton)
         view.addSubview(emptyStateStack)
         NSLayoutConstraint.activate([
             emptyStateStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emptyStateStack.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 60)
+            emptyStateStack.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 60),
+            emptyStateStack.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, constant: -48)
         ])
     }
 
@@ -119,7 +133,7 @@ class ESMViewController: UIViewController {
         self.checkESMSchedules()
         self.hideContextViewIfNeeded()
         if StudyParticipationController.hasConsent() {
-            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+            LocationPermissionManager().explainAlwaysIfNeeded(from: self)
         }
     }
     
@@ -130,7 +144,7 @@ class ESMViewController: UIViewController {
     @objc func willEnterForegroundNotification(notification: NSNotification) {
         self.checkESMSchedules()
         if StudyParticipationController.hasConsent() {
-            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+            LocationPermissionManager().explainAlwaysIfNeeded(from: self)
         }
     }
     
@@ -147,8 +161,10 @@ class ESMViewController: UIViewController {
         }
 
         if(regularSchedules.count > 0){
-            self.surveyButton.setTitle(" \(regularSchedules.count) survey\(regularSchedules.count == 1 ? "" : "s") available",
-                                  for: .normal)
+            let format = regularSchedules.count == 1
+                ? NSLocalizedString("surveys_available_one", value: " %d survey available", comment: "")
+                : NSLocalizedString("surveys_available_many", value: " %d surveys available", comment: "")
+            self.surveyButton.setTitle(String(format: format, regularSchedules.count), for: .normal)
             self.surveyButton.setImage(UIImage(systemName: "doc.text.fill"), for: .normal)
             self.surveyButton.backgroundColor = AWARETheme.accent
             self.surveyButton.layer.borderColor = UIColor.clear.cgColor
@@ -168,6 +184,11 @@ class ESMViewController: UIViewController {
 
         let totalCount = regularSchedules.count + activeScreenshotSchedules.count
         emptyStateStack.isHidden = totalCount > 0
+        let joined = StudyParticipationController.hasConsent()
+        emptyStateLabel.text = joined
+            ? NSLocalizedString("surveys_none", value: "No surveys right now. You will get a notification when your study has one.", comment: "")
+            : NSLocalizedString("surveys_not_joined", value: "You have not joined a study yet. Use the QR code or link from your research team.", comment: "")
+        joinButton.isHidden = joined
         // The tab bar item belongs to this screen's navigation controller, so
         // the badge lands on the Surveys tab regardless of tab order.
         let tabHost: UIViewController = navigationController ?? self
@@ -254,8 +275,11 @@ class ESMViewController: UIViewController {
         guard let context = CoreDataHandler.shared().managedObjectContext else {
             return
         }
+        // Replacing an existing coordinator raises an exception.
+        if context.persistentStoreCoordinator == nil {
+            context.persistentStoreCoordinator = CoreDataHandler.shared().persistentStoreCoordinator
+        }
         let entity = NSEntityDescription.insertNewObject(forEntityName: "EntityESMAnswerHistory", into: context)
-        context.persistentStoreCoordinator = CoreDataHandler.shared().persistentStoreCoordinator
         entity.setValue(Date().timeIntervalSince1970, forKey: "timestamp")
         entity.setValue(schedule.fire_hour, forKey: "fire_hour")
         entity.setValue(schedule.schedule_id, forKey: "schedule_id")

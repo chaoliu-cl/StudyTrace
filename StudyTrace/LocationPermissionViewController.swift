@@ -8,6 +8,7 @@
 
 import UIKit
 import CoreLocation
+import AWAREFramework
 
 class LocationPermissionViewController: UIViewController {
     
@@ -29,6 +30,17 @@ class LocationPermissionViewController: UIViewController {
         openSettingButton.titleLabel?.font = UIFont.preferredFont(forTextStyle: .headline)
         openSettingButton.layer.cornerRadius = 14
         openSettingButton.isEnabled = true
+
+        let notNow = UIButton(type: .system)
+        notNow.setTitle(NSLocalizedString("location_not_now", value: "Not Now", comment: ""), for: .normal)
+        notNow.titleLabel?.font = UIFont.preferredFont(forTextStyle: .body)
+        notNow.translatesAutoresizingMaskIntoConstraints = false
+        notNow.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
+        view.addSubview(notNow)
+        NSLayoutConstraint.activate([
+            notNow.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            notNow.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20)
+        ])
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -36,7 +48,8 @@ class LocationPermissionViewController: UIViewController {
     }
     
     @IBAction func pushedOpenSettings(_ sender: Any) {
-        UIApplication.shared.open(URL(string:  UIApplication.openSettingsURLString)!,options: [:]) { (status) in
+        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(settingsURL, options: [:]) { (status) in
             self.dismiss(animated: true) {
                 
             }
@@ -58,19 +71,27 @@ class LocationPermissionViewController: UIViewController {
 
 public class LocationPermissionManager{
     private let locationManager = CLLocationManager()
+    private static let explainedKey = "com.studytrace.always-location-explained"
 
-    func isAuthorizedAlways(with vc: UIViewController) -> Bool {
-        guard StudyParticipationController.hasConsent() else {
-            return false
+    /// Explains "Always" location once per joined study when it was not
+    /// granted. The participant can close it; it is not shown again for that
+    /// study, so declining is respected (Guideline 5.1.1(iv)).
+    func explainAlwaysIfNeeded(from vc: UIViewController) {
+        guard StudyParticipationController.hasConsent(),
+              let studyURL = AWAREStudy.shared().getURL(),
+              let studyKey = StudyConsentStore.studyKey(for: studyURL),
+              locationManager.authorizationStatus != .authorizedAlways,
+              locationManager.authorizationStatus != .notDetermined,
+              vc.presentedViewController == nil,
+              vc.viewIfLoaded?.window != nil else {
+            return
         }
-        let status = locationManager.authorizationStatus
-        if status == .authorizedAlways {
-            return true
-        } else {
-            let storyboard: UIStoryboard = vc.storyboard ?? UIStoryboard(name: "Main", bundle: nil)
-            let alwaysLocationVC = storyboard.instantiateViewController(withIdentifier: "alwaysLocationPermission")
-            vc.present(alwaysLocationVC, animated: true, completion: nil)
-            return false
-        }
+        var explained = UserDefaults.standard.stringArray(forKey: Self.explainedKey) ?? []
+        guard !explained.contains(studyKey) else { return }
+        explained.append(studyKey)
+        UserDefaults.standard.set(explained, forKey: Self.explainedKey)
+        let storyboard: UIStoryboard = vc.storyboard ?? UIStoryboard(name: "Main", bundle: nil)
+        let alwaysLocationVC = storyboard.instantiateViewController(withIdentifier: "alwaysLocationPermission")
+        vc.present(alwaysLocationVC, animated: true, completion: nil)
     }
 }

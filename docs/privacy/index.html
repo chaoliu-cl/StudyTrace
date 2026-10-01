@@ -34,8 +34,9 @@
             <div class="eyebrow">Privacy Policy</div>
             <h1>Privacy for <span>StudyTrace</span></h1>
             <p>
-              Effective date: June 14, 2026. This policy explains how the StudyTrace iPhone app handles participant data,
-              permissions, and study-related information. Study-specific consent terms provided by the research team remain in effect.
+              Effective date: October 1, 2026. This policy explains what the StudyTrace iPhone app collects, where it goes,
+              and the choices you have. Each study you join also shows you its own consent form, written by the research team,
+              before anything is collected.
             </p>
           </div>
         </div>
@@ -47,14 +48,15 @@
             <h2>Sections</h2>
             <ul>
               <li><a href="#overview">1. Overview</a></li>
-              <li><a href="#collection">2. Data We May Collect</a></li>
-              <li><a href="#permissions">3. Permissions</a></li>
-              <li><a href="#use">4. How Data Is Used</a></li>
-              <li><a href="#sharing">5. Sharing and Storage</a></li>
-              <li><a href="#retention">6. Retention and Withdrawal</a></li>
-              <li><a href="#children">7. Children</a></li>
-              <li><a href="#changes">8. Changes</a></li>
-              <li><a href="#contact">9. Contact</a></li>
+              <li><a href="#collection">2. Data StudyTrace Collects</a></li>
+              <li><a href="#not-collected">3. Data StudyTrace Does Not Collect</a></li>
+              <li><a href="#permissions">4. Permissions</a></li>
+              <li><a href="#use">5. How Data Is Used</a></li>
+              <li><a href="#sharing">6. Where Data Goes</a></li>
+              <li><a href="#retention">7. Leaving a Study and Deleting Data</a></li>
+              <li><a href="#children">8. Children</a></li>
+              <li><a href="#changes">9. Changes</a></li>
+              <li><a href="#contact">10. Contact</a></li>
             </ul>
           </aside>
 
@@ -62,132 +64,121 @@
             <article class="panel" id="overview">
               <h2>1. Overview</h2>
               <p>
-                StudyTrace is a research data collection app used to support studies run by research teams, universities,
-                labs, or other approved study operators. The app is intended to collect only the streams enabled for a specific study
-                and only after the participant has consented and granted the required device permissions.
+                StudyTrace is an app for taking part in research studies run by universities and research teams.
+                You join a study with a link or QR code from the research team. Before you join, StudyTrace shows that study's
+                consent form: its purpose, how long it lasts, what you will do, its risks and benefits, how your data is protected,
+                who to contact, how to withdraw, and the ethics board that approved it. Nothing is collected unless you agree.
               </p>
               <p>
-                In many cases, the research team that invited you to the study is the primary data controller for study data.
-                If you have a question about a specific study, consent document, data request, or withdrawal procedure,
-                you should also contact the study coordinator who invited you.
+                The research team that runs your study decides what the study collects and is responsible for the study data on
+                its server. Questions about a specific study should go to the contact listed in that study's consent form.
               </p>
             </article>
 
             <article class="panel" id="collection">
-              <h2>2. Data We May Collect</h2>
-              <p>
-                Depending on the study configuration and permissions you approve, StudyTrace may collect the following categories of data:
-              </p>
+              <h2>2. Data StudyTrace Collects</h2>
+              <p>After you agree to a study's consent, and depending on what that study uses and the permissions you allow:</p>
               <ul>
-                <li>Study enrollment information such as the secure study URL or study configuration needed to join a study.</li>
-                <li>Location data, including background location, when a study enables mobility or context sensing.</li>
-                <li>Survey and experience sampling responses, including optional photo attachments that you choose to submit.</li>
-                <li>Device-usage context from Battery usage screenshots that you choose to upload as survey photo responses.</li>
-                <li>Technical and device identifiers needed for app operation, syncing, notifications, logging, and study delivery.</li>
-                <li>Push notification token information so the app can receive survey reminders or study updates.</li>
-                <li>Optional motion, health, calendar, contacts, or Bluetooth-related data if a study enables those features and you grant permission.</li>
+                <li><strong>Study enrollment:</strong> the study you joined, a participant code if the research team put one in your link,
+                  and a record of which consent version you agreed to and when.</li>
+                <li><strong>A device ID:</strong> a random identifier created by the app, so the research team can tell participants' data apart.
+                  It is not your name, phone number, or Apple ID.</li>
+                <li><strong>Location:</strong> GPS location, including in the background, if the study collects location and you allow it.</li>
+                <li><strong>Phone use timing:</strong> when your screen is locked and unlocked, used to measure daily phone use.</li>
+                <li><strong>Survey answers:</strong> your answers to the study's surveys, including any photo you choose to attach.</li>
+                <li><strong>Screenshots you upload:</strong> if the study asks, screenshots of iPhone Settings → Battery or Settings → Screen Time
+                  that you choose to upload. The phone reads the text in the screenshot and uploads that text with the image; the study
+                  server extracts app names, usage times, pickups, and notification counts from it. The image is re-saved without the
+                  original file's location or device details; only the time it was taken is kept.</li>
+                <li><strong>App and device diagnostics:</strong> app version, iOS version, iPhone model, battery level and charging state,
+                  Low Power Mode, time zone, which permissions are allowed, and app events such as when surveys were delivered or opened
+                  and whether uploads succeeded. The research team uses these to check that the study is running properly.</li>
               </ul>
-              <p>
-                The exact set of collected data depends on the study you join. Not every study uses every available sensor or permission.
-              </p>
-              <p>
-                Battery usage screenshot collection is optional and study-specific. When enabled, StudyTrace asks you to open
-                iPhone Settings → Battery → View All Battery Usage, take a screenshot, and upload that screenshot through a survey photo question.
-                StudyTrace does not silently export Apple's Screen Time database.
-              </p>
-              <p>
-                If Battery screenshots are enabled, the secure server may use OCR to extract app names, screen-time text, and battery percentages
-                from screenshots you submit. These records are collected for research analysis only.
-              </p>
+            </article>
+
+            <article class="panel" id="not-collected">
+              <h2>3. Data StudyTrace Does Not Collect</h2>
+              <ul>
+                <li>Your name, email address, or phone number (unless you type them into a survey answer).</li>
+                <li>Contacts, calendars, health or fitness data, motion and activity data, microphone audio, or Bluetooth data.</li>
+                <li>Apple's Screen Time database. App-usage information comes only from screenshots you choose to upload.</li>
+                <li>The advertising identifier. StudyTrace contains no advertising or third-party analytics code and does not track you across apps or websites.</li>
+              </ul>
             </article>
 
             <article class="panel" id="permissions">
-              <h2>3. Permissions</h2>
-              <p>StudyTrace may request permission to access capabilities such as:</p>
+              <h2>4. Permissions</h2>
+              <p>StudyTrace asks for permissions only after you agree to a study's consent:</p>
               <ul>
-                <li>Location services</li>
-                <li>Notifications</li>
-                <li>Photos or camera access for optional survey attachments, including Battery usage screenshots when requested by a study</li>
-                <li>Motion and fitness data</li>
-                <li>Health data</li>
-                <li>Calendar, contacts, or Bluetooth</li>
+                <li><strong>Location</strong>, to record your location for studies that collect it. You can choose "While Using the App",
+                  "Always", or "Don't Allow"; the rest of the study still works if you decline.</li>
+                <li><strong>Notifications</strong>, to remind you when a survey is available. Reminders are scheduled on your iPhone.</li>
+                <li><strong>Camera</strong>, only when you scan a study QR code or take a photo for a survey answer.</li>
+                <li><strong>Photos</strong>, to let you pick a picture or screenshot to attach. You choose each image; StudyTrace does not read the rest of your library.</li>
               </ul>
-              <p>
-                Denying a permission may limit some study features. StudyTrace is designed so collection starts only after consent,
-                and permission prompts are tied to the features your study needs.
-              </p>
-              <p>
-                You can decline to upload a Battery screenshot or skip the survey question when the study protocol allows it.
-              </p>
+              <p>You can change these at any time in iPhone Settings → StudyTrace.</p>
             </article>
 
             <article class="panel" id="use">
-              <h2>4. How Data Is Used</h2>
-              <p>StudyTrace uses data to:</p>
+              <h2>5. How Data Is Used</h2>
               <ul>
-                <li>Deliver study participation features such as enrollment, reminders, and surveys.</li>
-                <li>Collect research data approved by the study protocol or consent materials.</li>
-                <li>Upload study data to the research server or backend configured for that study.</li>
-                <li>Maintain app reliability, debug syncing issues, and support participant operations.</li>
+                <li>To run the study you joined: deliver surveys and reminders and upload your study data.</li>
+                <li>For the research described in that study's consent form.</li>
+                <li>To help the research team check that data is being collected and uploaded correctly.</li>
               </ul>
-              <p>
-                StudyTrace is not intended to use participant data for third-party advertising, profiling, sale of data, or cross-app tracking.
-                Battery screenshot-derived app-usage data is used only for the study purpose described by the research team.
-              </p>
+              <p>Study data is not sold, used for advertising, or used to build profiles for anyone outside the research described in your consent.</p>
             </article>
 
             <article class="panel" id="sharing">
-              <h2>5. Sharing and Storage</h2>
+              <h2>6. Where Data Goes</h2>
               <p>
-                Data collected by StudyTrace may be stored locally on your device and then synced to the backend configured by the study operator.
-                That backend may be managed by a university, research lab, cloud provider, or another approved operator.
+                Data is kept on your iPhone until it is uploaded, then sent over an encrypted (HTTPS) connection to the server of the
+                study you joined. The consent screen shows that server's address. The research team accesses the data through a
+                password-protected dashboard. The StudyTrace app developer does not receive your study data unless they also run that study's server.
               </p>
-              <ul>
-                <li>Data may be shared with the research team responsible for the study you joined.</li>
-                <li>Technical service providers may process data only to the extent needed to host, sync, or maintain the app and study backend.</li>
-                <li>StudyTrace is designed to connect to study servers using secure HTTPS connections.</li>
-              </ul>
               <p>
-                The exact server location, institutional ownership, and retention schedule may vary by study. Those details should be described in the study consent materials.
+                The research team may use service providers (for example, cloud hosting) to run their server. How long data is kept,
+                and anyone else it is shared with, is described in your study's consent form.
               </p>
             </article>
 
             <article class="panel" id="retention">
-              <h2>6. Retention and Withdrawal</h2>
+              <h2>7. Leaving a Study and Deleting Data</h2>
               <p>
-                StudyTrace allows participants to quit a study from the app settings. Quitting a study stops collection in the app and clears local study settings.
+                You can leave a study at any time: open StudyTrace, go to Settings, and tap <strong>Leave Study</strong>. Leaving stops all
+                collection, cancels survey reminders, and deletes the study data stored on your iPhone, including data not yet uploaded.
+                You then choose whether the study server should also delete the data your iPhone already uploaded, or keep it for the study
+                as described in the consent form. If the server cannot be reached, StudyTrace retries automatically.
               </p>
               <p>
-                Withdrawal from the app does not automatically define how previously uploaded study data is handled on the research backend.
-                If you want data deleted, corrected, or reviewed, contact the study coordinator or research team responsible for that study.
+                You can also contact the research team listed in your consent form about your data. Deleting the app stops collection
+                but does not by itself delete data already uploaded, so use Leave Study first if you want it deleted.
               </p>
             </article>
 
             <article class="panel" id="children">
-              <h2>7. Children</h2>
+              <h2>8. Children</h2>
               <p>
-                StudyTrace is not directed to children unless a specific study is designed for that population and appropriate parental consent
-                or legal authorization has been obtained by the research team.
+                StudyTrace is not directed to children. A study that includes minors must obtain consent from a parent or guardian
+                as required by its ethics board.
               </p>
             </article>
 
             <article class="panel" id="changes">
-              <h2>8. Changes to This Policy</h2>
+              <h2>9. Changes to This Policy</h2>
               <p>
-                This privacy policy may be updated as StudyTrace evolves or as app-store, legal, or study requirements change.
-                The effective date at the top of this page will be updated when changes are published.
+                We will update the effective date above when this policy changes. If a research team changes its study's consent,
+                StudyTrace asks you to read and agree to the new version before continuing.
               </p>
             </article>
 
             <article class="panel" id="contact">
-              <h2>9. Contact</h2>
+              <h2>10. Contact</h2>
               <p>
-                For general app information, see <a href="https://liu-chao.site" rel="noreferrer">liu-chao.site</a> or the
-                maintainer profile at <a href="https://github.com/chaoliu-cl" rel="noreferrer">github.com/chaoliu-cl</a>.
+                Questions about the StudyTrace app or this policy: <a href="mailto:chaoliu@cedarville.edu">chaoliu@cedarville.edu</a>.
               </p>
               <p>
-                For study-specific questions, consent issues, withdrawal requests, or questions about how your research data is handled,
-                contact the study coordinator or research team that invited you to the study.
+                Questions about a specific study, your study data, or withdrawing: contact the research team listed in that study's consent form.
               </p>
             </article>
           </div>
@@ -199,7 +190,7 @@
       <div class="wrap footer-inner">
         <div class="footnote">
           StudyTrace Privacy Policy<br>
-          Effective June 14, 2026
+          Effective October 1, 2026
         </div>
         <div class="link-row">
           <a href="../marketing/">Marketing</a>

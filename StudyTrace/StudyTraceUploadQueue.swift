@@ -318,7 +318,8 @@ enum UsageScreenshotUploader {
     }
 
     static func upload(_ image: UIImage, submission: UsageScreenshotSubmission, completion: @escaping (Outcome) -> Void) {
-        guard let context = StudyTraceTelemetry.studyContext() else {
+        guard StudyParticipationController.hasConsent(),
+              let context = StudyTraceTelemetry.studyContext() else {
             completion(.failed(title: "Study Not Configured",
                                message: "Join a study before uploading a screenshot."))
             return

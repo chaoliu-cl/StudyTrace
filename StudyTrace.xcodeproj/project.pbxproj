@@ -24,6 +24,8 @@
 		AB5100010000000000000001 /* StudyTraceUploadQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000002 /* StudyTraceUploadQueue.swift */; };
 		AB5100010000000000000003 /* StudyTraceMonitoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000004 /* StudyTraceMonitoring.swift */; };
 		AB5100010000000000000005 /* UsageScreenshotFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000006 /* UsageScreenshotFlow.swift */; };
+		AB5100010000000000000007 /* StudyConsent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000008 /* StudyConsent.swift */; };
+		AB5100010000000000000009 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = AB510001000000000000000A /* InfoPlist.strings */; };
 		4FC60F4C2395E37D007740E4 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FC60F4B2395E37D007740E4 /* MapKit.framework */; };
 		4FDA1E4A2423B51C004F891F /* ESMCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FDA1E492423B51C004F891F /* ESMCard.swift */; };
 		4FDB55F4233C49B50095E7D7 /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */; };
@@ -90,6 +92,9 @@
 		AB5100010000000000000002 /* StudyTraceUploadQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceUploadQueue.swift; sourceTree = "<group>"; };
 		AB5100010000000000000004 /* StudyTraceMonitoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceMonitoring.swift; sourceTree = "<group>"; };
 		AB5100010000000000000006 /* UsageScreenshotFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScreenshotFlow.swift; sourceTree = "<group>"; };
+		AB5100010000000000000008 /* StudyConsent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyConsent.swift; sourceTree = "<group>"; };
+		AB510001000000000000000B /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		AB510001000000000000000C /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		4FC60F4B2395E37D007740E4 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
 		4FDA1E492423B51C004F891F /* ESMCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESMCard.swift; sourceTree = "<group>"; };
 		4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExternalAccessory.framework; path = System/Library/Frameworks/ExternalAccessory.framework; sourceTree = SDKROOT; };
@@ -198,6 +203,7 @@
 			isa = PBXGroup;
 			children = (
 				4F530266240D4EEE008E3342 /* Localizable.strings */,
+				AB510001000000000000000A /* InfoPlist.strings */,
 				4FFE19752226A10B00C4715E /* StudyTrace */,
 				4FFE198D2226A10D00C4715E /* StudyTraceTests */,
 				4FFE19982226A10D00C4715E /* StudyTraceUITests */,
@@ -235,6 +241,7 @@
 				AB5100010000000000000002 /* StudyTraceUploadQueue.swift */,
 				AB5100010000000000000004 /* StudyTraceMonitoring.swift */,
 				AB5100010000000000000006 /* UsageScreenshotFlow.swift */,
+				AB5100010000000000000008 /* StudyConsent.swift */,
 				4F387DC629EBC59A002D5300 /* Onboard */,
 				4FFE197A2226A10B00C4715E /* Main.storyboard */,
 				4FFE19802226A10D00C4715E /* Assets.xcassets */,
@@ -409,6 +416,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4F530264240D4EEE008E3342 /* Localizable.strings in Resources */,
+				AB5100010000000000000009 /* InfoPlist.strings in Resources */,
 				4FFE19842226A10D00C4715E /* LaunchScreen.storyboard in Resources */,
 				40C62C7F2FBB845900B81347 /* studytracelogo.icon in Resources */,
 				AA00000100000001AABBCC10 /* PrivacyInfo.xcprivacy in Resources */,
@@ -562,6 +570,7 @@
 				AB5100010000000000000001 /* StudyTraceUploadQueue.swift in Sources */,
 				AB5100010000000000000003 /* StudyTraceMonitoring.swift in Sources */,
 				AB5100010000000000000005 /* UsageScreenshotFlow.swift in Sources */,
+				AB5100010000000000000007 /* StudyConsent.swift in Sources */,
 				4F1B11B322286E75006F3176 /* ScatterChartCard.swift in Sources */,
 				4F387DCD29EBC5B7002D5300 /* OnboardingContentViewController.m in Sources */,
 				4FFE19792226A10B00C4715E /* ViewController.swift in Sources */,
@@ -607,6 +616,15 @@
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
+		AB510001000000000000000A /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				AB510001000000000000000B /* en */,
+				AB510001000000000000000C /* ja */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
 		4F530266240D4EEE008E3342 /* Localizable.strings */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -764,7 +782,7 @@
 				CODE_SIGN_ENTITLEMENTS = StudyTrace/StudyTrace.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 2F9Z668JPM;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = StudyTrace/Info.plist;
@@ -782,7 +800,7 @@
 				SWIFT_OBJC_BRIDGING_HEADER = "StudyTrace/Onboard/StudyTrace-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 4.2;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
@@ -796,7 +814,7 @@
 				CODE_SIGN_ENTITLEMENTS = StudyTrace/StudyTrace.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 2F9Z668JPM;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = StudyTrace/Info.plist;
@@ -812,7 +830,7 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_OBJC_BRIDGING_HEADER = "StudyTrace/Onboard/StudyTrace-Bridging-Header.h";
 				SWIFT_VERSION = 4.2;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;

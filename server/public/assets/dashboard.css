@@ -366,3 +366,9 @@ pre {
   align-items: center;
   gap: 6px;
 }
+
+textarea.consent-text {
+  min-height: 96px;
+  font-family: inherit;
+  font-size: 1rem;
+}

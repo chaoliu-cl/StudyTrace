@@ -50,6 +50,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         registerBackgroundTasks()
         StudyParticipationController.retryPendingWithdrawal()
+        StudyConsentAPI.retryPendingAgreements()
 
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"application:didFinishLaunchingWithOptions:launchOptions:"]);
@@ -159,6 +160,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationWillEnterForeground(_ application: UIApplication) {
         StudyParticipationController.retryPendingWithdrawal()
+        StudyConsentAPI.retryPendingAgreements()
         StudyTraceTelemetry.updateCachedAppState()
         StudyTraceTelemetry.recordEvent("app_will_enter_foreground")
         StudyTraceNotificationAudit.reportDeliveredNotifications()
@@ -174,6 +176,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         StudyTraceHeartbeat.beatIfDue()
         StudyTraceTelemetry.uploadDeviceState(reason: "app_did_become_active")
         refreshRemoteESMScheduleIfNeeded(force: true)
+        if let top = UIApplication.shared.studyTraceTopViewController {
+            StudyJoinCoordinator.shared.checkForRevisedConsent(from: top)
+        }
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationDidBecomeActive:"]);
     }
@@ -192,7 +197,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         self.saveContext()
     }
 
-    private func refreshRemoteESMScheduleIfNeeded(force: Bool) {
+    func refreshRemoteESMScheduleIfNeeded(force: Bool) {
         guard StudyParticipationController.hasConsent() else { return }
         let key = "studytrace.lastRemoteESMScheduleRefresh"
         let now = Date()
@@ -222,44 +227,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 fitbit.handle(url, sourceApplication: nil, annotation: options)
             }
         } else if url.scheme == "aware-ssl" || url.scheme == "aware" {
-            var studyURL = url.absoluteString
-            if studyURL.prefix(9) == "aware-ssl" {
-                let range = studyURL.range(of: "aware-ssl")
-                if let range = range {
-                    studyURL = studyURL.replacingCharacters(in: range, with: "https")
-                }
-            } else if studyURL.prefix(5) == "aware" {
-                let range = studyURL.range(of: "aware")
-                if let range = range {
-                    // Enforce HTTPS: the plain "aware" scheme is mapped to https,
-                    // never http, so study joins always use a secure connection.
-                    studyURL = studyURL.replacingCharacters(in: range, with: "https")
-                }
+            // Study links: show the study's consent before joining, and ask
+            // before switching away from a study this iPhone is already in.
+            var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            components?.scheme = "https"
+            guard let studyURL = components?.url?.absoluteString,
+                  let presenter = UIApplication.shared.studyTraceTopViewController else {
+                return false
             }
-            let study = AWAREStudy.shared()
-            study.join(withURL: studyURL) { (settings, status, error) in
-                if status == AwareStudyStateUpdate || status == AwareStudyStateNew {
-                    StudyTraceTelemetry.recordEvent("study_joined", metadata: ["status": "\(status)"])
-                    let core = AWARECore.shared()
-                    guard StudyParticipationController.hasConsent() else { return }
-                    core.requestPermissionForPushNotification { (_, _) in
-                        core.requestPermissionForBackgroundSensing { _ in
-                            StudyParticipationController.refreshCollectionState(
-                                fitbitPresenter: self.window?.rootViewController,
-                                createRemoteTables: true
-                            )
-                            self.refreshRemoteESMScheduleIfNeeded(force: true)
-                            StudyTraceTelemetry.uploadDeviceState(reason: "study_joined")
-                        }
-                    }
-                }else {
-                    StudyTraceTelemetry.recordEvent("study_join_failed", metadata: [
-                        "status": "\(status)",
-                        "error": error?.localizedDescription ?? ""
-                    ])
-                    // print("Error: ")
-                }
-            }
+            StudyJoinCoordinator.shared.join(studyURL: studyURL, from: presenter)
         }
         
         return true
@@ -328,18 +304,69 @@ enum LegacyScreenTimeCleanup {
 
 enum StudyParticipationController {
 
+    /// Builds before per-study consent asked for one generic consent before
+    /// joining. Those participants stay enrolled until their study publishes
+    /// a consent, which they are then asked to agree to (StudyConsent.swift).
     static let consentKey = "com.studytrace.user-consented"
     static let consentTimestampKey = "com.studytrace.consent-timestamp"
 
+    /// True when this iPhone is enrolled in a study and the participant has
+    /// agreed to that study's consent. Everything that collects or uploads
+    /// study data checks this.
     static func hasConsent() -> Bool {
-        UserDefaults.standard.bool(forKey: consentKey)
+        guard let studyURL = AWAREStudy.shared().getURL(), !studyURL.isEmpty else { return false }
+        if StudyConsentStore.acceptedVersion(studyURL: studyURL) != nil { return true }
+        return UserDefaults.standard.bool(forKey: consentKey)
     }
 
-    static func recordConsentGranted() {
-        UserDefaults.standard.set(true, forKey: consentKey)
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: consentTimestampKey)
-        StudyTraceTelemetry.recordEvent("consent_granted")
-        StudyTraceTelemetry.uploadDeviceState(reason: "consent_granted")
+    /// After joining with consent: ask for the permissions collection needs,
+    /// then start collecting.
+    static func startCollectingAfterJoin(presenter: UIViewController) {
+        let core = AWARECore.shared()
+        core.requestPermissionForPushNotification { _, _ in
+            core.requestPermissionForBackgroundSensing { _ in
+                DispatchQueue.main.async {
+                    refreshCollectionState(fitbitPresenter: presenter, createRemoteTables: true)
+                    (UIApplication.shared.delegate as? AppDelegate)?.refreshRemoteESMScheduleIfNeeded(force: true)
+                    StudyTraceTelemetry.uploadDeviceState(reason: "study_joined")
+                    LocationPermissionManager().explainAlwaysIfNeeded(from: presenter)
+                }
+            }
+        }
+    }
+
+    /// Asks whether to delete or keep uploaded data, then leaves the study.
+    static func presentLeaveStudy(from presenter: UIViewController, completion: (() -> Void)? = nil) {
+        let alert = UIAlertController(title: NSLocalizedString("quit_study_title", value: "Leave Study", comment: ""),
+                                      message: NSLocalizedString("quit_study_message", comment: ""),
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("quit_study_delete_uploaded", comment: ""), style: .destructive) { _ in
+            leaveStudy(deleteUploadedData: true, presenter: presenter, completion: completion)
+        })
+        alert.addAction(UIAlertAction(title: NSLocalizedString("quit_study_keep_uploaded", comment: ""), style: .default) { _ in
+            leaveStudy(deleteUploadedData: false, presenter: presenter, completion: completion)
+        })
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        presenter.present(alert, animated: true)
+    }
+
+    private static func leaveStudy(deleteUploadedData: Bool, presenter: UIViewController, completion: (() -> Void)?) {
+        revokeParticipation(clearStudySettings: true, notifyServer: true, deleteUploadedData: deleteUploadedData) { result in
+            let message: String
+            switch result {
+            case .notApplicable:
+                message = NSLocalizedString("quit_study_done_local", comment: "")
+            case .recorded:
+                message = NSLocalizedString(deleteUploadedData ? "quit_study_done_deleted" : "quit_study_done_kept", comment: "")
+            case .pending(let deviceId):
+                message = String(format: NSLocalizedString("quit_study_pending", comment: ""), deviceId)
+            }
+            let done = UIAlertController(title: NSLocalizedString("quit_study_done_title", comment: ""),
+                                         message: message, preferredStyle: .alert)
+            done.addAction(UIAlertAction(title: NSLocalizedString("OK", value: "OK", comment: ""), style: .default))
+            presenter.present(done, animated: true)
+            completion?()
+        }
     }
 
     /// Outcome of telling the study server about a withdrawal.
@@ -366,6 +393,9 @@ enum StudyParticipationController {
                                     completion: ((WithdrawalServerResult) -> Void)? = nil) {
         // Read the server context before settings are cleared below.
         let context = notifyServer ? StudyTraceTelemetry.studyContext() : nil
+        if let studyURL = AWAREStudy.shared().getURL() {
+            StudyConsentStore.clear(studyURL: studyURL)
+        }
         UserDefaults.standard.set(false, forKey: consentKey)
         UserDefaults.standard.removeObject(forKey: consentTimestampKey)
         OnboardingManager.recordConsentDecision()
@@ -386,6 +416,7 @@ enum StudyParticipationController {
         if clearStudySettings {
             AWAREStudy.shared().clearSettings()
         }
+        NotificationCenter.default.post(name: .studyTraceParticipationChanged, object: nil)
 
         guard let context = context else {
             completion?(.notApplicable)
@@ -676,9 +707,8 @@ enum StudyTraceTelemetry {
         row["location_authorization"] = locationManager.authorizationStatus.studytraceTelemetryValue
         row["location_accuracy_authorization"] = locationManager.accuracyAuthorization.studytraceTelemetryValue
         row["background_refresh_status"] = UIApplication.shared.backgroundRefreshStatus.studytraceTelemetryValue
-        if let freeDisk = freeDiskMegabytes() {
-            row["free_disk_mb"] = freeDisk
-        }
+        // Free disk space is deliberately not reported: the privacy manifest's
+        // DiskSpace reason (E174.1) forbids sending it off the device.
         let baseRow = row
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             var row = baseRow
@@ -707,15 +737,6 @@ enum StudyTraceTelemetry {
             guard let old = previous[key], let updated = current[key], old != updated else { continue }
             recordEvent("permission_changed", metadata: ["permission": key, "from": old, "to": updated])
         }
-    }
-
-    private static func freeDiskMegabytes() -> Int? {
-        let home = URL(fileURLWithPath: NSHomeDirectory())
-        guard let values = try? home.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
-              let bytes = values.volumeAvailableCapacityForImportantUsage else {
-            return nil
-        }
-        return Int(bytes / 1_048_576)
     }
 
     static func studyContext() -> (baseURL: URL, studyId: String, password: String, deviceId: String)? {

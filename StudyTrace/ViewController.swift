@@ -9,6 +9,7 @@
 import UIKit
 import AWAREFramework
 import Network
+import SafariServices
 
 class ViewController: UIViewController {
 
@@ -37,6 +38,9 @@ class ViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        NotificationCenter.default.addObserver(forName: .studyTraceParticipationChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.refreshStudySection()
+        }
         title = "StudyTrace"
         tableView.delegate = self
         tableView.dataSource = self
@@ -129,7 +133,7 @@ class ViewController: UIViewController {
 
         if StudyParticipationController.hasConsent() {
             self.checkESMSchedules()
-            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+            LocationPermissionManager().explainAlwaysIfNeeded(from: self)
         }
     }
     
@@ -150,7 +154,7 @@ class ViewController: UIViewController {
 
         if StudyParticipationController.hasConsent() {
             self.checkESMSchedules()
-            _ = LocationPermissionManager().isAuthorizedAlways(with: self)
+            LocationPermissionManager().explainAlwaysIfNeeded(from: self)
         }
         startRefreshTimerIfNeeded()
     }
@@ -291,9 +295,9 @@ class ViewController: UIViewController {
             lastSyncText = "Never synced"
         }
 
-         return [TableRowContent(type: .setting,
-                         title: "Study URL",
-                         details: AWAREStudy.shared().getURL() ?? "",
+        var rows = [TableRowContent(type: .setting,
+                         title: NSLocalizedString("settings_study", value: "Study", comment: ""),
+                         details: studySummary(),
                          identifier: TableRowIdentifier.studyId.rawValue),
          TableRowContent(type: .setting,
                          title: NSLocalizedString("device_id", comment: ""),
@@ -308,9 +312,29 @@ class ViewController: UIViewController {
                          details: lastSyncText,
                          identifier: TableRowIdentifier.syncStatus.rawValue),
          TableRowContent(type: .setting,
-                         title: NSLocalizedString("advanced_settings", comment: ""),
+                         title: NSLocalizedString("settings_privacy_policy", value: "Privacy Policy", comment: ""),
                          details: "",
-                         identifier: TableRowIdentifier.advancedSettings.rawValue)]
+                         identifier: TableRowIdentifier.privacyPolicy.rawValue)]
+        if StudyParticipationController.hasConsent() {
+            rows.append(TableRowContent(type: .setting,
+                                        title: NSLocalizedString("quit_study_title", value: "Leave Study", comment: ""),
+                                        details: NSLocalizedString("settings_leave_detail", value: "Stop taking part and choose whether to delete your uploaded data", comment: ""),
+                                        identifier: TableRowIdentifier.leaveStudy.rawValue))
+        }
+        // Last, so UI modes that hide settings drop only this row.
+        rows.append(TableRowContent(type: .setting,
+                                    title: NSLocalizedString("advanced_settings", comment: ""),
+                                    details: "",
+                                    identifier: TableRowIdentifier.advancedSettings.rawValue))
+        return rows
+    }
+
+    /// "study_id · host", never the full URL (its path carries the study password).
+    private func studySummary() -> String {
+        guard let context = StudyTraceTelemetry.studyContext() else {
+            return NSLocalizedString("settings_study_none", value: "Not joined. Tap to join a study.", comment: "")
+        }
+        return "\(context.studyId) · \(context.baseURL.host ?? "")"
     }
     
     lazy var sensors: [TableRowContent] = {
@@ -321,13 +345,13 @@ class ViewController: UIViewController {
                             identifier: SENSOR_LOCATIONS,
                             icon: UIImage(systemName: "location.fill")),
             TableRowContent(type: .sensor,
-                            title: NSLocalizedString("iOS ESM", comment: ""),
-                            details: "Experience sampling prompts and answer logging.",
+                            title: NSLocalizedString("settings_surveys", value: "Surveys", comment: ""),
+                            details: "Survey prompts scheduled by your study, and your answers.",
                             identifier: SENSOR_PLUGIN_IOS_ESM,
                             icon: UIImage(systemName: "list.clipboard.fill")),
             TableRowContent(type: .sensor,
-                            title: "Battery Usage Screenshot",
-                            details: "Upload iOS Battery app-usage screenshots through study survey prompts.",
+                            title: "Usage Screenshots",
+                            details: "Battery or Screen Time screenshots you upload when your study asks.",
                             identifier: AWARESlimConfiguration.specificAppUsageIdentifier,
                             icon: UIImage(systemName: "camera.viewfinder"))
         ]
@@ -344,7 +368,7 @@ class ViewController: UIViewController {
         }
     }
 
-    private func refreshStudySection() {
+    fileprivate func refreshStudySection() {
         settings = getSettings()
 
         guard isViewLoaded else { return }
@@ -392,7 +416,7 @@ extension ViewController: UITableViewDataSource {
             case AwareUIModeHideSettings:
                 return self.settings.count - 1
             case AwareUIModeHideAll:
-                break
+                return self.settings.count - 1
             case AwareUIModeHideSensors:
                 return self.settings.count
             default:
@@ -440,7 +464,7 @@ extension ViewController: UITableViewDataSource {
 
             if sensor.identifier == AWARESlimConfiguration.specificAppUsageIdentifier {
                 cell.icon.tintColor = AWARETheme.ink
-                cell.detail.text = "Open Settings > Battery > View All Battery Usage, then upload a screenshot when prompted by a survey."
+                cell.detail.text = sensor.details
                 cell.hideSyncProgress()
             } else if (sensorManager.isExist(sensor.identifier)){
                 cell.icon.tintColor = .systemBlue
@@ -470,7 +494,7 @@ extension ViewController: UITableViewDataSource {
         case AwareUIModeHideSettings:
             return 1
         case AwareUIModeHideAll:
-            return 0
+            return 1
         case AwareUIModeHideSensors:
             return 1
         default:
@@ -504,6 +528,14 @@ extension ViewController: UITableViewDelegate {
                 break
             case TableRowIdentifier.syncStatus.rawValue:
                 break
+            case TableRowIdentifier.privacyPolicy.rawValue:
+                if let url = URL(string: StudyTraceLinks.privacyPolicy) {
+                    present(SFSafariViewController(url: url), animated: true)
+                }
+            case TableRowIdentifier.leaveStudy.rawValue:
+                StudyParticipationController.presentLeaveStudy(from: self) { [weak self] in
+                    self?.refreshStudySection()
+                }
             case TableRowIdentifier.advancedSettings.rawValue:
                 // advancedSettingsView
                 self.performSegue(withIdentifier: "toAdvancedSettings", sender: self)
@@ -516,15 +548,25 @@ extension ViewController: UITableViewDelegate {
             if selectedRowContent?.identifier == AWARESlimConfiguration.specificAppUsageIdentifier {
                 showBatteryScreenshotInstructions()
             } else {
+                #if DEBUG
                 self.performSegue(withIdentifier: "toSensorSetting", sender: self)
+                #else
+                // The raw sensor settings screen is a development tool; the
+                // study controls what is collected.
+                let alert = UIAlertController(title: sensors[indexPath.row].title,
+                                              message: sensors[indexPath.row].details,
+                                              preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                present(alert, animated: true)
+                #endif
             }
         }
     }
 
     private func showBatteryScreenshotInstructions() {
         let alert = UIAlertController(
-            title: "Battery usage screenshot",
-            message: "When your study sends a Battery usage screenshot survey, open iPhone Settings > Battery > View All Battery Usage, take a screenshot, return to StudyTrace, and upload it as the photo answer.",
+            title: "Usage Screenshots",
+            message: "When your study asks for a Battery or Screen Time screenshot, an upload button appears on the Surveys tab. StudyTrace shows you which iPhone Settings screen to capture.",
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -559,9 +601,8 @@ extension ViewController {
     }
 
     func showReloadCompletionAlert(){
-        let study = AWAREStudy.shared()
-        let alert = UIAlertController(title: "Study configuration reloaded successfully.",
-                                      message: study.getURL(),
+        let alert = UIAlertController(title: NSLocalizedString("study_reloaded", value: "Study settings updated.", comment: ""),
+                                      message: nil,
                                       preferredStyle: .alert)
         let close = UIAlertAction(title: NSLocalizedString("Close", comment: ""),
                                    style: .default,
@@ -726,38 +767,9 @@ extension UIViewController {
     }
 
     func showAlertForSettingStudyId(){
-        let alert = UIAlertController(title:"Study URL", message:nil, preferredStyle: .alert)
-        alert.addTextField(configurationHandler: { textField in
-            textField.placeholder = "https://url.for.studytrace.server"
-            textField.clearButtonMode = .whileEditing
-            textField.text = AWAREStudy.shared().getURL()
-        })
-        alert.addAction(UIAlertAction(title: NSLocalizedString("Update", comment: "") , style: .default, handler: { (action) in
-            if let textFields = alert.textFields {
-                if textFields.count > 0 {
-                    if let textField = textFields.first {
-                        if let text = textField.text{
-                            guard let secureURL = self.normalizedSecureStudyURL(text) else {
-                                self.showInsecureURLAlert()
-                                return
-                            }
-                            let study = AWAREStudy.shared()
-                            study.setStudyURL(secureURL)
-                            study.join(withURL: secureURL, completion: { (settings, study, error) in
-                                DispatchQueue.main.async {
-                                    StudyParticipationController.refreshCollectionState(
-                                        fitbitPresenter: self,
-                                        createRemoteTables: true
-                                    )
-                                }
-                            })
-                        }
-                    }
-                }
-            }
-        }))
-        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel, handler:nil))
-        self.present(alert, animated: true, completion: {})
+        StudyJoinCoordinator.shared.presentLinkEntry(from: self) { [weak self] _ in
+            (self as? ViewController)?.refreshStudySection()
+        }
     }
     
     func showAlertForSettingDeviceName(){
@@ -820,6 +832,13 @@ enum TableRowIdentifier:String {
     case deviceName       = "DEVICE_NAME"
     case syncStatus       = "SYNC_STATUS"
     case advancedSettings = "ADVANCED_SETTINGS"
+    case privacyPolicy    = "PRIVACY_POLICY"
+    case leaveStudy       = "LEAVE_STUDY"
+}
+
+enum StudyTraceLinks {
+    static let privacyPolicy = "https://liu-chao.site/StudyTrace/privacy/"
+    static let support = "https://liu-chao.site/StudyTrace/support/"
 }
 
 extension UIColor {

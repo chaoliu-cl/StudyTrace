@@ -86,33 +86,20 @@
 
 // onboarding
 "onbording_overview_title" = "About StudyTrace";
-"onbording_overview_body"  = "StudyTrace is a research app that collects sensor data to help scientists understand human behavior and context.";
+"onbording_overview_body" = "StudyTrace lets you take part in research studies run by universities and research teams. A study can ask you to answer short surveys, share your location, and upload screenshots of your phone use.";
 
 "onbording_data_title" = "Your Data";
-"onbording_data_body"  = "StudyTrace captures location, screen time, and survey responses in the background when you grant permission. Data is stored locally and synced to your research team's server over Wi-Fi.";
+"onbording_data_body" = "Nothing is collected until you join a study and agree to its consent form. The consent explains what the study collects, who can see it, and how long it lasts. You can leave a study at any time and choose to delete the data you uploaded.";
 
-"onbording_study_title" = "For Researchers";
-"onbording_study_body" = "Running a mobile study is simple. Configure sensors and surveys on the server, then participants join via QR code or URL. Privacy is enforced by design — no personal information like phone numbers or contacts is logged.";
 
-"onboarding_permission_loc_title" = "Permission: Location";
-"onboarding_permission_loc_body" = "StudyTrace needs location access to collect mobility data in the background.\n(NOTE: Location data is only stored when location sensors are enabled by your study.)";
 
-"onboarding_permission_notif_title" = "Permission: Notifications";
-"onboarding_permission_notif_body" = "StudyTrace uses notifications to remind you about surveys and provide study updates.";
 
-"onboarding_welcome_title" = "Welcome to StudyTrace";
-"onboarding_welcome_body" = "You're all set. StudyTrace will run quietly in the background collecting data for your study.";
 
 // consent
-"onboarding_consent_title" = "Informed Consent";
-"onboarding_consent_body" = "By participating in this study, you agree to allow StudyTrace to collect research data configured by your research team, such as location, survey responses, and optional Screen Time summaries for specific apps, websites, or categories you select.\n\nScreen Time collection requires a separate iOS permission and is used only for the approved study, not for advertising or cross-app tracking.\n\nYour data is stored securely and used only for research purposes. You may withdraw at any time by quitting the study in Settings.\n\nPlease confirm that you understand and consent to participate.";
-"onboarding_consent_agree" = "I Agree to Participate";
-"onboarding_consent_decline" = "Decline";
 
 
 /// general
 "Next" = "Next";
-"Allow" = "Allow";
 "Cancel" = "Cancel";
 "Execute" = "Execute";
 "Update" = "Update";
@@ -147,9 +134,9 @@
 "StudyTrace only connects to servers over HTTPS. Please enter a secure https:// URL." = "StudyTrace only connects to servers over HTTPS. Please enter a secure https:// URL.";
 
 // quit / withdrawal
-"quit_study_message" = "Quitting stops all data collection, deletes the study data stored on this iPhone (including data not yet uploaded), and cancels survey reminders.\n\nShould the research team's server also delete the data this iPhone has already uploaded?";
-"quit_study_delete_uploaded" = "Quit and Delete Uploaded Data";
-"quit_study_keep_uploaded" = "Quit and Keep Uploaded Data";
+"quit_study_message" = "Leaving stops all data collection, deletes the study data stored on this iPhone (including data not yet uploaded), and cancels survey reminders.\n\nShould the research team's server also delete the data this iPhone has already uploaded?";
+"quit_study_delete_uploaded" = "Leave and Delete Uploaded Data";
+"quit_study_keep_uploaded" = "Leave and Keep Uploaded Data";
 "quit_study_done_title" = "You Have Left the Study";
 "quit_study_done_local" = "Data collection has stopped and the study data on this iPhone has been deleted.";
 "quit_study_done_deleted" = "Data collection has stopped, and the data this iPhone uploaded has been deleted from the study server.";

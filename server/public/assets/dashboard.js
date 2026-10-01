@@ -444,6 +444,44 @@ async function setupTemplatePicker({ select, button, source, textarea, message }
   });
 }
 
+const CONSENT_LONG_FIELDS = new Set(['purpose', 'procedures', 'risks', 'benefits', 'data_handling', 'withdrawal', 'additional']);
+const CONSENT_DEFAULTS = {
+  withdrawal: 'You can stop participating at any time without penalty. In StudyTrace, open Settings and tap Leave Study. You can choose to delete the data already uploaded from your iPhone or keep it for the study.',
+};
+
+function renderConsentStatus(node, consent) {
+  if (consent) {
+    setMessage(node, `Published version ${consent.version} on ${fmtDate(consent.published_at)}. Participants see this when they join.`);
+  } else {
+    setMessage(node, 'Not published yet: participants cannot join this study until you publish a consent.', true);
+  }
+}
+
+// Builds the consent form from the server's field list (labels and which
+// fields are required live in server/src/consent.js).
+function renderConsentForm(form, fields, consent) {
+  form.innerHTML = fields.map((field) => {
+    const value = consent?.[field.key] ?? CONSENT_DEFAULTS[field.key] ?? '';
+    const label = `${escapeHtml(field.label)}${field.required ? '' : ', optional'}`;
+    const attrs = `name="${escapeHtml(field.key)}" maxlength="${field.max}"${field.required ? ' required' : ''}`;
+    const control = CONSENT_LONG_FIELDS.has(field.key)
+      ? `<textarea ${attrs} rows="4" class="consent-text">${escapeHtml(value)}</textarea>`
+      : `<input ${attrs}${field.key === 'contact_email' ? ' type="email"' : ''} value="${escapeHtml(value)}">`;
+    return `<label><span>${label}</span>${control}</label>`;
+  }).join('') + '<button class="button button-primary" type="submit">Publish consent</button>';
+}
+
+async function loadConsentSection({ studyId, password, form, status, message }) {
+  const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/consent`, {
+    headers: { 'x-researcher-password': password },
+  });
+  const payload = await readJson(res);
+  if (!res.ok) return setMessage(message, payload.error || 'Could not load the consent.', true);
+  renderConsentForm(form, payload.fields, payload.consent);
+  renderConsentStatus(status, payload.consent);
+  setMessage(message, '');
+}
+
 function initResearcher() {
   const form = document.querySelector('#researcher-auth');
   const message = document.querySelector('#researcher-auth-message');
@@ -522,6 +560,13 @@ function initResearcher() {
     ], payload.sensors);
 
     dashboard.classList.remove('hidden');
+    await loadConsentSection({
+      studyId,
+      password,
+      form: document.querySelector('#researcher-consent'),
+      status: document.querySelector('#researcher-consent-status'),
+      message: document.querySelector('#researcher-consent-message'),
+    });
     await loadScheduleSection({
       studyId,
       password,
@@ -563,6 +608,27 @@ function initResearcher() {
     await loadLocationDailySummary({ studyId, password, table: locationDailySummary, message });
     await loadPhoneUseDaily({ studyId, password, table: phoneUseDaily, message });
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
+  });
+
+  const consentForm = document.querySelector('#researcher-consent');
+  const consentStatus = document.querySelector('#researcher-consent-status');
+  const consentMessage = document.querySelector('#researcher-consent-message');
+  consentForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!currentStudyId || !currentPassword) {
+      return setMessage(consentMessage, 'Load a study before publishing a consent.', true);
+    }
+    const res = await fetch(`/api/v1/studies/${encodeURIComponent(currentStudyId)}/consent`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-researcher-password': currentPassword },
+      body: JSON.stringify(Object.fromEntries(new FormData(consentForm).entries())),
+    });
+    const payload = await readJson(res);
+    if (!res.ok) return setMessage(consentMessage, payload.error || 'Could not publish the consent.', true);
+    renderConsentStatus(consentStatus, payload.consent);
+    setMessage(consentMessage, payload.changed
+      ? `Published version ${payload.consent.version}. Enrolled participants will be asked to agree to it the next time they open the app.`
+      : 'No changes to publish.');
   });
 
   setupTemplatePicker({

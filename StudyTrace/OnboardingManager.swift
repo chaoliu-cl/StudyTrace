@@ -13,18 +13,24 @@ class OnboardingManager: NSObject {
 
     private var onboardingNav: UINavigationController?
 
+    /// Set by builds that showed a generic consent page in onboarding.
     private static let consentDecisionKey = "com.studytrace.onboarding.consent-decision-recorded"
+    private static let completedKey = "com.studytrace.onboarding.completed"
 
-    /// Onboarding is shown until the participant has actually agreed to or
-    /// declined the consent page. (Marking it done before it was shown meant
-    /// an app kill mid-flow skipped consent forever and nothing was collected.)
+    /// Onboarding only introduces the app; consent and permissions come when
+    /// the participant joins a study (StudyJoinCoordinator).
     public static func needsOnboarding() -> Bool {
         if StudyParticipationController.hasConsent() { return false }
-        return !UserDefaults.standard.bool(forKey: consentDecisionKey)
+        let defaults = UserDefaults.standard
+        return !defaults.bool(forKey: completedKey) && !defaults.bool(forKey: consentDecisionKey)
     }
 
     static func recordConsentDecision() {
         UserDefaults.standard.set(true, forKey: consentDecisionKey)
+    }
+
+    static func recordCompleted() {
+        UserDefaults.standard.set(true, forKey: completedKey)
     }
 
     func startOnboarding(with viewController: UIViewController) {
@@ -44,55 +50,18 @@ class OnboardingManager: NSObject {
                 action: nil
             ),
             OnboardingPage(
-                sfSymbol: "person.fill.checkmark",
+                sfSymbol: "hand.raised.fill",
                 title: NSLocalizedString("onbording_data_title", comment: ""),
                 body: NSLocalizedString("onbording_data_body", comment: ""),
                 buttonTitle: NSLocalizedString("Next", comment: ""),
                 action: nil
             ),
             OnboardingPage(
-                sfSymbol: "graduationcap.fill",
-                title: NSLocalizedString("onbording_study_title", comment: ""),
-                body: NSLocalizedString("onbording_study_body", comment: ""),
-                buttonTitle: NSLocalizedString("Next", comment: ""),
-                action: nil
-            ),
-            OnboardingPage(
-                sfSymbol: "signature",
-                title: NSLocalizedString("onboarding_consent_title", comment: ""),
-                body: NSLocalizedString("onboarding_consent_body", comment: ""),
-                buttonTitle: NSLocalizedString("onboarding_consent_agree", comment: ""),
-                action: {
-                    StudyParticipationController.recordConsentGranted()
-                    OnboardingManager.recordConsentDecision()
-                },
-                isConsent: true,
-                declineTitle: NSLocalizedString("onboarding_consent_decline", comment: "")
-            ),
-            OnboardingPage(
-                sfSymbol: "location.fill",
-                title: NSLocalizedString("onboarding_permission_loc_title", comment: ""),
-                body: NSLocalizedString("onboarding_permission_loc_body", comment: ""),
-                buttonTitle: NSLocalizedString("Allow", comment: ""),
-                action: {
-                    AWARECore.shared().requestPermissionForBackgroundSensing { _ in }
-                }
-            ),
-            OnboardingPage(
-                sfSymbol: "bell.fill",
-                title: NSLocalizedString("onboarding_permission_notif_title", comment: ""),
-                body: NSLocalizedString("onboarding_permission_notif_body", comment: ""),
-                buttonTitle: NSLocalizedString("Allow", comment: ""),
-                action: {
-                    AWARECore.shared().requestPermissionForPushNotification { _, _ in }
-                }
-            ),
-            OnboardingPage(
-                sfSymbol: "checkmark.seal.fill",
-                title: NSLocalizedString("onboarding_welcome_title", comment: ""),
-                body: NSLocalizedString("onboarding_welcome_body", comment: ""),
-                buttonTitle: "Get Started",
-                action: nil,
+                sfSymbol: "qrcode.viewfinder",
+                title: NSLocalizedString("onboarding_join_title", value: "Join a Study", comment: ""),
+                body: NSLocalizedString("onboarding_join_body", value: "Your research team gives you a study link or QR code. Open the link on this iPhone, or scan the QR code from the Surveys tab. You will read the study's consent form before anything starts.", comment: ""),
+                buttonTitle: NSLocalizedString("onboarding_get_started", value: "Get Started", comment: ""),
+                action: { OnboardingManager.recordCompleted() },
                 isFinal: true
             )
         ]
@@ -106,8 +75,6 @@ struct OnboardingPage {
     let buttonTitle: String
     let action: (() -> Void)?
     var isFinal: Bool = false
-    var isConsent: Bool = false
-    var declineTitle: String? = nil
 }
 
 class OnboardingPageViewController: UIViewController {
@@ -165,10 +132,10 @@ class OnboardingPageViewController: UIViewController {
         declineButton.titleLabel?.font = UIFont.preferredFont(forTextStyle: .subheadline)
         declineButton.setTitleColor(AWARETheme.destructive, for: .normal)
         declineButton.translatesAutoresizingMaskIntoConstraints = false
-        declineButton.addTarget(self, action: #selector(didTapDecline), for: .touchUpInside)
+        // Hidden spacer that keeps the action button above the page dots.
         declineButton.isHidden = true
 
-        skipButton.setTitle("Skip", for: .normal)
+        skipButton.setTitle(NSLocalizedString("onboarding_skip", value: "Skip", comment: ""), for: .normal)
         skipButton.setTitleColor(AWARETheme.secondaryInk, for: .normal)
         skipButton.translatesAutoresizingMaskIntoConstraints = false
         skipButton.addTarget(self, action: #selector(didTapSkip), for: .touchUpInside)
@@ -227,14 +194,7 @@ class OnboardingPageViewController: UIViewController {
         titleLabel.text = page.title
         bodyLabel.text = page.body
         actionButton.setTitle("  \(page.buttonTitle)  ", for: .normal)
-        skipButton.isHidden = page.isFinal || page.isConsent
-
-        if page.isConsent, let declineTitle = page.declineTitle {
-            declineButton.setTitle(declineTitle, for: .normal)
-            declineButton.isHidden = false
-        } else {
-            declineButton.isHidden = true
-        }
+        skipButton.isHidden = page.isFinal
 
         if animated {
             iconView.alpha = 0
@@ -256,22 +216,7 @@ class OnboardingPageViewController: UIViewController {
         page.action?()
 
         if page.isFinal {
-            // Capture the presenter before dismissing: inside the completion
-            // handler presentingViewController is already nil, and falling
-            // back to self (no storyboard) crashed LocationPermissionManager.
-            guard let presenter = presentingViewController else {
-                dismiss(animated: true)
-                return
-            }
-            dismiss(animated: true) {
-                if StudyParticipationController.hasConsent() {
-                    StudyParticipationController.refreshCollectionState(
-                        fitbitPresenter: presenter,
-                        createRemoteTables: !(AWAREStudy.shared().getURL() ?? "").isEmpty
-                    )
-                    _ = LocationPermissionManager().isAuthorizedAlways(with: presenter)
-                }
-            }
+            dismiss(animated: true)
             return
         }
 
@@ -287,23 +232,9 @@ class OnboardingPageViewController: UIViewController {
         if currentIndex < pages.count {
             displayPage(at: currentIndex, animated: true)
         } else {
+            OnboardingManager.recordCompleted()
             dismiss(animated: true)
         }
-    }
-
-    @objc private func didTapDecline() {
-        let alert = UIAlertController(
-            title: "Decline Participation?",
-            message: "If you decline, the app will not collect any data. You can change your mind later in Settings.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "Go Back", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Decline", style: .destructive) { _ in
-            StudyParticipationController.revokeParticipation(clearStudySettings: false)
-            AWAREEventLogger.shared().logEvent(["class": "OnboardingManager", "event": "consent_declined"])
-            self.dismiss(animated: true)
-        })
-        present(alert, animated: true)
     }
 }
 

@@ -48,21 +48,20 @@
 		<false/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>StudyTrace needs camera access to capture photos for survey responses.</string>
+	<string>StudyTrace uses the camera to scan your study's QR code and, if a survey asks for one, to take a photo answer.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>For collecting your activity, this application needs to access your location data.</string>
+	<string>The research study you joined records your location in the background, for example how far you travel each day, and uploads it to the study's server. StudyTrace collects location only after you agree to the study's consent, and stops when you leave the study.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>For collecting your activity, this application needs to access your location data.</string>
+	<string>The research study you joined records your location in the background, for example how far you travel each day, and uploads it to the study's server. StudyTrace collects location only after you agree to the study's consent, and stops when you leave the study.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>For collecting your activity, this application needs to access your location data.</string>
+	<string>The research study you joined records your location, for example how far you travel each day, and uploads it to the study's server. StudyTrace collects location only after you agree to the study's consent, and stops when you leave the study.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>StudyTrace needs photo library access so you can attach images to survey responses.</string>
+	<string>StudyTrace opens your photo library so you can choose a picture to attach to a survey answer, such as a screenshot your study asks for.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
 		<string>location</string>
 		<string>processing</string>
-		<string>remote-notification</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
@@ -75,13 +74,6 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 </dict>
 </plist>
