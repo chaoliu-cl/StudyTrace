@@ -31,6 +31,7 @@ import {
   latestRow,
   clearTable,
   upsertDevice,
+  markDeviceWithdrawn,
   getStudy,
   countRows,
   deleteDeviceData,
@@ -189,6 +190,9 @@ export function createGenericApiRouter() {
       const rowsDeleted = deleteData
         ? await deleteDeviceData(req.params.studyId, deviceId, { before: withdrawnAt })
         : 0;
+      // Without deletion the device stays listed with its data but no longer
+      // counts as enrolled; with deletion its registration is already gone.
+      await markDeviceWithdrawn(req.params.studyId, deviceId, withdrawnAt);
       await recordWithdrawal({
         studyId: req.params.studyId,
         deviceId,

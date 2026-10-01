@@ -60,6 +60,105 @@ function downloadUrl(path, headers) {
     .then((blob) => URL.createObjectURL(blob));
 }
 
+function triggerDownload(url, filename) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+}
+
+async function copyText(text, input) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Clipboard API is unavailable on plain-HTTP origins; fall back to selection.
+    input.select();
+    return document.execCommand('copy');
+  }
+}
+
+// Shows a study join URL and its QR code (from a join-link API response), with
+// copy and SVG/PNG download actions.
+function renderJoinLink(container, payload) {
+  if (container.dataset.qrUrl) URL.revokeObjectURL(container.dataset.qrUrl);
+  const svgUrl = URL.createObjectURL(new Blob([payload.qr_svg], { type: 'image/svg+xml' }));
+  container.dataset.qrUrl = svgUrl;
+  const filename = [payload.study_id, payload.participant, 'join-qr'].filter(Boolean).join('-').replace(/[^A-Za-z0-9_.-]/g, '_');
+  container.innerHTML = `
+    <div class="join-link">
+      <img class="join-qr" src="${svgUrl}" alt="QR code for the study join URL">
+      <div class="join-link-body">
+        <label>
+          <span>Join URL${payload.participant ? ` for participant ${escapeHtml(payload.participant)}` : ''}</span>
+          <input class="join-url" readonly value="${escapeHtml(payload.study_url)}">
+        </label>
+        <div class="button-row">
+          <button class="button button-primary" type="button" data-join-copy>Copy URL</button>
+          <button class="button" type="button" data-join-svg>Download QR (SVG)</button>
+          <button class="button" type="button" data-join-png>Download QR (PNG)</button>
+        </div>
+        <p class="section-note">Participants scan the QR code from the StudyTrace app's join screen or paste the URL there. The link contains the participant study password, so share it only with enrolled participants.</p>
+      </div>
+    </div>
+  `;
+  const input = container.querySelector('.join-url');
+  input.addEventListener('focus', () => input.select());
+  container.querySelector('[data-join-copy]').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.textContent = (await copyText(payload.study_url, input)) ? 'Copied' : 'Copy failed';
+    setTimeout(() => { button.textContent = 'Copy URL'; }, 2000);
+  });
+  container.querySelector('[data-join-svg]').addEventListener('click', () => triggerDownload(svgUrl, `${filename}.svg`));
+  container.querySelector('[data-join-png]').addEventListener('click', () => {
+    const img = container.querySelector('.join-qr');
+    const size = Math.max(1024, img.naturalWidth);
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+    context.imageSmoothingEnabled = false;
+    context.drawImage(img, 0, 0, size, size);
+    canvas.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      triggerDownload(url, `${filename}.png`);
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  });
+  container.classList.remove('hidden');
+}
+
+function clearJoinLink(container) {
+  if (container.dataset.qrUrl) URL.revokeObjectURL(container.dataset.qrUrl);
+  delete container.dataset.qrUrl;
+  container.innerHTML = '';
+  container.classList.add('hidden');
+}
+
+// Polls `refresh` while the page is visible, so counts stay current without
+// reloading the dashboard (which would discard unsaved schedule edits).
+// Call once per page.
+function startAutoRefresh(refresh, intervalMs = 60000) {
+  const tick = async () => {
+    if (document.visibilityState !== 'visible') return;
+    try {
+      await refresh();
+    } catch {
+      // Transient failures are retried on the next tick.
+    }
+  };
+  setInterval(tick, intervalMs);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') tick();
+  });
+}
+
+function deviceStatus(row) {
+  return row.withdrawn_at
+    ? `<span class="status-pill status-withdrawn" title="Withdrew ${escapeHtml(fmtDate(row.withdrawn_at))}">Withdrawn</span>`
+    : '<span class="status-pill status-enrolled">Enrolled</span>';
+}
+
 function parseEsmJson(row) {
   const raw = row?.data?.esm_json;
   if (!raw) return {};
@@ -466,29 +565,28 @@ function initResearcher() {
   const activityScheduleForm = document.querySelector('#researcher-activity-schedule');
   const activityScheduleResult = document.querySelector('#researcher-activity-schedule-result');
   const screenTimeActivity = document.querySelector('#researcher-screen-time-activity');
+  const devicesUpdated = document.querySelector('#researcher-devices-updated');
+  const joinLinkForm = document.querySelector('#researcher-join-link');
+  const joinLinkResult = document.querySelector('#researcher-join-link-result');
+  const joinLinkMessage = document.querySelector('#researcher-join-link-message');
   let currentStudyId = '';
   let currentPassword = '';
+  let autoRefreshStarted = false;
 
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    setMessage(message, 'Loading study dashboard...');
-    const formData = new FormData(form);
-    const studyId = formData.get('studyId');
-    const password = formData.get('password');
-    currentStudyId = studyId;
-    currentPassword = password;
-    const headers = { 'x-researcher-password': password };
-
-    const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/summary`, { headers });
+  // Metrics, devices, withdrawals, and sensor coverage. Polled while the page
+  // is open so device counts track enrollments and withdrawals.
+  async function loadSummary(studyId, password) {
+    const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/dashboard/summary`, {
+      headers: { 'x-researcher-password': password },
+    });
     const payload = await readJson(res);
-    if (!res.ok) {
-      dashboard.classList.add('hidden');
-      return setMessage(message, payload.message || payload.error || 'Could not load study dashboard.', true);
-    }
+    if (!res.ok) throw new Error(payload.message || payload.error || 'Could not load study dashboard.');
+    if (studyId !== currentStudyId) return payload; // a different study was loaded meanwhile
 
     renderMetricCards(metrics, [
       { label: 'Study', value: payload.study.name || payload.study.study_id },
-      { label: 'Devices', value: String(payload.summary.device_count) },
+      { label: 'Enrolled devices', value: String(payload.summary.device_count) },
+      { label: 'Withdrawn', value: String(payload.summary.withdrawn_device_count || 0) },
       { label: 'Sensors', value: String(payload.summary.sensor_count) },
       { label: 'Rows', value: String(payload.summary.total_rows) },
     ]);
@@ -496,6 +594,7 @@ function initResearcher() {
     renderTable(devices, [
       { label: 'Participant', render: (row) => escapeHtml(row.participant || '—') },
       { label: 'Device ID', render: (row) => escapeHtml(row.device_id) },
+      { label: 'Status', render: deviceStatus },
       { label: 'First seen', render: (row) => fmtDate(row.first_seen) },
       { label: 'Last seen', render: (row) => fmtDate(row.last_seen) },
       {
@@ -503,6 +602,7 @@ function initResearcher() {
         render: (row) => `<button class="button" type="button" data-delete-device="${escapeHtml(row.device_id)}" data-participant="${escapeHtml(row.participant || '')}">Delete data</button>`,
       },
     ], payload.devices);
+    devicesUpdated.textContent = `${payload.summary.device_count} enrolled, ${payload.summary.withdrawn_device_count || 0} withdrawn. Updated ${new Date().toLocaleTimeString()}; refreshes every minute.`;
 
     renderTable(withdrawals, [
       { label: 'When', render: (row) => fmtDate(row.requested_at) },
@@ -520,6 +620,33 @@ function initResearcher() {
         render: (row) => `<a href="/api/v1/studies/${encodeURIComponent(studyId)}/export/${encodeURIComponent(row.sensor)}?format=csv" data-download="study" data-study="${escapeHtml(studyId)}" data-sensor="${escapeHtml(row.sensor)}">CSV</a>`,
       },
     ], payload.sensors);
+    return payload;
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    setMessage(message, 'Loading study dashboard...');
+    const formData = new FormData(form);
+    const studyId = formData.get('studyId');
+    const password = formData.get('password');
+    if (studyId !== currentStudyId) {
+      clearJoinLink(joinLinkResult);
+      setMessage(joinLinkMessage, '');
+    }
+    currentStudyId = studyId;
+    currentPassword = password;
+
+    let payload;
+    try {
+      payload = await loadSummary(studyId, password);
+    } catch (error) {
+      dashboard.classList.add('hidden');
+      return setMessage(message, error.message, true);
+    }
+    if (!autoRefreshStarted) {
+      autoRefreshStarted = true;
+      startAutoRefresh(() => (currentStudyId ? loadSummary(currentStudyId, currentPassword) : null));
+    }
 
     dashboard.classList.remove('hidden');
     await loadScheduleSection({
@@ -563,6 +690,25 @@ function initResearcher() {
     await loadLocationDailySummary({ studyId, password, table: locationDailySummary, message });
     await loadPhoneUseDaily({ studyId, password, table: phoneUseDaily, message });
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
+  });
+
+  joinLinkForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!currentStudyId || !currentPassword) {
+      return setMessage(joinLinkMessage, 'Load a study before generating a join link.', true);
+    }
+    const res = await fetch(`/api/v1/studies/${encodeURIComponent(currentStudyId)}/join-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-researcher-password': currentPassword },
+      body: JSON.stringify(Object.fromEntries(new FormData(joinLinkForm).entries())),
+    });
+    const payload = await readJson(res);
+    if (!res.ok) {
+      clearJoinLink(joinLinkResult);
+      return setMessage(joinLinkMessage, payload.error || 'Could not generate a join link.', true);
+    }
+    setMessage(joinLinkMessage, '');
+    renderJoinLink(joinLinkResult, payload);
   });
 
   setupTemplatePicker({
@@ -710,7 +856,13 @@ function initAdmin() {
   const sensors = document.querySelector('#admin-sensors');
   const createForm = document.querySelector('#admin-create-study');
   const createResult = document.querySelector('#admin-create-result');
+  const createLink = document.querySelector('#admin-create-link');
+  const joinLinkForm = document.querySelector('#admin-join-link');
+  const joinLinkResult = document.querySelector('#admin-join-link-result');
+  const joinLinkMessage = document.querySelector('#admin-join-link-message');
+  const studiesUpdated = document.querySelector('#admin-studies-updated');
   let token = '';
+  let autoRefreshStarted = false;
 
   async function refresh() {
     const headers = { 'x-admin-token': token };
@@ -729,7 +881,7 @@ function initAdmin() {
       { label: 'Studies', value: String(studiesPayload.studies.length) },
       { label: 'Sensors', value: String(sensorsPayload.sensors.length) },
       {
-        label: 'Participants',
+        label: 'Enrolled devices',
         value: String(studiesPayload.studies.reduce((sum, study) => sum + Number(study.device_count || 0), 0)),
       },
       {
@@ -742,9 +894,15 @@ function initAdmin() {
       { label: 'Study ID', render: (row) => escapeHtml(row.study_id) },
       { label: 'Name', render: (row) => escapeHtml(row.name) },
       { label: 'Researcher password', render: (row) => row.researcher_password_set ? 'Set' : '<strong>Not set — dashboard locked</strong>' },
-      { label: 'Devices', render: (row) => String(row.device_count || 0) },
+      { label: 'Enrolled devices', render: (row) => String(row.device_count || 0) },
+      { label: 'Withdrawn', render: (row) => String(row.withdrawn_device_count || 0) },
       { label: 'Last activity', render: (row) => fmtDate(row.last_seen) },
+      {
+        label: 'Join link',
+        render: (row) => `<button class="button" type="button" data-join-study="${escapeHtml(row.study_id)}">Get link / QR</button>`,
+      },
     ], studiesPayload.studies);
+    studiesUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}; refreshes every minute.`;
 
     renderTable(sensors, [
       { label: 'Sensor', render: (row) => escapeHtml(row.sensor) },
@@ -765,6 +923,10 @@ function initAdmin() {
     try {
       await refresh();
       setMessage(authMessage, 'Admin console loaded.');
+      if (!autoRefreshStarted) {
+        autoRefreshStarted = true;
+        startAutoRefresh(refresh);
+      }
     } catch (error) {
       setMessage(authMessage, error.message, true);
     }
@@ -787,11 +949,49 @@ function initAdmin() {
     });
     const payload = await readJson(res);
     if (!res.ok) {
+      clearJoinLink(createLink);
       createResult.textContent = payload.error || 'Could not save study.';
       return;
     }
-    createResult.textContent = JSON.stringify(payload, null, 2);
+    const { qr_svg: qrSvg, ...details } = payload;
+    createResult.textContent = JSON.stringify(details, null, 2);
+    if (payload.study_url) {
+      renderJoinLink(createLink, payload);
+    } else {
+      clearJoinLink(createLink);
+    }
     await refresh();
+  });
+
+  joinLinkForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!token) {
+      return setMessage(joinLinkMessage, 'Load the admin console first.', true);
+    }
+    const { study_id: studyId, ...body } = Object.fromEntries(new FormData(joinLinkForm).entries());
+    const res = await fetch(`/admin/studies/${encodeURIComponent(studyId)}/join-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+      body: JSON.stringify(body),
+    });
+    const payload = await readJson(res);
+    if (!res.ok) {
+      clearJoinLink(joinLinkResult);
+      return setMessage(joinLinkMessage, payload.error || 'Could not generate a join link.', true);
+    }
+    setMessage(joinLinkMessage, '');
+    renderJoinLink(joinLinkResult, payload);
+  });
+
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-join-study]');
+    if (!button) return;
+    joinLinkForm.elements.study_id.value = button.dataset.joinStudy;
+    joinLinkForm.elements.password.value = '';
+    clearJoinLink(joinLinkResult);
+    setMessage(joinLinkMessage, '');
+    joinLinkForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    joinLinkForm.elements.password.focus({ preventScroll: true });
   });
 
   document.addEventListener('click', async (event) => {
