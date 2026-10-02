@@ -32,6 +32,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import org.json.JSONObject
 import java.text.DateFormat
 import java.util.Date
@@ -457,6 +460,13 @@ class MainActivity : Activity() {
         settingsRoot.addView(pageHeader("Settings", "Study participation and privacy controls"), spacedParams(dp(18)))
         surveysRoot.addView(pageHeader("Survey", "Questions from your research team"), spacedParams(dp(18)))
 
+        settingsRoot.addView(card().apply {
+            addView(eyebrow("CONSENT & ONBOARDING", ACCENT))
+            addView(sectionTitle("Review your choices"))
+            addView(mutedBody("You can revisit the upfront information and consent screens at any time."))
+            addView(outlineButton(getString(R.string.onboarding_review)) { showOnboarding() })
+        }, spacedParams(dp(16)))
+
         val root = dashboardRoot
 
         val brandRow = LinearLayout(this).apply {
@@ -578,6 +588,7 @@ class MainActivity : Activity() {
         }
         enrollmentCard.addView(fieldLabel("Study invitation link"))
         enrollmentCard.addView(studyUrlEdit, spacedParams(dp(8)))
+        enrollmentCard.addView(outlineButton(getString(R.string.scan_study_qr)) { scanStudyQrCode() }, spacedParams(dp(12)))
 
         consentCheck = CheckBox(this).apply {
             text = getString(R.string.consent_checkbox)
@@ -690,10 +701,6 @@ class MainActivity : Activity() {
             addView(sectionTitle("Device & study details"))
             statusText = mutedBody("")
             addView(statusText)
-            addView(
-                outlineButton(getString(R.string.onboarding_review)) { showOnboarding() },
-                spacedParams(dp(10)),
-            )
             addView(outlineButton("Privacy policy") { openPrivacyPolicy() }, spacedParams(dp(10)))
             addView(dangerButton(getString(R.string.button_leave_study)) { confirmLeaveStudy() })
         }
@@ -765,6 +772,36 @@ class MainActivity : Activity() {
             refreshStatus()
             renderOpenPrompts()
         }
+    }
+
+    private fun scanStudyQrCode() {
+        val options = GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .enableAutoZoom()
+            .build()
+        GmsBarcodeScanning.getClient(this, options).startScan()
+            .addOnSuccessListener { barcode ->
+                val normalized = barcode.rawValue?.let(::normalizeScannedStudyUrl)
+                val context = normalized?.let(::parseStudyContext)
+                if (normalized == null || context == null) {
+                    toast(getString(R.string.scan_invalid_qr))
+                    return@addOnSuccessListener
+                }
+                AlertDialog.Builder(this)
+                    .setTitle(getString(R.string.scan_found_title))
+                    .setMessage(getString(
+                        R.string.scan_found_message,
+                        Uri.parse(normalized).host ?: "",
+                        context.studyId,
+                    ))
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .setPositiveButton(getString(R.string.scan_use_link)) { _, _ ->
+                        studyUrlEdit.setText(normalized)
+                        selectTab(MainTab.SETTINGS)
+                    }
+                    .show()
+            }
+            .addOnFailureListener { toast(getString(R.string.scan_unavailable)) }
     }
 
     private fun requestLocationPermission() {

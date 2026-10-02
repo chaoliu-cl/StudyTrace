@@ -51,5 +51,17 @@ fun normalizeStudyUrl(rawUrl: String): String? {
     }
 }
 
+/** QR invitations may omit the scheme, as on iOS; only valid HTTPS study URLs survive. */
+fun normalizeScannedStudyUrl(rawValue: String): String? {
+    val trimmed = rawValue.trim()
+    val candidate = if (!trimmed.contains("://") && trimmed.contains('.') && trimmed.none(Char::isWhitespace)) {
+        "https://$trimmed"
+    } else {
+        trimmed
+    }
+    val normalized = normalizeStudyUrl(candidate) ?: return null
+    return normalized.takeIf { parseStudyContext(it) != null }
+}
+
 fun encodePath(value: String): String =
     URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")

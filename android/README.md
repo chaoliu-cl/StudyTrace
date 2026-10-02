@@ -27,11 +27,20 @@ onboarding does not silently enroll the phone: the participant must still open
 their study invitation, review the research team's study-specific consent,
 check the enrollment consent box, and join successfully.
 
-The main interface groups study enrollment, permissions, collection controls,
-surveys, synchronization, and withdrawal into separate status cards. Current
-permission and collection states are shown without implying that access has
-been granted. Participants can reopen onboarding from **Device & study
-details**.
+Onboarding appears on first launch until the participant makes a consent
+decision. Reinstalling an APK over the existing app preserves that decision;
+it does not replay onboarding. Participants can review all eight screens from
+**Settings → Review onboarding and consent**.
+
+The main interface has **Survey**, **Dashboard**, and **Settings** tabs. Settings
+contains enrollment, permissions, collection controls, and withdrawal.
+Participants can enter an invitation link or tap **Scan study QR code**. The
+scanner accepts secure HTTPS, StudyTrace, and AWARE study links (including
+scheme-less host/path QR codes). It displays the server and study for review,
+then fills the invitation field; scanning alone never grants consent or joins
+the study. QR scanning uses Google Play services on-device and does not require
+a camera permission for StudyTrace. Current permission and collection states
+are shown without implying that access has been granted.
 
 The background-location and app-activity steps retain their full prominent
 disclosures immediately before Android's system permission/settings screens.

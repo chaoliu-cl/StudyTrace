@@ -80,6 +80,7 @@ dependencies {
     // 1.17.x is the newest Core line compatible with API 36 / AGP 8.10.
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
     testImplementation("junit:junit:4.13.2")
 }

@@ -31,6 +31,11 @@
         android:theme="@style/StudyTraceTheme"
         android:usesCleartextTraffic="false">
 
+        <!-- Preload the Google Play services QR scanner when installed from Play. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode_ui" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true">

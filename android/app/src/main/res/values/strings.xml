@@ -39,6 +39,12 @@
     <string name="onboarding_get_started">Get Started</string>
     <string name="onboarding_review">Review onboarding and consent</string>
     <string name="onboarding_required">Review and accept the upfront consent information before joining a study.</string>
+    <string name="scan_study_qr">Scan study QR code</string>
+    <string name="scan_invalid_qr">This QR code is not a valid secure StudyTrace study invitation.</string>
+    <string name="scan_unavailable">QR scanner is unavailable. Check Google Play services or enter the invitation link manually.</string>
+    <string name="scan_found_title">Study invitation found</string>
+    <string name="scan_found_message">Server: %1$s\nStudy: %2$s\n\nReview the invitation and study consent before joining. Scanning alone does not enroll you or start collection.</string>
+    <string name="scan_use_link">Use this link</string>
 
     <string name="location_disclosure_title">Background location collection</string>
     <string name="location_disclosure_message">StudyTrace collects precise or approximate location data to enable research mobility and context sensing even when the app is closed or not in use. Location data is sent to the secure research server configured for your study and is available to the research team under your study consent. You can stop collection in StudyTrace or revoke location access in Android Settings at any time.</string>

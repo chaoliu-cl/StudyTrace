@@ -36,7 +36,8 @@ and the repository's [privacy source](docs/privacy/index.html).
 The Android client provides a modern, guided interface for:
 
 - upfront onboarding and informed consent;
-- secure study enrollment by HTTPS, `studytrace://`, or AWARE invitation URL;
+- secure study enrollment by pasted link or scanned QR code (HTTPS,
+  `studytrace://`, or AWARE invitation URL);
 - background location collection with a persistent notification;
 - app foreground-use and screen-state research data through Android Usage
   Access;
