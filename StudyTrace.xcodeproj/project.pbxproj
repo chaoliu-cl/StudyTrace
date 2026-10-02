@@ -21,9 +21,6 @@
 		4F387DCE29EBC5B7002D5300 /* OnboardingViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 4F387DCB29EBC5B6002D5300 /* OnboardingViewController.m */; };
 		4F530264240D4EEE008E3342 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4F530266240D4EEE008E3342 /* Localizable.strings */; };
 		4F70E8AD241DA28000A8AAA8 /* LocationPermissionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F70E8AC241DA28000A8AAA8 /* LocationPermissionViewController.swift */; };
-		AB5100010000000000000001 /* StudyTraceUploadQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000002 /* StudyTraceUploadQueue.swift */; };
-		AB5100010000000000000003 /* StudyTraceMonitoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000004 /* StudyTraceMonitoring.swift */; };
-		AB5100010000000000000005 /* UsageScreenshotFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000006 /* UsageScreenshotFlow.swift */; };
 		4FC60F4C2395E37D007740E4 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FC60F4B2395E37D007740E4 /* MapKit.framework */; };
 		4FDA1E4A2423B51C004F891F /* ESMCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FDA1E492423B51C004F891F /* ESMCard.swift */; };
 		4FDB55F4233C49B50095E7D7 /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */; };
@@ -43,6 +40,9 @@
 		4FFE19B22226D2C100C4715E /* StudyTraceTableViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFE19B12226D2C100C4715E /* StudyTraceTableViewCell.swift */; };
 		6751B417299E72271CA99EAA /* Pods_StudyTraceTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5CC70354397A1A5E6C53574B /* Pods_StudyTraceTests.framework */; };
 		AA00000100000001AABBCC10 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA00000100000001AABBCC11 /* PrivacyInfo.xcprivacy */; };
+		AB5100010000000000000001 /* StudyTraceUploadQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000002 /* StudyTraceUploadQueue.swift */; };
+		AB5100010000000000000003 /* StudyTraceMonitoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000004 /* StudyTraceMonitoring.swift */; };
+		AB5100010000000000000005 /* UsageScreenshotFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5100010000000000000006 /* UsageScreenshotFlow.swift */; };
 		FD3C74F7F08E6CB236571130 /* Pods_StudyTraceUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2037B1A5CBF8297D303D2168 /* Pods_StudyTraceUITests.framework */; };
 /* End PBXBuildFile section */
 
@@ -87,9 +87,6 @@
 		4F530269240FB13D008E3342 /* StudyTrace.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StudyTrace.entitlements; sourceTree = "<group>"; };
 		4F70E8AB241D9CB500A8AAA8 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Main.strings; sourceTree = "<group>"; };
 		4F70E8AC241DA28000A8AAA8 /* LocationPermissionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPermissionViewController.swift; sourceTree = "<group>"; };
-		AB5100010000000000000002 /* StudyTraceUploadQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceUploadQueue.swift; sourceTree = "<group>"; };
-		AB5100010000000000000004 /* StudyTraceMonitoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceMonitoring.swift; sourceTree = "<group>"; };
-		AB5100010000000000000006 /* UsageScreenshotFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScreenshotFlow.swift; sourceTree = "<group>"; };
 		4FC60F4B2395E37D007740E4 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
 		4FDA1E492423B51C004F891F /* ESMCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESMCard.swift; sourceTree = "<group>"; };
 		4FDB55F3233C49B50095E7D7 /* ExternalAccessory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExternalAccessory.framework; path = System/Library/Frameworks/ExternalAccessory.framework; sourceTree = SDKROOT; };
@@ -116,6 +113,9 @@
 		5CC70354397A1A5E6C53574B /* Pods_StudyTraceTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_StudyTraceTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F053FEBEEB8141AAF6B81D0 /* Pods-StudyTraceUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTraceUITests.debug.xcconfig"; path = "Target Support Files/Pods-StudyTraceUITests/Pods-StudyTraceUITests.debug.xcconfig"; sourceTree = "<group>"; };
 		AA00000100000001AABBCC11 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		AB5100010000000000000002 /* StudyTraceUploadQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceUploadQueue.swift; sourceTree = "<group>"; };
+		AB5100010000000000000004 /* StudyTraceMonitoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyTraceMonitoring.swift; sourceTree = "<group>"; };
+		AB5100010000000000000006 /* UsageScreenshotFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScreenshotFlow.swift; sourceTree = "<group>"; };
 		C2A52DF7C3B2DCDC02A2CFA0 /* Pods-StudyTraceTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTraceTests.release.xcconfig"; path = "Target Support Files/Pods-StudyTraceTests/Pods-StudyTraceTests.release.xcconfig"; sourceTree = "<group>"; };
 		D83C1A3254FCB129D5EBD903 /* Pods_StudyTrace.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_StudyTrace.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		DEF9D4B89EF357AC1A9ECC9A /* Pods-StudyTrace.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTrace.release.xcconfig"; path = "Target Support Files/Pods-StudyTrace/Pods-StudyTrace.release.xcconfig"; sourceTree = "<group>"; };
@@ -764,7 +764,7 @@
 				CODE_SIGN_ENTITLEMENTS = StudyTrace/StudyTrace.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 2F9Z668JPM;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = StudyTrace/Info.plist;
@@ -796,7 +796,7 @@
 				CODE_SIGN_ENTITLEMENTS = StudyTrace/StudyTrace.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 2F9Z668JPM;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = StudyTrace/Info.plist;

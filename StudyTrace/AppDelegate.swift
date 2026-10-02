@@ -176,6 +176,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         refreshRemoteESMScheduleIfNeeded(force: true)
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationDidBecomeActive:"]);
+        AppStoreCaptureDriver.runIfNeeded(window: window)
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
@@ -310,6 +311,111 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
+}
+
+private enum AppStoreCaptureDriver {
+    private static var hasRun = false
+
+    static func runIfNeeded(window: UIWindow?) {
+        guard AppStoreDemo.isEnabled, !hasRun else { return }
+        hasRun = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            guard let tabBar = window?.rootViewController as? UITabBarController else { return }
+            if let scene = AppStoreDemo.captureScene {
+                show(scene: scene, in: tabBar)
+            }
+            if let preview = AppStoreDemo.previewFlow {
+                run(preview: preview, in: tabBar)
+            }
+        }
+    }
+
+    private static func selectTab(_ title: String, in tabBar: UITabBarController) {
+        guard let index = tabBar.viewControllers?.firstIndex(where: {
+            $0.tabBarItem.title?.localizedCaseInsensitiveCompare(title) == .orderedSame
+        }) else { return }
+        tabBar.selectedIndex = index
+    }
+
+    private static func topController(in tabBar: UITabBarController) -> UIViewController? {
+        if let nav = tabBar.selectedViewController as? UINavigationController {
+            return nav.topViewController
+        }
+        return tabBar.selectedViewController
+    }
+
+    private static func selectStudyTab(in tabBar: UITabBarController) {
+        if let controllers = tabBar.viewControllers, !controllers.isEmpty {
+            tabBar.selectedIndex = controllers.count - 1
+        }
+    }
+
+    private static func show(scene: String, in tabBar: UITabBarController) {
+        switch scene {
+        case "study":
+            selectStudyTab(in: tabBar)
+        case "dashboard":
+            selectTab("Dashboard", in: tabBar)
+        case "surveys":
+            selectTab("Surveys", in: tabBar)
+        case "battery", "screen-time":
+            selectTab("Surveys", in: tabBar)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                guard let controller = topController(in: tabBar) as? ESMViewController else { return }
+                controller.presentDemoInstructions(for: scene == "battery" ? .battery : .screenTimeActivity)
+            }
+        case "privacy":
+            selectStudyTab(in: tabBar)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                guard let controller = topController(in: tabBar) as? ViewController else { return }
+                controller.performSegue(withIdentifier: "toAdvancedSettings", sender: controller)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    guard let settings = topController(in: tabBar) as? AdvancedSettingsViewController else { return }
+                    settings.presentDemoPrivacyInfo()
+                }
+            }
+        default:
+            break
+        }
+    }
+
+    private static func run(preview: String, in tabBar: UITabBarController) {
+        switch preview {
+        case "onboarding":
+            let steps: [TimeInterval] = [3, 9, 15]
+            for delay in steps {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    (tabBar.presentedViewController as? OnboardingPageViewController)?.advanceForAppPreview()
+                }
+            }
+        case "dashboard":
+            selectTab("Surveys", in: tabBar)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                selectTab("Dashboard", in: tabBar)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                guard let dashboard = topController(in: tabBar) as? ContextCardViewController,
+                      let scrollView = dashboard.view.subviews.compactMap({ $0 as? UIScrollView }).first else { return }
+                scrollView.setContentOffset(CGPoint(x: 0, y: min(260, max(0, scrollView.contentSize.height - scrollView.bounds.height))), animated: true)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 17) {
+                selectStudyTab(in: tabBar)
+            }
+        case "surveys":
+            selectTab("Surveys", in: tabBar)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                (topController(in: tabBar) as? ESMViewController)?.presentDemoInstructions(for: .battery)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                tabBar.presentedViewController?.dismiss(animated: true)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 14) {
+                (topController(in: tabBar) as? ESMViewController)?.presentDemoInstructions(for: .screenTimeActivity)
+            }
+        default:
+            break
+        }
+    }
 }
 
 /// Older builds shipped Screen Time extensions that stored app selections,

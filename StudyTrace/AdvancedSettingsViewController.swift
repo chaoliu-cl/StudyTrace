@@ -676,6 +676,21 @@ extension AdvancedSettingsViewController {
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
+
+    func presentDemoPrivacyInfo() {
+        showInfoAlert(
+            title: "StudyTrace Privacy",
+            message: """
+            StudyTrace collects only the data streams enabled for your study after consent.
+
+            Data is stored locally on your device first and may then be uploaded to your configured study server.
+
+            Optional app-usage context is collected through participant-submitted screenshots when requested by a study survey. You can skip or decline an optional upload.
+
+            Review permissions, export local data, or withdraw from a study at any time.
+            """
+        )
+    }
 }
 
 extension AdvancedSettingsIdentifiers {

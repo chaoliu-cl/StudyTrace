@@ -9,6 +9,36 @@
 import UIKit
 import AWAREFramework
 
+/// Deterministic, privacy-safe content used only by the App Store asset
+/// capture tests. Normal launches never enter this mode.
+enum AppStoreDemo {
+    static var isEnabled: Bool {
+        return ProcessInfo.processInfo.arguments.contains("-AppStoreDemo") || isOnboardingEnabled
+    }
+
+    static var isOnboardingEnabled: Bool {
+        return ProcessInfo.processInfo.arguments.contains("-AppStoreDemoOnboarding")
+    }
+
+    static var onboardingPage: Int {
+        return Int(value(after: "-AppStorePage") ?? "0") ?? 0
+    }
+
+    static var captureScene: String? {
+        return value(after: "-AppStoreScene")
+    }
+
+    static var previewFlow: String? {
+        return value(after: "-AppStorePreview")
+    }
+
+    private static func value(after flag: String) -> String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+        return arguments[index + 1]
+    }
+}
+
 class OnboardingManager: NSObject {
 
     private var onboardingNav: UINavigationController?
@@ -19,6 +49,8 @@ class OnboardingManager: NSObject {
     /// declined the consent page. (Marking it done before it was shown meant
     /// an app kill mid-flow skipped consent forever and nothing was collected.)
     public static func needsOnboarding() -> Bool {
+        if AppStoreDemo.isOnboardingEnabled { return true }
+        if AppStoreDemo.isEnabled { return false }
         if StudyParticipationController.hasConsent() { return false }
         return !UserDefaults.standard.bool(forKey: consentDecisionKey)
     }
@@ -29,7 +61,10 @@ class OnboardingManager: NSObject {
 
     func startOnboarding(with viewController: UIViewController) {
         let pages = buildPages(presenter: viewController)
-        let pageVC = OnboardingPageViewController(pages: pages)
+        let pageVC = OnboardingPageViewController(
+            pages: pages,
+            startIndex: AppStoreDemo.isOnboardingEnabled ? AppStoreDemo.onboardingPage : 0
+        )
         pageVC.modalPresentationStyle = .fullScreen
         viewController.present(pageVC, animated: true)
     }
@@ -112,7 +147,7 @@ struct OnboardingPage {
 
 class OnboardingPageViewController: UIViewController {
     private let pages: [OnboardingPage]
-    private var currentIndex = 0
+    private var currentIndex: Int
     private let pageControl = UIPageControl()
 
     private let iconView = UIImageView()
@@ -122,8 +157,9 @@ class OnboardingPageViewController: UIViewController {
     private let declineButton = UIButton(type: .system)
     private let skipButton = UIButton(type: .system)
 
-    init(pages: [OnboardingPage]) {
+    init(pages: [OnboardingPage], startIndex: Int = 0) {
         self.pages = pages
+        self.currentIndex = min(max(0, startIndex), max(0, pages.count - 1))
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -133,7 +169,7 @@ class OnboardingPageViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = AWARETheme.canvas
         setupUI()
-        displayPage(at: 0, animated: false)
+        displayPage(at: currentIndex, animated: false)
     }
 
     private func setupUI() {
@@ -279,6 +315,10 @@ class OnboardingPageViewController: UIViewController {
         if currentIndex < pages.count {
             displayPage(at: currentIndex, animated: true)
         }
+    }
+
+    func advanceForAppPreview() {
+        didTapAction()
     }
 
     @objc private func didTapSkip() {

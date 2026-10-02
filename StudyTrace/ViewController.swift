@@ -284,6 +284,29 @@ class ViewController: UIViewController {
     var settings = Array<TableRowContent>()
     
     func getSettings() -> [TableRowContent] {
+        if AppStoreDemo.isEnabled {
+            return [TableRowContent(type: .setting,
+                                    title: "Study",
+                                    details: "Everyday Wellbeing Study",
+                                    identifier: TableRowIdentifier.studyId.rawValue),
+                    TableRowContent(type: .setting,
+                                    title: NSLocalizedString("device_id", comment: ""),
+                                    details: "ST-DEMO-4821",
+                                    identifier: TableRowIdentifier.deviceId.rawValue),
+                    TableRowContent(type: .setting,
+                                    title: NSLocalizedString("device_name", comment: ""),
+                                    details: "Participant iPad",
+                                    identifier: TableRowIdentifier.deviceName.rawValue),
+                    TableRowContent(type: .setting,
+                                    title: "Sync Status",
+                                    details: "Up to date • synced 2 min ago",
+                                    identifier: TableRowIdentifier.syncStatus.rawValue),
+                    TableRowContent(type: .setting,
+                                    title: NSLocalizedString("advanced_settings", comment: ""),
+                                    details: "Consent, privacy, permissions, and data controls",
+                                    identifier: TableRowIdentifier.advancedSettings.rawValue)]
+        }
+
         let lastSyncText: String
         if let lastSync = UserDefaults.standard.object(forKey: "aware.lastSyncDate") as? Date {
             lastSyncText = "Last sync: " + lastSyncFormatter.localizedString(for: lastSync, relativeTo: Date())
@@ -352,7 +375,7 @@ class ViewController: UIViewController {
     }
 
     private func updateUploadButtonState() {
-        let hasStudyURL = !(AWAREStudy.shared().getURL() ?? "").isEmpty
+        let hasStudyURL = AppStoreDemo.isEnabled || !(AWAREStudy.shared().getURL() ?? "").isEmpty
         uploadButton.tintColor = hasStudyURL ? AWARETheme.accent : AWARETheme.secondaryInk
         uploadButton.image = UIImage(systemName: "icloud.and.arrow.up")
         uploadButton.isEnabled = hasStudyURL
@@ -440,7 +463,11 @@ extension ViewController: UITableViewDataSource {
 
             if sensor.identifier == AWARESlimConfiguration.specificAppUsageIdentifier {
                 cell.icon.tintColor = AWARETheme.ink
-                cell.detail.text = "Open Settings > Battery > View All Battery Usage, then upload a screenshot when prompted by a survey."
+                cell.detail.text = "Participant-controlled Battery or Screen Time screenshot upload, only when a study requests it."
+                cell.hideSyncProgress()
+            } else if AppStoreDemo.isEnabled {
+                cell.icon.tintColor = AWARETheme.accent
+                cell.detail.text = sensor.details
                 cell.hideSyncProgress()
             } else if (sensorManager.isExist(sensor.identifier)){
                 cell.icon.tintColor = .systemBlue

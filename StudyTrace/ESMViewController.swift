@@ -36,6 +36,10 @@ class ESMViewController: UIViewController {
         surveyButton.layer.shadowRadius = 12
         surveyButton.layer.shadowOffset = CGSize(width: 0, height: 6)
         surveyButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            surveyButton.constraints.first(where: { $0.firstAttribute == .width })?.constant = 520
+            surveyButton.constraints.first(where: { $0.firstAttribute == .height })?.constant = 72
+        }
         navigationController?.navigationBar.prefersLargeTitles = true
 
         setupEmptyState()
@@ -96,7 +100,7 @@ class ESMViewController: UIViewController {
             button.layer.shadowRadius = 12
             button.layer.shadowOffset = CGSize(width: 0, height: 6)
             button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
-            button.widthAnchor.constraint(equalToConstant: 280).isActive = true
+            button.widthAnchor.constraint(equalToConstant: UIDevice.current.userInterfaceIdiom == .pad ? 520 : 280).isActive = true
             button.heightAnchor.constraint(greaterThanOrEqualToConstant: 72).isActive = true
             button.addAction(UIAction { [weak self] _ in
                 AWARETheme.mediumImpact()
@@ -135,6 +139,23 @@ class ESMViewController: UIViewController {
     }
     
     func checkESMSchedules(){
+        if AppStoreDemo.isEnabled {
+            surveyButton.setTitle(" Daily check-in • 3 questions", for: .normal)
+            surveyButton.setImage(UIImage(systemName: "checklist"), for: .normal)
+            surveyButton.backgroundColor = AWARETheme.accent
+            surveyButton.isEnabled = true
+            surveyButton.isHidden = false
+            for button in promptButtons.values {
+                button.isHidden = false
+                button.isEnabled = true
+            }
+            emptyStateStack.isHidden = true
+            let tabHost: UIViewController = navigationController ?? self
+            tabHost.tabBarItem.badgeValue = "3"
+            tabHost.tabBarItem.badgeColor = AWARETheme.warmAccent
+            return
+        }
+
         self.tabBarController?.tabBar.isHidden = false
         let esmManager = ESMScheduleManager.shared()
         let schedules = esmManager.getValidSchedules() as? [EntityESMSchedule] ?? []
@@ -210,6 +231,10 @@ class ESMViewController: UIViewController {
         screenshotCoordinator.start(kind: kind, from: self) { [weak self] kind, outcome in
             self?.handleScreenshotOutcome(kind, outcome)
         }
+    }
+
+    func presentDemoInstructions(for kind: UsageScreenshotKind) {
+        screenshotCoordinator.start(kind: kind, from: self) { _, _ in }
     }
 
     private func handleScreenshotOutcome(_ kind: UsageScreenshotKind, _ outcome: UsageScreenshotUploader.Outcome) {

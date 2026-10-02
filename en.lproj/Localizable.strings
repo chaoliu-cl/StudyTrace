@@ -89,7 +89,7 @@
 "onbording_overview_body"  = "StudyTrace is a research app that collects sensor data to help scientists understand human behavior and context.";
 
 "onbording_data_title" = "Your Data";
-"onbording_data_body"  = "StudyTrace captures location, screen time, and survey responses in the background when you grant permission. Data is stored locally and synced to your research team's server over Wi-Fi.";
+"onbording_data_body"  = "StudyTrace collects only the location, survey responses, and optional device-usage screenshots described by your study after you consent. Data is stored on your device first and synced securely to your research team's server.";
 
 "onbording_study_title" = "For Researchers";
 "onbording_study_body" = "Running a mobile study is simple. Configure sensors and surveys on the server, then participants join via QR code or URL. Privacy is enforced by design — no personal information like phone numbers or contacts is logged.";
@@ -105,7 +105,7 @@
 
 // consent
 "onboarding_consent_title" = "Informed Consent";
-"onboarding_consent_body" = "By participating in this study, you agree to allow StudyTrace to collect research data configured by your research team, such as location, survey responses, and optional Screen Time summaries for specific apps, websites, or categories you select.\n\nScreen Time collection requires a separate iOS permission and is used only for the approved study, not for advertising or cross-app tracking.\n\nYour data is stored securely and used only for research purposes. You may withdraw at any time by quitting the study in Settings.\n\nPlease confirm that you understand and consent to participate.";
+"onboarding_consent_body" = "By participating, you agree to the research data collection described by your study team. A study may request location samples, survey responses, and optional device-usage screenshots that you choose to upload.\n\nStudyTrace collects only enabled data streams after consent. Your data is stored on your device first and sent only to the configured research server—not for advertising or cross-app tracking.\n\nYou may review permissions, skip optional uploads, or withdraw at any time in Settings.\n\nPlease confirm that you understand and consent to participate.";
 "onboarding_consent_agree" = "I Agree to Participate";
 "onboarding_consent_decline" = "Decline";
 

@@ -127,9 +127,13 @@ class ContextCardViewController: UIViewController {
     
     func setupContextCards(){
         self.removeAllContextCards()
-        addESMCard()
-        addLocationCard()
-        addDeviceUsageCard()
+        if AppStoreDemo.isEnabled {
+            addDemoCards()
+        } else {
+            addESMCard()
+            addLocationCard()
+            addDeviceUsageCard()
+        }
 
         if contextCards.count == 0 {
             refreshButton.isEnabled = false
@@ -140,6 +144,39 @@ class ContextCardViewController: UIViewController {
             deleteButton.isEnabled = true
             emptyStateStack.isHidden = true
             animateCardsIn()
+        }
+    }
+
+    private func addDemoCards() {
+        let cards = [
+            DemoDashboardCard.Content(
+                symbol: "checkmark.seal.fill",
+                title: "Study Participation",
+                headline: "You're all caught up",
+                detail: "Five check-ins completed this week. Your next survey is scheduled for 7:00 PM.",
+                metrics: [("5 of 5", "Check-ins"), ("100%", "Response rate"), ("2 min", "Last sync")]
+            ),
+            DemoDashboardCard.Content(
+                symbol: "location.fill",
+                title: "Mobility Summary",
+                headline: "7.8 km recorded today",
+                detail: "Location samples are collected only because this demo study includes mobility research in its consent.",
+                metrics: [("4", "Places"), ("62", "Samples"), ("8 h", "Coverage")]
+            ),
+            DemoDashboardCard.Content(
+                symbol: "lock.shield.fill",
+                title: "Private & Secure",
+                headline: "Data is ready for research",
+                detail: "Study data is stored on this device first, then encrypted in transit to the configured research server.",
+                metrics: [("On", "Consent"), ("TLS", "Transfer"), ("None", "Ad tracking")]
+            )
+        ]
+
+        for content in cards {
+            let card = DemoDashboardCard(frame: CGRect(x: 0, y: 0, width: view.frame.width, height: 240))
+            card.configure(with: content)
+            contextCards.append(card)
+            mainStackView.addArrangedSubview(card)
         }
     }
 
@@ -474,4 +511,91 @@ class ContextCardViewController: UIViewController {
         self.setupESMCard()
     }
 
+}
+
+private final class DemoDashboardCard: ContextCard {
+    struct Content {
+        let symbol: String
+        let title: String
+        let headline: String
+        let detail: String
+        let metrics: [(String, String)]
+    }
+
+    private var didBuildContent = false
+
+    func configure(with content: Content) {
+        titleLabel.text = content.title
+        indicatorView.isHidden = true
+        activityIndicatorView.isHidden = true
+        navigatorView.isHidden = true
+
+        guard !didBuildContent else { return }
+        didBuildContent = true
+
+        let hero = UIImageView(image: UIImage(systemName: content.symbol))
+        hero.tintColor = AWARETheme.accent
+        hero.contentMode = .scaleAspectFit
+        hero.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            hero.widthAnchor.constraint(equalToConstant: 42),
+            hero.heightAnchor.constraint(equalToConstant: 42)
+        ])
+
+        let headline = UILabel()
+        headline.text = content.headline
+        headline.font = UIFont.preferredFont(forTextStyle: .title2).withTraits(.traitBold)
+        headline.textColor = AWARETheme.ink
+        headline.numberOfLines = 0
+
+        let detail = UILabel()
+        detail.text = content.detail
+        detail.font = UIFont.preferredFont(forTextStyle: .subheadline)
+        detail.textColor = AWARETheme.secondaryInk
+        detail.numberOfLines = 0
+
+        let copy = UIStackView(arrangedSubviews: [headline, detail])
+        copy.axis = .vertical
+        copy.spacing = 6
+
+        let summary = UIStackView(arrangedSubviews: [hero, copy])
+        summary.axis = .horizontal
+        summary.alignment = .center
+        summary.spacing = 16
+
+        let metrics = UIStackView()
+        metrics.axis = .horizontal
+        metrics.distribution = .fillEqually
+        metrics.spacing = 10
+        for (value, label) in content.metrics {
+            let valueLabel = UILabel()
+            valueLabel.text = value
+            valueLabel.font = UIFont.preferredFont(forTextStyle: .headline)
+            valueLabel.textColor = AWARETheme.ink
+            valueLabel.textAlignment = .center
+
+            let caption = UILabel()
+            caption.text = label
+            caption.font = UIFont.preferredFont(forTextStyle: .caption1)
+            caption.textColor = AWARETheme.secondaryInk
+            caption.textAlignment = .center
+
+            let metric = UIStackView(arrangedSubviews: [valueLabel, caption])
+            metric.axis = .vertical
+            metric.spacing = 4
+            metric.isLayoutMarginsRelativeArrangement = true
+            metric.layoutMargins = UIEdgeInsets(top: 12, left: 6, bottom: 12, right: 6)
+            metric.backgroundColor = AWARETheme.accent.withAlphaComponent(0.08)
+            metric.layer.cornerRadius = 10
+            metrics.addArrangedSubview(metric)
+        }
+
+        let stack = UIStackView(arrangedSubviews: [summary, metrics])
+        stack.axis = .vertical
+        stack.spacing = 16
+        stack.isLayoutMarginsRelativeArrangement = true
+        stack.layoutMargins = UIEdgeInsets(top: 6, left: 18, bottom: 18, right: 18)
+        baseStackView.insertArrangedSubview(stack, at: 2)
+        makeSelfSizing()
+    }
 }
