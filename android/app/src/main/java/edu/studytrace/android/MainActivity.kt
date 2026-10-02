@@ -19,6 +19,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -48,10 +49,19 @@ class MainActivity : Activity() {
     private lateinit var collectionStatus: TextView
     private lateinit var syncMetric: TextView
     private lateinit var uploadMetric: TextView
+    private lateinit var dashboardStudy: TextView
+    private lateinit var dashboardMobility: TextView
+    private lateinit var dashboardPrivacy: TextView
+    private lateinit var surveyIntro: TextView
+    private lateinit var tabPages: Map<MainTab, View>
+    private lateinit var tabLabels: Map<MainTab, TextView>
+    private var selectedTab = MainTab.SURVEY
     private var showingOnboarding = false
     private var onboardingIndex = 0
     private var initialIntentHandled = false
     private val handler = Handler(Looper.getMainLooper())
+
+    private enum class MainTab { SURVEY, DASHBOARD, SETTINGS }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -376,28 +386,78 @@ class MainActivity : Activity() {
 
     private fun buildUi(): View {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        val scroll = ScrollView(this).apply {
-            setBackgroundColor(SURFACE)
-            isFillViewport = true
-            overScrollMode = View.OVER_SCROLL_NEVER
-        }
-        val root = LinearLayout(this).apply {
+        val outer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(40))
+            setBackgroundColor(SURFACE)
         }
-        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+        ViewCompat.setOnApplyWindowInsetsListener(outer) { view, insets ->
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
-            view.setPadding(
-                bars.left,
-                bars.top,
-                bars.right,
-                bars.bottom,
-            )
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
-        scroll.addView(root)
+        val pages = FrameLayout(this)
+        val surveysRoot = tabRoot()
+        val dashboardRoot = tabRoot()
+        val settingsRoot = tabRoot()
+        val tabs = mapOf(
+            MainTab.SURVEY to tabScroll(surveysRoot),
+            MainTab.DASHBOARD to tabScroll(dashboardRoot),
+            MainTab.SETTINGS to tabScroll(settingsRoot),
+        )
+        tabPages = tabs
+        tabs.values.forEach { pages.addView(it) }
+        outer.addView(pages, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f,
+        ))
+
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(12), dp(9), dp(12), dp(7))
+            setBackgroundColor(Color.WHITE)
+            elevation = dp(8).toFloat()
+        }
+        val labels = mutableMapOf<MainTab, TextView>()
+        listOf(
+            Triple(MainTab.SURVEY, "▤", "Survey"),
+            Triple(MainTab.DASHBOARD, "▥", "Dashboard"),
+            Triple(MainTab.SETTINGS, "⚙", "Settings"),
+        ).forEach { (tab, symbol, title) ->
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                minimumHeight = dp(55)
+                contentDescription = title
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { selectTab(tab) }
+            }
+            item.addView(TextView(this).apply {
+                text = symbol
+                textSize = 21f
+                gravity = Gravity.CENTER
+                setTextColor(MUTED)
+            })
+            val label = TextView(this).apply {
+                text = title
+                textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setTextColor(MUTED)
+            }
+            labels[tab] = label
+            item.addView(label)
+            nav.addView(item, LinearLayout.LayoutParams(0, dp(58), 1f))
+        }
+        tabLabels = labels
+        outer.addView(nav)
+
+        dashboardRoot.addView(pageHeader("Dashboard", "Your study at a glance"), spacedParams(dp(18)))
+        settingsRoot.addView(pageHeader("Settings", "Study participation and privacy controls"), spacedParams(dp(18)))
+        surveysRoot.addView(pageHeader("Survey", "Questions from your research team"), spacedParams(dp(18)))
+
+        val root = dashboardRoot
 
         val brandRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -445,7 +505,7 @@ class MainActivity : Activity() {
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(0xFF1D4ED8.toInt(), 0xFF4338CA.toInt()),
             ).apply { cornerRadius = dp(24).toFloat() }
-            addView(eyebrow("SECURE RESEARCH PARTICIPATION", 0xFFDBEAFE.toInt()))
+            addView(eyebrow("STUDY OVERVIEW", 0xFFDBEAFE.toInt()))
             addView(TextView(this@MainActivity).apply {
                 text = "Your contribution,\nyour control."
                 textSize = 28f
@@ -455,13 +515,37 @@ class MainActivity : Activity() {
                 setPadding(0, dp(8), 0, dp(10))
             })
             addView(TextView(this@MainActivity).apply {
-                text = "Join an approved study, review exactly what it collects, and manage permissions at any time."
+                text = "See your participation, collection status, and data delivery in one place."
                 textSize = 15f
                 setTextColor(0xFFE0E7FF.toInt())
                 setLineSpacing(dp(2).toFloat(), 1.08f)
             })
         }
         root.addView(hero, spacedParams(dp(16)))
+
+        root.addView(card().apply {
+            addView(eyebrow("STUDY PARTICIPATION", ACCENT))
+            addView(sectionTitle("Study Participation"))
+            dashboardStudy = mutedBody("")
+            addView(dashboardStudy)
+            addView(outlineButton("Manage study") { selectTab(MainTab.SETTINGS) })
+        }, spacedParams(dp(16)))
+
+        root.addView(card().apply {
+            addView(eyebrow("MOBILITY SUMMARY", ACCENT))
+            addView(sectionTitle("Mobility Summary"))
+            dashboardMobility = mutedBody("")
+            addView(dashboardMobility)
+            addView(outlineButton("Collection settings") { selectTab(MainTab.SETTINGS) })
+        }, spacedParams(dp(16)))
+
+        root.addView(card().apply {
+            addView(eyebrow("PRIVATE & SECURE", ACCENT))
+            addView(sectionTitle("Your data, your choice"))
+            dashboardPrivacy = mutedBody("")
+            addView(dashboardPrivacy)
+            addView(outlineButton("Privacy and consent") { selectTab(MainTab.SETTINGS) })
+        }, spacedParams(dp(16)))
 
         val enrollmentCard = card().apply {
             val heading = LinearLayout(this@MainActivity).apply {
@@ -508,7 +592,7 @@ class MainActivity : Activity() {
         }
         enrollmentCard.addView(consentCheck)
         enrollmentCard.addView(primaryButton("Join or refresh study") { joinStudy() })
-        root.addView(enrollmentCard, spacedParams(dp(16)))
+        settingsRoot.addView(enrollmentCard, spacedParams(dp(16)))
 
         val permissionCard = card().apply {
             addView(eyebrow("STEP 2", ACCENT))
@@ -538,7 +622,7 @@ class MainActivity : Activity() {
                 "Enable notifications",
             ) { requestNotificationPermission() })
         }
-        root.addView(permissionCard, spacedParams(dp(16)))
+        settingsRoot.addView(permissionCard, spacedParams(dp(16)))
 
         val collectionCard = card().apply {
             val heading = LinearLayout(this@MainActivity).apply {
@@ -562,7 +646,7 @@ class MainActivity : Activity() {
             controls.addView(outlineButton("Stop") { stopLocationCollection() }, weightedButtonParams(0))
             addView(controls)
         }
-        root.addView(collectionCard, spacedParams(dp(16)))
+        settingsRoot.addView(collectionCard, spacedParams(dp(16)))
 
         val activityCard = card().apply {
             addView(eyebrow("STUDY ACTIVITY", ACCENT))
@@ -582,12 +666,25 @@ class MainActivity : Activity() {
             activityActions.addView(primaryButton("Upload now") { uploadNow() }, weightedButtonParams(dp(8)))
             activityActions.addView(outlineButton("Refresh surveys") { refreshSurveys() }, weightedButtonParams(0))
             addView(activityActions)
-
-            addView(fieldLabel("Open surveys"))
-            surveyList = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
-            addView(surveyList)
         }
         root.addView(activityCard, spacedParams(dp(16)))
+
+        surveysRoot.addView(card().apply {
+            addView(eyebrow("AVAILABLE NOW", ACCENT))
+            addView(sectionTitle("Open surveys"))
+            surveyIntro = mutedBody("")
+            addView(surveyIntro)
+            surveyList = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+            addView(surveyList)
+            addView(outlineButton("Refresh surveys") { refreshSurveys() }, spacedParams(0).apply {
+                topMargin = dp(12)
+            })
+        }, spacedParams(dp(16)))
+        surveysRoot.addView(card().apply {
+            addView(sectionTitle("How surveys work"))
+            addView(mutedBody("When your study sends a survey, it appears here until its response window closes. You can also open it from a notification."))
+            addView(outlineButton("Study settings") { selectTab(MainTab.SETTINGS) })
+        }, spacedParams(dp(16)))
 
         val detailsCard = card().apply {
             addView(sectionTitle("Device & study details"))
@@ -597,11 +694,12 @@ class MainActivity : Activity() {
                 outlineButton(getString(R.string.onboarding_review)) { showOnboarding() },
                 spacedParams(dp(10)),
             )
+            addView(outlineButton("Privacy policy") { openPrivacyPolicy() }, spacedParams(dp(10)))
             addView(dangerButton(getString(R.string.button_leave_study)) { confirmLeaveStudy() })
         }
-        root.addView(detailsCard, spacedParams(dp(18)))
+        settingsRoot.addView(detailsCard, spacedParams(dp(18)))
 
-        root.addView(TextView(this).apply {
+        settingsRoot.addView(TextView(this).apply {
             text = "StudyTrace stores study data on this device first and encrypts it in transit to the research server configured by your study."
             textSize = 12f
             setTextColor(MUTED)
@@ -610,7 +708,8 @@ class MainActivity : Activity() {
             setPadding(dp(12), 0, dp(12), 0)
         })
 
-        return scroll
+        selectTab(selectedTab)
+        return outer
     }
 
     private fun joinStudy() {
@@ -763,6 +862,7 @@ class MainActivity : Activity() {
     }
 
     private fun refreshSurveys() {
+        selectTab(MainTab.SURVEY)
         if (!isJoined()) {
             renderPrompts(emptyList())
             return
@@ -781,16 +881,28 @@ class MainActivity : Activity() {
 
     private fun renderPrompts(prompts: List<SurveyRepository.OpenPrompt>) {
         surveyList.removeAllViews()
+        if (::surveyIntro.isInitialized) {
+            surveyIntro.text = when {
+                !isJoined() -> "Join your study in Settings to receive surveys."
+                prompts.isEmpty() -> "You are all caught up. New surveys from your study will appear here."
+                prompts.size == 1 -> "You have 1 survey ready to answer."
+                else -> "You have ${prompts.size} surveys ready to answer."
+            }
+        }
         if (prompts.isEmpty()) {
-            surveyList.addView(body(getString(R.string.surveys_none_open)))
+            if (!isJoined()) {
+                surveyList.addView(primaryButton("Join a study") { selectTab(MainTab.SETTINGS) })
+            } else {
+                surveyList.addView(body(getString(R.string.surveys_none_open)))
+            }
             return
         }
         val timeFormat = DateFormat.getTimeInstance(DateFormat.SHORT)
         prompts.forEach { prompt ->
             val until = timeFormat.format(Date(prompt.record.expiresAtMillis))
-            surveyList.addView(rowButton(getString(R.string.surveys_open_until, prompt.title, until)) {
+            surveyList.addView(primaryButton(getString(R.string.surveys_open_until, prompt.title, until)) {
                 showSurvey(prompt)
-            })
+            }, spacedParams(dp(10)))
         }
     }
 
@@ -799,6 +911,7 @@ class MainActivity : Activity() {
             SurveyRepository.recordTapped(this, occurrenceId)
             SurveyRepository.openPrompt(this, occurrenceId)
         }.onResult { prompt ->
+            selectTab(MainTab.SURVEY)
             if (prompt != null) showSurvey(prompt) else toast(getString(R.string.survey_no_longer_available))
             renderOpenPrompts()
         }
@@ -950,6 +1063,24 @@ class MainActivity : Activity() {
             syncMetric.text = "$shortSync\nLast sync"
         }
         if (::uploadMetric.isInitialized) uploadMetric.text = "$queued\nQueued uploads"
+        if (::dashboardStudy.isInitialized) {
+            dashboardStudy.text = if (joined) {
+                "Study ${context?.studyId} is active. Consent is granted, and your participation settings are available at any time."
+            } else {
+                "No study is joined yet. Open Settings to enter your invitation link and review consent."
+            }
+        }
+        if (::dashboardMobility.isInitialized) {
+            dashboardMobility.text = when {
+                !joined -> "Location collection is off until you join a study and choose to start it."
+                prefs.locationTrackingEnabled && hasLocation -> "Location collection is active. You can pause it at any time in Settings."
+                hasLocation -> "Location access is allowed, but collection is currently stopped."
+                else -> "Location access is not allowed, so collection is stopped."
+            }
+        }
+        if (::dashboardPrivacy.isInitialized) {
+            dashboardPrivacy.text = "${if (prefs.consentGranted) "Consent granted" else "Consent not granted"} · $queued queued upload${if (queued == 1) "" else "s"}. Data is stored on this device before secure delivery to your study server."
+        }
         if (::statusText.isInitialized) {
             statusText.text = listOf(
                 "Study  ${context?.studyId ?: "Not joined"}",
@@ -970,7 +1101,10 @@ class MainActivity : Activity() {
         if (uri == null) return
         val normalized = normalizeStudyUrl(uri.toString()) ?: return
         if (parseStudyContext(normalized) == null) return
-        if (::studyUrlEdit.isInitialized) studyUrlEdit.setText(normalized)
+        if (::studyUrlEdit.isInitialized) {
+            studyUrlEdit.setText(normalized)
+            selectTab(MainTab.SETTINGS)
+        }
     }
 
     private fun isJoined(): Boolean =
@@ -989,6 +1123,47 @@ class MainActivity : Activity() {
     private fun hasAnyLocationPermission(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    private fun tabRoot(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(20), dp(22), dp(20), dp(28))
+    }
+
+    private fun tabScroll(content: View): ScrollView = ScrollView(this).apply {
+        isFillViewport = true
+        overScrollMode = View.OVER_SCROLL_NEVER
+        addView(content)
+    }
+
+    private fun pageHeader(title: String, subtitle: String): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(TextView(this@MainActivity).apply {
+            text = title
+            textSize = 29f
+            setTextColor(INK)
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        addView(TextView(this@MainActivity).apply {
+            text = subtitle
+            textSize = 14f
+            setTextColor(MUTED)
+            setPadding(0, dp(4), 0, 0)
+        })
+    }
+
+    private fun selectTab(tab: MainTab) {
+        if (!::tabPages.isInitialized || !::tabLabels.isInitialized) return
+        selectedTab = tab
+        tabPages.forEach { (page, view) -> view.visibility = if (page == tab) View.VISIBLE else View.GONE }
+        tabLabels.forEach { (page, label) ->
+            val active = page == tab
+            label.setTextColor(if (active) ACCENT else MUTED)
+            val item = label.parent as LinearLayout
+            item.isSelected = active
+            (item.getChildAt(0) as TextView).setTextColor(if (active) ACCENT else MUTED)
+            item.background = if (active) roundedBackground(0xFFEFF6FF.toInt(), dp(16)) else null
+        }
+    }
 
     private fun card(): LinearLayout =
         LinearLayout(this).apply {
