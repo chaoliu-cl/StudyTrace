@@ -16,8 +16,9 @@ class StudyApi(private val context: Context) {
 
     fun currentContext(): StudyContext? = parseStudyContext(prefs.studyUrl)
 
-    fun joinStudy(): Boolean {
-        val study = currentContext() ?: return false
+    fun joinStudy(): Boolean = currentContext()?.let(::joinStudy) ?: false
+
+    fun joinStudy(study: StudyContext): Boolean {
         val body = "device_id=${URLEncoder.encode(prefs.deviceId, Charsets.UTF_8.name())}"
         val response = request(
             url = study.normalizedStudyUrl,

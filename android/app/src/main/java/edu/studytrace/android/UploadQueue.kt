@@ -37,9 +37,12 @@ object UploadQueue {
     /** Appends rows for [sensor]. Dropped when the participant has not consented (e.g. after withdrawal). */
     fun enqueue(context: Context, sensor: String, rows: List<JSONObject>) {
         if (rows.isEmpty()) return
-        if (!StudyPrefs(context).consentGranted) return
         val text = rows.joinToString(separator = "\n", postfix = "\n") { it.toString() }
         synchronized(fileLock) {
+            // Recheck while holding the mutation lock. A study switch sets these false
+            // before purge, so an appender cannot recreate old-study data after purge.
+            val prefs = StudyPrefs(context)
+            if (!prefs.consentGranted || !prefs.enrollmentConfirmed) return
             val dir = sensorDir(context, sensor)
             dir.mkdirs()
             File(dir, ACTIVE_FILE).appendText(text, Charsets.UTF_8)
@@ -61,7 +64,9 @@ object UploadQueue {
     fun drain(context: Context, api: StudyApi = StudyApi(context)): DrainResult =
         synchronized(drainLock) {
             val prefs = StudyPrefs(context)
-            if (!prefs.consentGranted || api.currentContext() == null) return@synchronized DrainResult.NOT_JOINED
+            if (!prefs.consentGranted || !prefs.enrollmentConfirmed || api.currentContext() == null) {
+                return@synchronized DrainResult.NOT_JOINED
+            }
             for (dir in sensorDirs(context)) {
                 val sensor = dir.name
                 for (batch in sealAndListBatches(context, dir)) {
@@ -85,10 +90,12 @@ object UploadQueue {
             DrainResult.COMPLETE
         }
 
-    /** Deletes everything queued (withdrawal). */
+    /** Deletes everything queued (withdrawal or a confirmed switch to another study). */
     fun purge(context: Context) {
-        synchronized(fileLock) {
-            rootDir(context).deleteRecursively()
+        synchronized(drainLock) {
+            synchronized(fileLock) {
+                rootDir(context).deleteRecursively()
+            }
         }
     }
 

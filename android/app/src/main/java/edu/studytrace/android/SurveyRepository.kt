@@ -84,7 +84,9 @@ object SurveyRepository {
     fun runScheduler(context: Context, nowMillis: Long = System.currentTimeMillis()): Int =
         synchronized(lock) {
             val studyPrefs = StudyPrefs(context)
-            if (!studyPrefs.consentGranted || parseStudyContext(studyPrefs.studyUrl) == null) return@synchronized 0
+            if (!studyPrefs.consentGranted || !studyPrefs.enrollmentConfirmed ||
+                parseStudyContext(studyPrefs.studyUrl) == null
+            ) return@synchronized 0
             if (studyPrefs.joinedAtMillis <= 0L) studyPrefs.joinedAtMillis = nowMillis
 
             val schedules = surveySchedules(cachedConfig(context))

@@ -79,9 +79,9 @@ object StudyWithdrawal {
         prefs.locationTrackingEnabled = false
         context.stopService(Intent(context, LocationTrackingService::class.java))
         SyncWorker.cancel(context)
-        NotificationHelper.cancelAll(context)
         UploadQueue.purge(context)
         SurveyRepository.clear(context)
+        NotificationHelper.cancelAll(context)
         prefs.clearStudy()
         // The caller sends right away (sendPending). The delayed worker is the
         // fallback if that fails or the process dies first; it is a no-op once

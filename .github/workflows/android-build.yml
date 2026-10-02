@@ -30,18 +30,22 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # The repository has no Gradle wrapper, so setup-gradle provisions a
-      # pinned Gradle. 8.9 is the minimum for AGP 8.7.x (android/build.gradle.kts)
-      # and works with Kotlin Gradle plugin 2.0.21.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
 
-      # The ubuntu runner image ships the Android SDK (ANDROID_HOME) with
-      # licenses accepted; AGP downloads any missing platform/build-tools.
-      - name: Build debug APK and run unit tests
-        run: gradle --no-daemon -p android :app:assembleDebug :app:testDebugUnitTest
+      - name: Generate CI-only release signing key
+        run: >-
+          keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/studytrace-ci.jks"
+          -storepass ci-test-only -keypass ci-test-only -alias ci-upload
+          -keyalg RSA -keysize 2048 -validity 1 -dname "CN=StudyTrace CI"
+
+      - name: Build, test, lint, and verify release bundle
+        env:
+          STUDYTRACE_UPLOAD_STORE_FILE: ${{ runner.temp }}/studytrace-ci.jks
+          STUDYTRACE_UPLOAD_STORE_PASSWORD: ci-test-only
+          STUDYTRACE_UPLOAD_KEY_ALIAS: ci-upload
+          STUDYTRACE_UPLOAD_KEY_PASSWORD: ci-test-only
+        run: ./android/gradlew -p android --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:bundleRelease
 
       - name: Upload unit test reports
         if: always()
@@ -49,4 +53,12 @@ jobs:
         with:
           name: android-unit-test-reports
           path: android/app/build/reports/tests/
+          if-no-files-found: ignore
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-lint-report
+          path: android/app/build/reports/lint-results-debug.html
           if-no-files-found: ignore

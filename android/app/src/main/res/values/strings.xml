@@ -10,6 +10,40 @@
 
     <string name="button_refresh_surveys">Refresh Surveys</string>
     <string name="button_leave_study">Leave Study</string>
+    <string name="button_privacy_policy">Privacy Policy</string>
+    <string name="button_enable_notifications">Enable Study Notifications</string>
+    <string name="consent_checkbox">I have read and agree to the study consent provided by the research team</string>
+    <string name="continue_label">Continue</string>
+    <string name="notifications_already_enabled">Study notifications are already enabled.</string>
+
+    <string name="onboarding_about_title">About StudyTrace</string>
+    <string name="onboarding_about_body">StudyTrace is a research app that collects sensor and survey data to help scientists understand human behavior and context.</string>
+    <string name="onboarding_data_title">Your Data</string>
+    <string name="onboarding_data_body">StudyTrace collects only the location, survey responses, app-usage metadata, and device state described by your study after you consent. It never records the content you view or type in other apps. Data is stored on your device first and synced securely to your research team’s server.</string>
+    <string name="onboarding_researchers_title">For Researchers</string>
+    <string name="onboarding_researchers_body">Research teams configure approved sensors and surveys on their server, then invite participants with a secure URL. StudyTrace does not collect contacts or phone numbers and contains no advertising SDK.</string>
+    <string name="onboarding_consent_title">Informed Consent</string>
+    <string name="onboarding_consent_body">By participating, you agree to the research data collection described by your study team. A study may request location samples, survey responses, app foreground-use duration, launch counts, screen lock or unlock events, and device state.\n\nStudyTrace collects only enabled data streams after consent. Your data is stored on your device first and sent only to the configured research server—not for advertising or cross-app tracking.\n\nYou may review permissions or withdraw at any time. You will also review your study team’s study-specific consent before enrollment.\n\nPlease confirm that you understand and consent to participate.</string>
+    <string name="onboarding_consent_agree">I Agree to Participate</string>
+    <string name="onboarding_consent_decline">Decline</string>
+    <string name="onboarding_decline_title">Decline participation?</string>
+    <string name="onboarding_decline_body">If you decline, StudyTrace will not collect study data. You can change your mind later by reopening onboarding.</string>
+    <string name="onboarding_location_title">Permission: Location</string>
+    <string name="onboarding_location_body">StudyTrace needs location access only when your study includes mobility or context sensing. Background collection starts only after enrollment and remains visible through an Android notification.</string>
+    <string name="onboarding_usage_title">Permission: App Activity</string>
+    <string name="onboarding_usage_body">When enabled by your study, StudyTrace can measure app labels, foreground-use duration, launch counts, and screen lock or unlock events. It cannot read the content you view or type.</string>
+    <string name="onboarding_notifications_title">Permission: Notifications</string>
+    <string name="onboarding_notifications_body">StudyTrace uses notifications for survey reminders, study updates, and the required indicator while background location collection is active.</string>
+    <string name="onboarding_welcome_title">Welcome to StudyTrace</string>
+    <string name="onboarding_welcome_body">You’re ready to review your study invitation. No study data is collected until you join an approved study and grant its requested permissions.</string>
+    <string name="onboarding_get_started">Get Started</string>
+    <string name="onboarding_review">Review onboarding and consent</string>
+    <string name="onboarding_required">Review and accept the upfront consent information before joining a study.</string>
+
+    <string name="location_disclosure_title">Background location collection</string>
+    <string name="location_disclosure_message">StudyTrace collects precise or approximate location data to enable research mobility and context sensing even when the app is closed or not in use. Location data is sent to the secure research server configured for your study and is available to the research team under your study consent. You can stop collection in StudyTrace or revoke location access in Android Settings at any time.</string>
+    <string name="usage_disclosure_title">App activity collection</string>
+    <string name="usage_disclosure_message">StudyTrace collects app package names, app labels, foreground-use time, launch counts, and screen lock or unlock events to support the research study, including when StudyTrace is not open. This data is sent to the secure research server configured for your study and is available to the research team under your study consent. StudyTrace does not collect the content you view or type in other apps.</string>
 
     <string name="status_pending_uploads">Pending uploads: %1$d</string>
     <string name="status_withdrawal_pending">Withdrawal: waiting to reach the server</string>

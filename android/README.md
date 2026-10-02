@@ -7,6 +7,36 @@ then uploads Android data through the server's generic JSON API
 (`POST /api/v1/studies/{STUDY_ID}/sensors/{sensor}/data`, authenticated with the
 study password from the join URL as `Authorization: Bearer`).
 
+## Participant experience and consent
+
+Android now follows the same upfront onboarding pattern as the iPhone client:
+
+1. About StudyTrace
+2. Your Data
+3. For Researchers
+4. Informed Consent
+5. Location permission
+6. Android app-activity permission
+7. Notifications
+8. Welcome and study setup
+
+The informed-consent page cannot be skipped. Declining records a no-consent
+decision, stops any active collection, and prevents study enrollment until the
+participant reopens onboarding and agrees. Agreement to the app-level
+onboarding does not silently enroll the phone: the participant must still open
+their study invitation, review the research team's study-specific consent,
+check the enrollment consent box, and join successfully.
+
+The main interface groups study enrollment, permissions, collection controls,
+surveys, synchronization, and withdrawal into separate status cards. Current
+permission and collection states are shown without implying that access has
+been granted. Participants can reopen onboarding from **Device & study
+details**.
+
+The background-location and app-activity steps retain their full prominent
+disclosures immediately before Android's system permission/settings screens.
+App-launch and device-state telemetry is not recorded before upfront consent.
+
 ## Implemented collection
 
 - `locations` from Android `LocationManager` in a foreground service.
@@ -53,30 +83,63 @@ is retried in the background with the original `withdrawn_at`.
 
 ## Build
 
-The repository has no Gradle wrapper. Either open the `android/` folder in
-Android Studio, or install JDK 17, the Android SDK (platform 35) and Gradle 8.9
-(the minimum for Android Gradle Plugin 8.7), then run from the repository root:
+Install JDK 17 and Android SDK platform 36, then run from the repository root:
 
 ```bash
-gradle -p android :app:assembleDebug
-gradle -p android :app:testDebugUnitTest
+./android/gradlew -p android :app:assembleDebug
+./android/gradlew -p android :app:testDebugUnitTest :app:lintDebug
 ```
 
-CI builds the debug APK and runs the JVM unit tests on every pull request that
-touches `android/` (`.github/workflows/android-build.yml`).
+CI builds the debug APK, runs JVM tests and lint, and signs a release bundle
+with a disposable CI-only key on every change that touches Android.
+
+## Signed release bundle
+
+Release tasks fall back to the debug signing configuration with a warning if
+upload-key values are not set. To build a signed release bundle, supply all four
+values as Gradle properties or environment variables outside the repository:
+
+```bash
+export STUDYTRACE_UPLOAD_STORE_FILE=/absolute/path/to/upload-key.jks
+export STUDYTRACE_UPLOAD_STORE_PASSWORD='...'
+export STUDYTRACE_UPLOAD_KEY_ALIAS='...'
+export STUDYTRACE_UPLOAD_KEY_PASSWORD='...'
+./android/gradlew -p android :app:bundleRelease
+```
+
+The resulting signed bundle is `android/app/build/outputs/bundle/release/app-release.aab`.
+Enroll the application in Play App Signing and retain the upload keystore and
+passwords in the institution's secrets manager. The Play Developer Account ID
+is not a signing credential and must not be embedded in the application.
+
+## Google Play review
+
+- Use `https://liu-chao.site/StudyTrace/privacy/` for the Play privacy-policy field.
+- Complete Data safety accurately for precise/approximate location, app activity,
+  survey responses, device identifiers, device state/diagnostics, and deletion.
+- Complete the background-location and location foreground-service declarations.
+- Provide review videos showing the in-app disclosure, Android permission flow,
+  persistent collection notification, and Stop Location Collection control.
+- Declare whether each study is health-related in the Health apps declaration;
+  health-related human-subjects research must use its approved informed-consent flow.
 
 ## Device setup
 
 1. Install the debug APK on an Android device.
-2. Paste the study URL returned by the StudyTrace server, for example:
+2. Complete the first-launch explanation and informed-consent flow. Location,
+   app-activity, and notification permissions can be granted during onboarding
+   or reviewed later from the main screen.
+3. Paste the study URL returned by the StudyTrace server, for example:
    `https://YOUR-SERVER/index.php/webservice/index/pilot1/PASSWORD`.
    Links of the form `studytrace://join?url=<encoded study URL>` and AWARE
    `aware-ssl://` study links open the app with the URL filled in.
-3. Check participant consent and tap `Join / Refresh Study`.
-4. Grant location permission for GPS collection. On Android 11 and later, tap
+4. Review the study-specific consent, check the consent box, and tap
+   `Join or refresh study`.
+5. Grant location permission for GPS collection. On Android 11 and later, tap
    the button again to allow background ("all the time") location.
-5. Open App Usage Permission and enable StudyTrace for app usage collection.
-6. Tap `Start Location Collection`.
+6. Open App Activity Access and enable StudyTrace when the study requires
+   app-usage research data.
+7. Tap `Start collection` when the study includes background location.
 
 Android does not expose iOS Screen Time or Battery Usage screenshots. The
 Android client uses `UsageStatsManager` instead and uploads its own

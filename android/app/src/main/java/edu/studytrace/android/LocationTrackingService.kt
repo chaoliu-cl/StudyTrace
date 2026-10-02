@@ -1,6 +1,7 @@
 package edu.studytrace.android
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -28,7 +29,8 @@ class LocationTrackingService : Service(), LocationListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!StudyPrefs(this).consentGranted || !hasLocationPermission()) {
+        val prefs = StudyPrefs(this)
+        if (!prefs.consentGranted || !prefs.enrollmentConfirmed || !hasLocationPermission()) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -73,15 +75,19 @@ class LocationTrackingService : Service(), LocationListener {
     override fun onProviderEnabled(provider: String) = Unit
     override fun onProviderDisabled(provider: String) = Unit
 
+    @SuppressLint("MissingPermission")
     private fun requestUpdates(provider: String) {
         if (!hasLocationPermission()) return
         if (!locationManager.isProviderEnabled(provider)) return
-        runCatching {
+        try {
             locationManager.requestLocationUpdates(provider, 180_000L, 50f, this)
             // A cached fix is only useful if recent; stale ones would misplace the participant.
             locationManager.getLastKnownLocation(provider)
                 ?.takeIf { System.currentTimeMillis() - it.time <= MAX_LAST_KNOWN_AGE_MILLIS }
                 ?.let(::onLocationChanged)
+        } catch (_: SecurityException) {
+            // A runtime permission can be revoked between the check and the framework call.
+            stopSelf()
         }
     }
 

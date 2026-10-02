@@ -17,6 +17,21 @@ class StudyPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_CONSENT, false)
         set(value) = prefs.edit().putBoolean(KEY_CONSENT, value).apply()
 
+    /** Records whether the participant reached and answered the upfront consent page. */
+    var onboardingDecisionRecorded: Boolean
+        get() = prefs.getBoolean(KEY_ONBOARDING_DECISION, false)
+        set(value) = prefs.edit().putBoolean(KEY_ONBOARDING_DECISION, value).apply()
+
+    /** Separate from study enrollment: this is the app-level onboarding consent decision. */
+    var onboardingConsentGranted: Boolean
+        get() = prefs.getBoolean(KEY_ONBOARDING_CONSENT, false)
+        set(value) = prefs.edit().putBoolean(KEY_ONBOARDING_CONSENT, value).apply()
+
+    /** True only after the configured server has accepted this device's enrollment. */
+    var enrollmentConfirmed: Boolean
+        get() = prefs.getBoolean(KEY_ENROLLMENT_CONFIRMED, false)
+        set(value) = prefs.edit().putBoolean(KEY_ENROLLMENT_CONFIRMED, value).apply()
+
     var locationTrackingEnabled: Boolean
         get() = prefs.getBoolean(KEY_LOCATION_TRACKING, false)
         set(value) = prefs.edit().putBoolean(KEY_LOCATION_TRACKING, value).apply()
@@ -98,6 +113,7 @@ class StudyPrefs(context: Context) {
         prefs.edit()
             .remove(KEY_STUDY_URL)
             .remove(KEY_CONSENT)
+            .remove(KEY_ENROLLMENT_CONFIRMED)
             .remove(KEY_LOCATION_TRACKING)
             .remove(KEY_LAST_SYNC)
             .remove(KEY_JOINED_AT)
@@ -115,6 +131,9 @@ class StudyPrefs(context: Context) {
 
         private const val KEY_STUDY_URL = "study_url"
         private const val KEY_CONSENT = "consent"
+        private const val KEY_ONBOARDING_DECISION = "onboarding_decision_recorded"
+        private const val KEY_ONBOARDING_CONSENT = "onboarding_consent_granted"
+        private const val KEY_ENROLLMENT_CONFIRMED = "enrollment_confirmed"
         private const val KEY_LOCATION_TRACKING = "location_tracking"
         private const val KEY_LAST_SYNC = "last_sync"
         private const val KEY_DEVICE_ID = "device_id"

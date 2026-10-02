@@ -19,7 +19,7 @@ class SyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorke
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val context = applicationContext
         val prefs = StudyPrefs(context)
-        if (!prefs.consentGranted || parseStudyContext(prefs.studyUrl) == null) {
+        if (!prefs.consentGranted || !prefs.enrollmentConfirmed || parseStudyContext(prefs.studyUrl) == null) {
             return@withContext Result.success()
         }
         runCatching {

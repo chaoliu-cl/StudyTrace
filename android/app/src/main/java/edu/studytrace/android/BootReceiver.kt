@@ -10,7 +10,7 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         if (StudyWithdrawal.hasPending(context)) WithdrawalWorker.enqueue(context)
         val prefs = StudyPrefs(context)
-        if (!prefs.consentGranted || parseStudyContext(prefs.studyUrl) == null) return
+        if (!prefs.consentGranted || !prefs.enrollmentConfirmed || parseStudyContext(prefs.studyUrl) == null) return
         SyncWorker.schedule(context)
         if (prefs.locationTrackingEnabled) {
             runCatching {
