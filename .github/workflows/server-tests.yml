@@ -6,6 +6,8 @@ on:
       - "server/**"
       - "package.json"
       - "package-lock.json"
+      - "index.js"
+      - "test/**"
       - ".github/workflows/server-tests.yml"
   push:
     branches:
@@ -14,6 +16,8 @@ on:
       - "server/**"
       - "package.json"
       - "package-lock.json"
+      - "index.js"
+      - "test/**"
       - ".github/workflows/server-tests.yml"
   workflow_dispatch:
 
@@ -34,7 +38,7 @@ jobs:
           node-version: 20
           cache: npm
 
-      # Install from the root workspace lockfile, the same way Railway builds.
+      # Install the root Express app used by Azure and root-directory Railway builds.
       - name: Install dependencies
         run: npm ci
 

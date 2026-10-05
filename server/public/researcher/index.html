@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StudyTrace Researcher Dashboard</title>
+  <link rel="stylesheet" href="/assets/dashboard.css">
+</head>
+<body data-page="researcher">
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/">StudyTrace Cloud</a>
+      <nav class="nav">
+        <a href="/participant/">Participant</a>
+        <a href="/admin/">Admin</a>
+      </nav>
+    </header>
+
+    <section class="hero compact">
+      <p class="eyebrow">Researcher Dashboard</p>
+      <h1>Study-scoped monitoring and export</h1>
+      <p class="lede">
+        Authenticate with a study ID and the researcher password. This is separate from the participant
+        study password in the join link, and only exposes the selected study.
+      </p>
+    </section>
+
+    <section class="panel auth-panel">
+      <h2>Connect to a study</h2>
+      <form id="researcher-auth" class="stack">
+        <label>
+          <span>Study ID</span>
+          <input name="studyId" placeholder="pilot1" required>
+        </label>
+        <label>
+          <span>Researcher password</span>
+          <input name="password" type="password" placeholder="Researcher password" autocomplete="current-password" required>
+        </label>
+        <button class="button button-primary" type="submit">Load dashboard</button>
+      </form>
+      <p id="researcher-auth-message" class="status-line"></p>
+    </section>
+
+    <section id="researcher-dashboard" class="dashboard hidden">
+      <div class="metric-grid" id="researcher-metrics"></div>
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Participant join link</h2>
+            <p class="section-note">Generate the study URL and a QR code that participants scan or paste in the StudyTrace app. Enter the participant study password (the one in the join link, not your researcher password); only its hash is stored, so it cannot be shown without it. Add a participant ID to label that participant's device.</p>
+          </div>
+        </div>
+        <form id="researcher-join-link" class="stack">
+          <label><span>Participant study password</span><input name="password" type="password" autocomplete="off" required></label>
+          <label><span>Participant ID, optional</span><input name="participant" placeholder="P001" maxlength="128"></label>
+          <button class="button button-primary" type="submit">Generate join link and QR code</button>
+        </form>
+        <p id="researcher-join-link-message" class="status-line"></p>
+        <div id="researcher-join-link-result" class="hidden"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Devices</h2>
+            <p class="section-note" id="researcher-devices-updated"></p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-devices"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Withdrawals and deletions</h2>
+            <p class="section-note">Audit log of participant withdrawals from the app and data deletions made from this dashboard.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-withdrawals"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Participant health</h2>
+            <p class="section-note">Operational data-quality checks from client events, device state, uploads, permissions, and recent study rows. Compliance is answered survey sessions divided by survey prompts the phone reported as delivered over the last 7 days (prompts swiped away before the app next opened may be missed).</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-participant-health"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Sensor coverage</h2>
+            <p class="section-note"><code>battery_usage_apps</code>, <code>screen_time_activity</code>, <code>app_usage_combined</code>, <code>phone_use_daily</code>, <code>location_daily_summary</code>, <code>survey_quality</code>, and <code>participant_health</code> are derived research exports.</p>
+          </div>
+        </div>
+        <div class="export-bar">
+          <button class="button button-primary" type="button" id="researcher-export-zip">Download full study export (ZIP)</button>
+          <label class="inline-check"><input type="checkbox" id="researcher-export-images"> Include screenshot and photo images</label>
+          <p class="section-note">Every raw table and derived export as CSV, plus devices, withdrawals, a codebook describing every column, and a README. Images can make the file large.</p>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-sensors"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>ESM survey notifications</h2>
+            <p class="section-note">Schedule ordinary ESM survey prompts. Fixed mode sends at exact times; random mode jitters around those times by the selected window.</p>
+          </div>
+        </div>
+        <form id="researcher-esm-schedule" class="stack">
+          <input type="hidden" name="prompt_type" value="esm_survey">
+          <label>
+            <span>Delivery mode</span>
+            <select name="mode">
+              <option value="fixed">Fixed exact times</option>
+              <option value="random">Randomized around listed times</option>
+            </select>
+          </label>
+          <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="09:30, 17:15" required></label>
+          <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
+          <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="120"></label>
+          <label><span>Notification title</span><input name="notification_title" value="StudyTrace survey available"></label>
+          <label><span>Notification body</span><input name="notification_body" value="Please complete your scheduled study survey."></label>
+          <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
+          <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
+          <div class="template-picker">
+            <label>
+              <span>Question templates (optional)</span>
+              <select id="researcher-template-select">
+                <option value="">Choose a template…</option>
+              </select>
+            </label>
+            <button class="button" type="button" id="researcher-template-add">Add to survey</button>
+            <p class="section-note" id="researcher-template-source">Templates are appended to the questions below; nothing changes for participants until you save. Confirm wording with your IRB and cite the listed source.</p>
+          </div>
+          <label>
+            <span>Survey questions JSON</span>
+            <textarea name="esms_json" rows="16" spellcheck="false"></textarea>
+          </label>
+          <p class="section-note">Optional quality fields such as <code>studytrace_required</code>, <code>studytrace_branching</code>, and <code>studytrace_randomize_options</code> are preserved in the schedule JSON for analysis and future client support.</p>
+          <button class="button button-primary" type="submit">Save ESM survey schedule</button>
+        </form>
+        <pre id="researcher-esm-schedule-result" class="result-box"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Battery screenshot notifications</h2>
+            <p class="section-note">Schedule prompts that ask participants to upload Settings → Battery → View All Battery Usage screenshots. This section uses an <code>esm_type: 14</code> photo question.</p>
+          </div>
+        </div>
+        <form id="researcher-battery-schedule" class="stack">
+          <input type="hidden" name="prompt_type" value="battery_usage_screenshot">
+          <label>
+            <span>Delivery mode</span>
+            <select name="mode">
+              <option value="fixed">Fixed exact times</option>
+              <option value="random">Randomized around listed times</option>
+            </select>
+          </label>
+          <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="20:30" required></label>
+          <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
+          <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="120"></label>
+          <label><span>Notification title</span><input name="notification_title" value="StudyTrace Battery screenshot"></label>
+          <label><span>Notification body</span><input name="notification_body" value="Please upload your iOS Battery usage screenshot."></label>
+          <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
+          <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
+          <label>
+            <span>Battery screenshot question JSON</span>
+            <textarea name="esms_json" rows="10" spellcheck="false"></textarea>
+          </label>
+          <button class="button button-primary" type="submit">Save Battery screenshot schedule</button>
+        </form>
+        <pre id="researcher-battery-schedule-result" class="result-box"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Screen Time activity screenshot notifications (optional)</h2>
+            <p class="section-note">Off until you save a schedule. Prompts ask participants to upload Settings → Screen Time → See All App &amp; Website Activity for one day (yesterday by default), which adds pickups and notification counts. The server reads the values from the screenshot; participants do not edit them.</p>
+          </div>
+        </div>
+        <form id="researcher-activity-schedule" class="stack">
+          <input type="hidden" name="prompt_type" value="screen_time_activity_screenshot">
+          <label>
+            <span>Delivery mode</span>
+            <select name="mode">
+              <option value="fixed">Fixed exact times</option>
+              <option value="random">Randomized around listed times</option>
+            </select>
+          </label>
+          <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="10:00" required></label>
+          <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
+          <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="720"></label>
+          <label><span>Notification title</span><input name="notification_title" value="StudyTrace Screen Time screenshot"></label>
+          <label><span>Notification body</span><input name="notification_body" value="Please upload yesterday's Screen Time activity screenshot."></label>
+          <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
+          <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
+          <label>
+            <span>Screen Time screenshot question JSON</span>
+            <textarea name="esms_json" rows="10" spellcheck="false"></textarea>
+          </label>
+          <button class="button button-primary" type="submit">Save Screen Time screenshot schedule</button>
+        </form>
+        <pre id="researcher-activity-schedule-result" class="result-box"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Recent survey responses</h2>
+            <p class="section-note">Photo ESM answers are rendered as images when the survey question uses <code>esm_type: 14</code>.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-esm-responses"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Survey quality</h2>
+            <p class="section-note">Derived response metadata for missing answers, photo answers, latency, and required-question gaps.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-survey-quality"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Daily phone use</h2>
+            <p class="section-note"><code>phone_use_daily</code>, derived from lock/unlock events (iOS <code>plugin_device_usage</code>, Android <code>android_screen_events</code>) and split at the participant's local midnight. Night use is 00:00–05:00 local. On iOS these events are only recorded while StudyTrace is running, so check participant health for gaps.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-phone-use-daily"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Location daily mobility</h2>
+            <p class="section-note">Derived daily GPS summaries: coverage, distance, radius of gyration, stops, and accuracy.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-location-daily-summary"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Battery screenshot app usage</h2>
+            <p class="section-note">Participants upload screenshots from Settings → Battery → View All Battery Usage. The OCR pipeline extracts app rows and flags screenshots that need review.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-battery-usage-cleaned"></table>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-battery-usage-screenshots"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Screen Time activity</h2>
+            <p class="section-note"><code>screen_time_activity</code>: one daily-total row (screen time, pickups, notifications) plus one row per most-used app for each screenshot.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-screen-time-activity"></table>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script type="module" src="/assets/dashboard.js"></script>
+</body>
+</html>

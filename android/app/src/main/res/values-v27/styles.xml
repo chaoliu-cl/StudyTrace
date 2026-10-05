@@ -1,0 +1,6 @@
+<resources>
+    <style name="StudyTraceTheme" parent="StudyTraceBaseTheme">
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:navigationBarDividerColor">#E2E8F0</item>
+    </style>
+</resources>

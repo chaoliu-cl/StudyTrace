@@ -1,0 +1,6 @@
+framework module Pods_StudyTraceTests {
+  umbrella header "Pods-StudyTraceTests-umbrella.h"
+
+  export *
+  module * { export * }
+}

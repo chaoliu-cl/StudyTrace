@@ -1,0 +1,28 @@
+PODS:
+  - AWAREFramework (1.14.18):
+    - AWAREFramework/Core (= 1.14.18)
+  - AWAREFramework/Core (1.14.18)
+  - DGCharts (5.1.0):
+    - DGCharts/Core (= 5.1.0)
+  - DGCharts/Core (5.1.0)
+  - DynamicColor (5.0.1)
+
+DEPENDENCIES:
+  - AWAREFramework (~> 1.14.5)
+  - DGCharts (~> 5.1.0)
+  - DynamicColor (~> 5.0.1)
+
+SPEC REPOS:
+  trunk:
+    - AWAREFramework
+    - DGCharts
+    - DynamicColor
+
+SPEC CHECKSUMS:
+  AWAREFramework: 37ddb76d1757bc21c3019de539d379d68cd16523
+  DGCharts: 1c6daf585b6cfc78807af44ea690d357c410627f
+  DynamicColor: d049834ef86d8ecf150b0ca1ebe54ee733a0ec22
+
+PODFILE CHECKSUM: fc8cf7c20500a3c11ab4ce646deddadb54a71cb0
+
+COCOAPODS: 1.16.2

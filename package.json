@@ -1,0 +1,26 @@
+{
+  "name": "studytrace-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "StudyTrace Express data collection server for Azure and Railway.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node --test test/deployment.test.js && node server/test/smoke.test.js",
+    "preview": "node server/scripts/dev-preview.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "qrcode-generator": "^2.0.4",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.14"
+  }
+}

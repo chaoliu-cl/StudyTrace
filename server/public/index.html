@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StudyTrace Cloud</title>
+  <link rel="stylesheet" href="/assets/dashboard.css">
+</head>
+<body data-page="home">
+  <main class="shell shell-home">
+    <section class="hero">
+      <p class="eyebrow">StudyTrace on Railway</p>
+      <h1>One deployable surface for participants, researchers, and administrators.</h1>
+      <p class="lede">
+        This Railway service hosts the StudyTrace ingestion server, a participant onboarding page,
+        a study-facing researcher dashboard, and an admin console for provisioning studies.
+      </p>
+      <div class="hero-links">
+        <a class="button button-primary" href="/participant/">Participant App</a>
+        <a class="button" href="/researcher/">Researcher Dashboard</a>
+        <a class="button" href="/admin/">Admin Dashboard</a>
+      </div>
+    </section>
+
+    <section class="panel-grid">
+      <article class="panel">
+        <h2>Participant App</h2>
+        <p>Explains the iPhone workflow, TestFlight enrollment, consent, and study join path.</p>
+      </article>
+      <article class="panel">
+        <h2>Researcher Dashboard</h2>
+        <p>Study-scoped metrics, enrolled devices, sensor coverage, and study-limited exports.</p>
+      </article>
+      <article class="panel">
+        <h2>Admin Dashboard</h2>
+        <p>Global operations view, study provisioning, fleet-level exports, and service health.</p>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>Infrastructure status</h2>
+      <dl class="metric-strip">
+        <div><dt>Runtime</dt><dd>Node + Express</dd></div>
+        <div><dt>Database</dt><dd>Railway PostgreSQL</dd></div>
+        <div><dt>Health check</dt><dd><code>/health</code></dd></div>
+        <div><dt>Machine API</dt><dd><code>/api/v1</code></dd></div>
+      </dl>
+    </section>
+  </main>
+</body>
+</html>

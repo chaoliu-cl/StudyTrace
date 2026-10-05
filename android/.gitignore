@@ -1,0 +1,12 @@
+.gradle/
+.kotlin/
+build/
+app/build/
+app/release/
+captures/
+local.properties
+gradle/gradle-daemon-jvm.properties
+*.iml
+.idea/
+.cxx/
+.externalNativeBuild/
