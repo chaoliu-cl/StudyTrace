@@ -108,7 +108,7 @@ class OnboardingManager: NSObject {
                 sfSymbol: "location.fill",
                 title: NSLocalizedString("onboarding_permission_loc_title", comment: ""),
                 body: NSLocalizedString("onboarding_permission_loc_body", comment: ""),
-                buttonTitle: NSLocalizedString("Allow", comment: ""),
+                buttonTitle: NSLocalizedString("Continue", comment: "Opens the system location permission request"),
                 action: {
                     AWARECore.shared().requestPermissionForBackgroundSensing { _ in }
                 }
@@ -117,7 +117,7 @@ class OnboardingManager: NSObject {
                 sfSymbol: "bell.fill",
                 title: NSLocalizedString("onboarding_permission_notif_title", comment: ""),
                 body: NSLocalizedString("onboarding_permission_notif_body", comment: ""),
-                buttonTitle: NSLocalizedString("Allow", comment: ""),
+                buttonTitle: NSLocalizedString("Continue", comment: "Opens the system notification permission request"),
                 action: {
                     AWARECore.shared().requestPermissionForPushNotification { _, _ in }
                 }

@@ -112,6 +112,7 @@
 
 /// general
 "Next" = "Next";
+"Continue" = "Continue";
 "Allow" = "Allow";
 "Cancel" = "Cancel";
 "Execute" = "Execute";

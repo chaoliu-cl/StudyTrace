@@ -104,6 +104,7 @@
 
 /// general
 "Next" = "次へ";
+"Continue" = "続ける";
 "Allow" = "許可";
 "Cancel" = "キャンセル";
 "Execute" = "実行";
