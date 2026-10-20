@@ -2,7 +2,7 @@
 
 ## Build identity
 
-- Package: `edu.studytrace.android`
+- Package: `edu.cedarville.studytrace`
 - Version: `1.0` (`versionCode` 1)
 - Target API: 36
 - Privacy policy: `https://liu-chao.site/StudyTrace/privacy/`
@@ -14,7 +14,7 @@ it in the application, manifest, signing configuration, or repository secrets.
 ## Required before uploading
 
 - Publish the updated cross-platform privacy policy from `docs/privacy/`.
-- Create or select the Play Console app with package `edu.studytrace.android`.
+- Create or select the Play Console app with package `edu.cedarville.studytrace`.
 - Enroll in Play App Signing and securely create/register the upload key.
 - Build the AAB with the four `STUDYTRACE_UPLOAD_*` signing values described in
   `android/README.md`; verify the certificate is the registered upload certificate.

@@ -22,7 +22,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "edu.studytrace.android"
+        applicationId = "edu.cedarville.studytrace"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
