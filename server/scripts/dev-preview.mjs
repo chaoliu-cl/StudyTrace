@@ -57,17 +57,13 @@ async function seed(base) {
     name: 'Demo study',
     timezone: 'America/New_York',
   }, { 'x-admin-token': process.env.ADMIN_TOKEN });
-  const auth = { Authorization: 'Bearer demo-participant' };
+  const auth = { 'x-researcher-password': 'demo-researcher-password' }; // trusted synthetic fixture ingestion
   const api = '/api/v1/studies/demo';
   const now = Date.now();
   const hour = 3600000;
   const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
 
-  await fetch(`${base}/index.php/webservice/index/demo/demo-participant?participant=P001`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'device_id=demo-ios-device',
-  });
+  await db.upsertDevice('demo-ios-device', 'demo', 'P001', { joined: true });
   await call(base, `${api}/sensors/device_state/data`, { device_id: 'demo-ios-device', rows: [{
     timestamp: now - 2 * hour, seq: 1, event_id: 'ds1', timezone: 'America/New_York', platform: 'ios',
     notification_authorization: 'authorized', location_authorization: 'authorized_always',
@@ -104,29 +100,7 @@ async function seed(base) {
     summary: { total_screen_time_seconds: 15600, pickups: 74, notifications: 131 },
   }, auth);
   // A participant label containing markup, to confirm the dashboard escapes it.
-  await fetch(`${base}/index.php/webservice/index/demo/demo-participant?participant=${encodeURIComponent('<img src=x onerror=alert(1)>')}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'device_id=demo-android-device',
-  });
-  await call(base, `${api}/sensors/device_state/data`, { device_id: 'demo-android-device', rows: [{
-    timestamp: now - hour, seq: 1, event_id: 'ads1', timezone: 'America/Chicago', platform: 'android', usage_access: 'granted',
-    location_authorization: 'authorized_when_in_use', notification_authorization: 'authorized',
-  }] }, auth);
-  await call(base, `${api}/sensors/android_screen_events/data`, { device_id: 'demo-android-device', rows: [
-    { timestamp: now - 6 * hour, event: 'unlock', dedupe_key: 'a1' },
-    { timestamp: now - 6 * hour + 7 * 60000, event: 'lock', dedupe_key: 'a2' },
-  ] }, auth);
-  await call(base, `${api}/sensors/android_app_usage/data`, { device_id: 'demo-android-device', rows: [{
-    timestamp: now - 30 * hour, date: new Date(now - 30 * hour).toISOString().slice(0, 10), timezone: 'America/Chicago',
-    package_name: 'com.whatsapp', app_label: 'WhatsApp', foreground_seconds: 2700, platform: 'android', construct: 'foreground_time',
-  }] }, auth);
-  // A participant who withdrew but kept their data: listed, not counted as enrolled.
-  await fetch(`${base}/index.php/webservice/index/demo/demo-participant?participant=P003`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'device_id=demo-withdrawn-device',
-  });
+  await db.upsertDevice('demo-withdrawn-device', 'demo', 'P003', { joined: true });
   await call(base, `${api}/withdrawal`, { device_id: 'demo-withdrawn-device', delete_data: false }, auth);
 }
 

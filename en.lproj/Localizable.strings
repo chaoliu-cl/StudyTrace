@@ -105,7 +105,7 @@
 
 // consent
 "onboarding_consent_title" = "Informed Consent";
-"onboarding_consent_body" = "By participating, you agree to the research data collection described by your study team. A study may request location samples, survey responses, and optional device-usage screenshots that you choose to upload.\n\nStudyTrace collects only enabled data streams after consent. Your data is stored on your device first and sent only to the configured research server—not for advertising or cross-app tracking.\n\nYou may review permissions, skip optional uploads, or withdraw at any time in Settings.\n\nPlease confirm that you understand and consent to participate.";
+"onboarding_consent_body" = "Complete the study-specific consent provided by your research team before signing in. The team verifies your consent and gives you a personal study invitation.\n\nResearch collection stays off until that invitation is verified online. Scan it once to sign in; you do not need to create a password or sign in each day.\n\nYour study consent explains background location, surveys, screenshots, risks, and data handling. You can change permissions or withdraw using Settings > Quit Study.\n\nPlease confirm that you understand and agree to participate.";
 "onboarding_consent_agree" = "I Agree to Participate";
 "onboarding_consent_decline" = "Decline";
 

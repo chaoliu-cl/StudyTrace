@@ -50,11 +50,11 @@
 	<key>NSCameraUsageDescription</key>
 	<string>StudyTrace needs camera access to capture photos for survey responses.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>For collecting your activity, this application needs to access your location data.</string>
+	<string>StudyTrace records your study's mobility history while you use other apps or lock your phone. View your daily location history on Dashboard.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>For collecting your activity, this application needs to access your location data.</string>
+	<string>StudyTrace records your study's mobility history while you use other apps or lock your phone. View your daily location history on Dashboard.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>For collecting your activity, this application needs to access your location data.</string>
+	<string>StudyTrace records your location for your study's mobility research. View your daily location history on Dashboard.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>StudyTrace needs photo library access so you can attach images to survey responses.</string>
 	<key>UIBackgroundModes</key>

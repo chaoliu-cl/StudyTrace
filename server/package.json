@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node test/smoke.test.js",
+    "test": "node test/smoke.test.js && node test/enrollment.test.js",
     "preview": "node scripts/dev-preview.mjs"
   },
   "engines": {

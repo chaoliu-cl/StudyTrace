@@ -83,8 +83,9 @@ static AWAREStudy * sharedStudy;
             }];
         }
         
-        sessionConfig = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:_getSettingIdentifier];
-        sessionConfig.sharedContainerIdentifier     = @"com.awareframework.setting.task.identifier";
+        // Joining is an interactive POST with an in-memory body. Background
+        // sessions require file-backed uploads and are unsuitable for this task.
+        sessionConfig = [NSURLSessionConfiguration defaultSessionConfiguration];
         sessionConfig.timeoutIntervalForRequest     = 60;
         sessionConfig.HTTPMaximumConnectionsPerHost = 60;
         sessionConfig.timeoutIntervalForResource    = 60; //60*60*24; // 1 day
@@ -275,7 +276,7 @@ didReceiveResponse:(NSURLResponse *)response
               task:(NSURLSessionTask *)task
 didCompleteWithError:(NSError *)error {
     if (error != nil) {
-        NSLog(@"ERROR: %@ %zd", error.debugDescription , error.code);
+        NSLog(@"[AWAREStudy] Join transport error: %zd", error.code);
         if (error.code == -1202) {
             /**
              * If the error code is -1202, this device needs .crt for SSL(secure) connection.
@@ -319,6 +320,11 @@ didCompleteWithError:(NSError *)error {
     NSArray * studySettings = [NSJSONSerialization JSONObjectWithData:data
                                                               options:NSJSONReadingMutableContainers
                                                                 error:&error];
+    if (error == nil && (![studySettings isKindOfClass:[NSArray class]] ||
+                         studySettings.count == 0 ||
+                         ![studySettings.firstObject isKindOfClass:[NSDictionary class]])) {
+        error = [NSError errorWithDomain:@"StudyTraceStudyConfig" code:1 userInfo:nil];
+    }
     if(error != nil){
         NSLog(@"[AWAREStudy|setStudySettings] Error: %@", error.debugDescription);
         if (completionHandler!=nil) {
@@ -723,16 +729,9 @@ didCompleteWithError:(NSError *)error {
 didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
   completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition,
                               NSURLCredential * _Nullable credential)) completionHandler{
-    // http://stackoverflow.com/questions/19507207/how-do-i-accept-a-self-signed-ssl-certificate-using-ios-7s-nsurlsession-and-its
-    
-    if([challenge.protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodServerTrust]){
-        
-        NSURLProtectionSpace *protectionSpace = [challenge protectionSpace];
-        SecTrustRef trust = [protectionSpace serverTrust];
-        NSURLCredential *credential = [NSURLCredential credentialForTrust:trust];
-        
-        completionHandler(NSURLSessionAuthChallengeUseCredential,credential);
-    }
+    // Use the platform trust evaluation; never accept an unvalidated server
+    // certificate when sending a personal sign-in credential.
+    completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
 }
 
 //////////////////////////////////////////////////////////

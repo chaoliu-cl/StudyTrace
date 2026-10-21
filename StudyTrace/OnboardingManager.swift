@@ -110,7 +110,9 @@ class OnboardingManager: NSObject {
                 body: NSLocalizedString("onboarding_permission_loc_body", comment: ""),
                 buttonTitle: NSLocalizedString("Continue", comment: "Opens the system location permission request"),
                 action: {
-                    AWARECore.shared().requestPermissionForBackgroundSensing { _ in }
+                    if StudyParticipationController.hasConsent() {
+                        AWARECore.shared().requestPermissionForBackgroundSensing { _ in }
+                    }
                 }
             ),
             OnboardingPage(

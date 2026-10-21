@@ -47,7 +47,46 @@ const server = await new Promise((resolve) => {
 });
 const base = `http://127.0.0.1:${server.address().port}`;
 
+// Data/dashboard fixtures now use real researcher-verified personal sign-ins.
+// The enrollment security suite separately sends raw credentials and hostile requests.
+const fixtureTokens = new Map();
+async function fixtureRequest(path, body, headers = {}) {
+  headers = { ...headers };
+  const match = path.match(/^\/index.php\/webservice\/index\/(demo|enroll)\/(secret|enroll-pw)(?=\/|\?|$)/);
+  const shared = headers.Authorization === 'Bearer secret' || headers.Authorization === 'Bearer enroll-pw' || headers['x-study-password'] === 'secret';
+  if (!match && !shared) return { path, headers };
+  const study = match?.[1] || (path.includes('/studies/enroll/') ? 'enroll' : 'demo');
+  let parsed = {};
+  try { parsed = JSON.parse(body); } catch { parsed = Object.fromEntries(new URLSearchParams(body)); }
+  const query = new URL(path, base).searchParams;
+  const device = parsed?.device_id || query.get('device_id') || headers['x-device-id'] || 'dev-1';
+  const key = `${study}/${device}`;
+  if (!fixtureTokens.has(key)) {
+    const researcherHeaders = study === 'demo' ? researcherAuth : { 'Content-Type': 'application/json', 'x-researcher-password': 'enroll-researcher-pw' };
+    const participant = device === 'dev-withdraw' ? 'P-W' : query.get('participant') || device;
+    const result = await request('POST', `/api/v1/studies/${study}/join-link`, {
+      headers: researcherHeaders,
+      body: JSON.stringify({ participant, consent_verified: true, consent_version: 'TEST', consent_reference: 'FIXTURE', consented_at: '2026-01-01', verified_by: 'test-staff' }),
+    });
+    assert.equal(result.status, 200, 'fixture invitation issued');
+    const token = new URL(result.json.study_url).pathname.split('/').pop();
+    const activation = await request('POST', `/api/v1/studies/${study}/enrollment`, {
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ device_id: device }),
+    });
+    assert.equal(activation.status, 200, 'fixture sign-in verified');
+    fixtureTokens.set(key, { token, id: result.json.enrollment_id });
+  }
+  const { token } = fixtureTokens.get(key);
+  if (match) path = path.replace(match[0], `/index.php/webservice/index/${study}/${token}`);
+  if (shared) {
+    if (headers['x-study-password']) headers['x-study-password'] = token;
+    else headers.Authorization = `Bearer ${token}`;
+  }
+  return { path, headers };
+}
+
 async function post(path, body, headers = {}) {
+  ({ path, headers } = await fixtureRequest(path, body, headers));
   const res = await fetch(base + path, {
     method: 'POST',
     headers,
@@ -60,6 +99,7 @@ async function post(path, body, headers = {}) {
 }
 
 async function postWithoutContentType(path, body) {
+  ({ path } = await fixtureRequest(path, body));
   const res = await fetch(base + path, {
     method: 'POST',
     body,
@@ -103,6 +143,7 @@ const formHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };
 
 // Generic request helper for the JSON API (any method).
 async function request(method, path, { body, headers } = {}) {
+  ({ path, headers } = await fixtureRequest(path, body, headers));
   const res = await fetch(base + path, { method, headers, body });
   const text = await res.text();
   let json;
@@ -133,7 +174,7 @@ try {
     JSON.stringify({ study_id: 'demo', password: 'secret', researcher_password: RESEARCHER_PASSWORD, name: 'Demo' }),
     adminJson);
   assert.strictEqual(admin.status, 200, 'admin create study');
-  assert.ok(admin.json.study_url.includes('/index.php/webservice/index/demo/secret'), 'study url shape');
+  assert.equal(admin.json.study_url, undefined, 'shared-password invitation is never generated');
   const storedStudy = await db.getStudy('demo');
   assert.ok(storedStudy.password_hash.startsWith('scrypt$'), 'participant password stored hashed');
   assert.ok(storedStudy.researcher_password_hash.startsWith('scrypt$'), 'researcher password stored hashed');
@@ -189,7 +230,7 @@ try {
   assert.ok(
     iosEsmPlugin.settings.some((setting) =>
       setting.setting === 'plugin_ios_esm_config_url' &&
-      setting.value === 'https://example.up.railway.app/index.php/webservice/index/demo/secret/esm/config'
+      setting.value === `https://example.up.railway.app/index.php/webservice/index/demo/${fixtureTokens.get('demo/dev-1').token}/esm/config`
     ),
     'join config includes ESM config URL'
   );
@@ -726,7 +767,7 @@ try {
   const legacy = await db.getStudy('legacy');
   assert.ok(legacy.password_hash.startsWith('scrypt$'), 'legacy password migrated to hash');
   const legacyJoin = await post('/index.php/webservice/index/legacy/legacy-pw', form({ device_id: 'legacy-dev' }), formHeaders);
-  assert.strictEqual(legacyJoin.status, 200, 'legacy participants keep working after migration');
+  assert.strictEqual(legacyJoin.status, 403, 'legacy shared links require verified consent invitations');
   const legacyDashboard = await request('GET', '/api/v1/studies/legacy/dashboard/summary', {
     headers: { 'x-researcher-password': 'legacy-pw' },
   });
@@ -752,7 +793,7 @@ try {
   });
   assert.strictEqual(deleteWithdrawal.status, 200, 'withdrawal with deletion ok');
   assert.ok(deleteWithdrawal.json.rows_deleted >= 1, 'withdrawn device rows deleted');
-  const withdrawnCount = await request('GET', `${apiBase}/sensors/locations/count?device_id=dev-withdraw`, { headers: jsonAuth });
+  const withdrawnCount = await request('GET', `${apiBase}/sensors/locations/count?device_id=dev-withdraw`, { headers: researcherAuth });
   assert.strictEqual(withdrawnCount.json.count, 0, 'no rows remain for withdrawn device');
 
   // A queued withdrawal retried after the participant re-joined only deletes
@@ -769,7 +810,7 @@ try {
   });
   assert.strictEqual(lateRetry.status, 200, 'late withdrawal retry ok');
   assert.strictEqual(lateRetry.json.rows_deleted, 0, 'rows uploaded after withdrawn_at are kept');
-  const rejoinCount = await request('GET', `${apiBase}/sensors/locations/count?device_id=dev-rejoin`, { headers: jsonAuth });
+  const rejoinCount = await request('GET', `${apiBase}/sensors/locations/count?device_id=dev-rejoin`, { headers: researcherAuth });
   assert.strictEqual(rejoinCount.json.count, 1, 're-joined participant data survives a stale retry');
   const summaryAfterWithdrawal = await request('GET', `${apiBase}/dashboard/summary`, { headers: researcherAuth });
   assert.ok(!summaryAfterWithdrawal.json.devices.some((row) => row.device_id === 'dev-withdraw'), 'withdrawn device unregistered');
@@ -784,12 +825,14 @@ try {
   assert.strictEqual(researcherDelete.status, 200, 'researcher deletes participant');
   assert.ok(researcherDelete.json.rows_deleted > 0, 'researcher delete removed rows');
   for (const sensor of ['locations', 'plugin_ios_esm', 'esms', 'battery_usage_apps', 'client_events']) {
-    const count = await request('GET', `${apiBase}/sensors/${sensor}/count?device_id=dev-1`, { headers: jsonAuth });
+    const count = await request('GET', `${apiBase}/sensors/${sensor}/count?device_id=dev-1`, { headers: researcherAuth });
     assert.strictEqual(count.json.count, 0, `no ${sensor} rows remain for deleted participant`);
   }
   const otherDevice = await request('GET', `${apiBase}/sensors/steps/count?device_id=dev-2`, { headers: jsonAuth });
   assert.strictEqual(otherDevice.json.count, 1, 'other participants untouched');
   console.log('✓ researcher deletes a participant across all sensor tables');
+  // Subsequent fixtures require a fresh researcher-verified invitation.
+  fixtureTokens.delete('demo/dev-1');
 
   // 29. Deduplication: retried uploads never create duplicate rows.
   const dupRows = [{ timestamp: 111, double_latitude: 1, double_longitude: 1 }];
@@ -1200,51 +1243,14 @@ try {
   assert.strictEqual(zipAsParticipant.status, 403, 'participant password cannot download the study export');
   console.log('✓ whole-study ZIP export with codebook, README, and image references');
 
-  // 39. Join links: URL + QR on creation, and rebuilt on request when the
-  // participant password is supplied (only its hash is stored).
+  // 39. Shared study provisioning never emits an invitation. The dedicated
+  // enrollment suite verifies consent fields, QR issuance, binding, and expiry.
   const enrollCreate = await post('/admin/studies', JSON.stringify({
     study_id: 'enroll', password: 'enroll-pw', researcher_password: 'enroll-researcher-pw', name: 'Enroll',
   }), adminJson);
-  assert.strictEqual(enrollCreate.status, 200, 'create enroll study');
-  assert.strictEqual(enrollCreate.json.study_url, 'https://example.up.railway.app/index.php/webservice/index/enroll/enroll-pw', 'study url on create');
-  assert.match(enrollCreate.json.qr_svg, /^<svg[^>]+viewBox=/, 'QR code SVG on create');
-  const renamed = await post('/admin/studies', JSON.stringify({ study_id: 'enroll', name: 'Enroll study' }), adminJson);
-  assert.strictEqual(renamed.json.study_url, undefined, 'no url without the participant password');
-  assert.strictEqual(renamed.json.qr_svg, undefined, 'no QR without the participant password');
+  assert.strictEqual(enrollCreate.status, 200);
+  assert.equal(enrollCreate.json.study_url, undefined);
   const enrollResearcher = { 'Content-Type': 'application/json', 'x-researcher-password': 'enroll-researcher-pw' };
-  const researcherLink = await request('POST', '/api/v1/studies/enroll/join-link', {
-    body: JSON.stringify({ password: 'enroll-pw', participant: 'P 001' }),
-    headers: enrollResearcher,
-  });
-  assert.strictEqual(researcherLink.status, 200, 'researcher join link ok');
-  assert.strictEqual(researcherLink.json.study_url,
-    'https://example.up.railway.app/index.php/webservice/index/enroll/enroll-pw?participant=P%20001', 'participant-labeled url');
-  assert.strictEqual(researcherLink.json.participant, 'P 001', 'participant echoed');
-  assert.match(researcherLink.json.qr_svg, /<path d="M/, 'QR modules drawn');
-  const wrongLinkPassword = await request('POST', '/api/v1/studies/enroll/join-link', {
-    body: JSON.stringify({ password: 'enroll-researcher-pw' }),
-    headers: enrollResearcher,
-  });
-  assert.strictEqual(wrongLinkPassword.status, 403, 'join link needs the participant password');
-  const noLinkPassword = await request('POST', '/api/v1/studies/enroll/join-link', { body: '{}', headers: enrollResearcher });
-  assert.strictEqual(noLinkPassword.status, 400, 'join link password required');
-  const participantLink = await request('POST', '/api/v1/studies/enroll/join-link', {
-    body: JSON.stringify({ password: 'enroll-pw' }),
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer enroll-pw' },
-  });
-  assert.ok([401, 403].includes(participantLink.status), 'participants cannot use the researcher join-link endpoint');
-  const adminLink = await request('POST', '/admin/studies/enroll/join-link', {
-    body: JSON.stringify({ password: 'enroll-pw' }),
-    headers: adminJson,
-  });
-  assert.strictEqual(adminLink.status, 200, 'admin join link ok');
-  assert.strictEqual(adminLink.json.study_url, enrollCreate.json.study_url, 'admin join link matches creation url');
-  const missingStudyLink = await request('POST', '/admin/studies/nope/join-link', {
-    body: JSON.stringify({ password: 'x' }),
-    headers: adminJson,
-  });
-  assert.strictEqual(missingStudyLink.status, 404, 'join link for unknown study');
-  console.log('✓ join URL and QR code on creation and on request');
 
   // 40. Device counts track enrollment: every upload path registers its
   // device, withdrawn devices stop counting (until they re-join), and devices
@@ -1284,12 +1290,14 @@ try {
 
   const withdrawnAt = Date.now();
   await new Promise((resolve) => setTimeout(resolve, 20));
+  const oldEnrollmentToken = fixtureTokens.get('enroll/enroll-b').token;
+  fixtureTokens.delete('enroll/enroll-b');
   await post(`${enrollPath}?participant=E2`, form({ device_id: 'enroll-b' }), formHeaders);
   enrollSummary = await enrollCounts();
   assert.strictEqual(enrollSummary.summary.device_count, 3, 're-join restores enrollment');
   const staleWithdrawal = await request('POST', '/api/v1/studies/enroll/withdrawal', {
     body: JSON.stringify({ device_id: 'enroll-b', delete_data: false, withdrawn_at: withdrawnAt }),
-    headers: enrollJson,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${oldEnrollmentToken}` },
   });
   assert.strictEqual(staleWithdrawal.status, 200, 'stale withdrawal retry ok');
   enrollSummary = await enrollCounts();

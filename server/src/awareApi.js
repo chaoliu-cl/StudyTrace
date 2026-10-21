@@ -3,8 +3,8 @@
 // Implements the subset of the AWARE REST protocol that the bundled
 // AWAREFramework (1.14.x) in the StudyTrace iOS client uses. This is ONE of the
 // ingestion front-ends over the shared storage layer (see genericApi.js for a
-// protocol-neutral alternative); researchers are free to use either, or point
-// the app at any other AWARE-compatible server entirely.
+// protocol-neutral alternative); researchers are free to use either, or host
+// their own server implementing the consent enrollment API as well.
 //
 // URL shapes produced by the client:
 //   Study URL (join/config):
@@ -15,8 +15,8 @@
 //     POST {studyURL}/{table}/insert       body: device_id=<uuid>&data=<JSON array>
 //     POST {studyURL}/{table}/latest       body: device_id=<uuid>
 //     POST {studyURL}/{table}/clear_table  body: device_id=<uuid>  (disabled:
-//          the study password is shared by every participant, so it must not
-//          authorize deletion; researchers delete via the dashboard instead)
+//          participants request deletion through withdrawal; researchers use
+//          the dashboard for administrative deletion)
 
 import express from 'express';
 import { parse as parseQueryString } from 'node:querystring';
@@ -29,11 +29,11 @@ import {
   getStudy,
 } from './db.js';
 import { buildStudyConfig } from './studyConfig.js';
+import { participantAccess, requestDeviceId, rowsMatchDevice } from './enrollment.js';
 import {
   isRateLimited,
   recordAuthFailure,
   sendRateLimited,
-  studyAcceptsParticipantPassword,
 } from './auth.js';
 
 export function createAwareRouter(getPublicBaseUrl) {
@@ -47,11 +47,13 @@ export function createAwareRouter(getPublicBaseUrl) {
       if (isRateLimited(req)) return sendRateLimited(res);
       const { studyId, password } = req.params;
       const study = await getStudy(studyId);
-      if (!studyAcceptsParticipantPassword(study, password)) {
+      const enrollment = await participantAccess(studyId, password, requestDeviceId(req));
+      if (!study || !enrollment) {
         recordAuthFailure(req);
         return res.status(403).json({ error: 'invalid study id or password' });
       }
       req.study = study;
+      req.enrollment = enrollment;
       next();
     } catch (err) {
       next(err);
@@ -66,8 +68,8 @@ export function createAwareRouter(getPublicBaseUrl) {
   // ---- Join / configuration -------------------------------------------------
   router.post(STUDY_PREFIX, requireStudy, async (req, res, next) => {
     try {
-      const deviceId = req.body.device_id;
-      const participant = req.query.participant;
+      const deviceId = req.enrollment.device_id;
+      const participant = req.enrollment.participant;
       if (deviceId) {
         await upsertDevice(deviceId, req.params.studyId, participant, { joined: true });
       }
@@ -100,7 +102,7 @@ export function createAwareRouter(getPublicBaseUrl) {
       return res.status(400).json({ error: 'invalid table name' });
     }
     const body = normalizeAwareBody(req.body);
-    const deviceId = body.device_id || null;
+    const deviceId = req.enrollment.device_id;
 
     try {
       switch (action) {
@@ -118,8 +120,9 @@ export function createAwareRouter(getPublicBaseUrl) {
               return res.status(400).json({ error: 'data is not valid JSON' });
             }
           }
+          if (!rowsMatchDevice(rows, deviceId)) return res.status(403).json({ error: 'device mismatch' });
           const n = await insertRows(table, req.params.studyId, deviceId, rows);
-          if (deviceId) await upsertDevice(deviceId, req.params.studyId, req.query.participant);
+          if (deviceId) await upsertDevice(deviceId, req.params.studyId, req.enrollment.participant);
           return res.json({ status: true, inserted: n, duplicates: rows.length - n });
         }
         case 'latest': {

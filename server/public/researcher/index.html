@@ -20,8 +20,8 @@
       <p class="eyebrow">Researcher Dashboard</p>
       <h1>Study-scoped monitoring and export</h1>
       <p class="lede">
-        Authenticate with a study ID and the researcher password. This is separate from the participant
-        study password in the join link, and only exposes the selected study.
+        Authenticate with a study ID and the researcher password. This is separate from personal
+        participant invitations, and only exposes the selected study.
       </p>
     </section>
 
@@ -46,17 +46,23 @@
       <section class="panel">
         <div class="section-head">
           <div>
-            <h2>Participant join link</h2>
-            <p class="section-note">Generate the study URL and a QR code that participants scan or paste in the StudyTrace app. Enter the participant study password (the one in the join link, not your researcher password); only its hash is stored, so it cannot be shown without it. Add a participant ID to label that participant's device.</p>
+            <h2>Consent verification and participant sign-in</h2>
+            <p class="section-note">After checking the signed consent in your secure consent register, issue one invitation per participant. Activation expires in seven days; collection ends 28 days after activation. Keep identity and signed consent outside this dashboard.</p>
           </div>
         </div>
         <form id="researcher-join-link" class="stack">
-          <label><span>Participant study password</span><input name="password" type="password" autocomplete="off" required></label>
-          <label><span>Participant ID, optional</span><input name="participant" placeholder="P001" maxlength="128"></label>
-          <button class="button button-primary" type="submit">Generate join link and QR code</button>
+          <label><span>Participant code</span><input name="participant" placeholder="P001" maxlength="128" required></label>
+          <label><span>Consent version</span><input name="consent_version" placeholder="IRB #374 — approved version/date" maxlength="128" required></label>
+          <label><span>Consent record reference (no names)</span><input name="consent_reference" placeholder="Secure consent register reference" maxlength="128" required></label>
+          <label><span>Date consent was signed</span><input name="consented_at" type="date" required></label>
+          <label><span>Verified by (staff ID)</span><input name="verified_by" maxlength="128" required></label>
+          <label><span><input name="consent_verified" type="checkbox" required> I verified completed adult consent for this study and its current procedures.</span></label>
+          <button class="button button-primary" type="submit">Issue personal invitation</button>
         </form>
         <p id="researcher-join-link-message" class="status-line"></p>
         <div id="researcher-join-link-result" class="hidden"></div>
+        <button class="button" id="load-enrollments" type="button">Refresh consent access</button>
+        <div id="consent-enrollments" class="table-wrap"></div>
       </section>
 
       <section class="panel">

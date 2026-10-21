@@ -1,12 +1,8 @@
 // Credential helpers shared by every front-end.
 //
-// Two credentials exist per study:
-//   - the participant (study) password, embedded in the join URL/QR that every
-//     phone receives. It only authorizes ingestion (join, insert, latest,
-//     screenshot upload, withdrawal) for the caller's own device.
-//   - the researcher password, which authorizes dashboards, exports, media,
-//     schedule edits, and deletions. It is never given to participants.
-// Both are stored as scrypt hashes; plaintext is never persisted.
+// Researcher and legacy provisioning passwords use scrypt. The legacy study
+// password grants no participant access. Personal invitations use 256-bit random
+// tokens stored only as hashes, verified by enrollment.js on every data route.
 
 import crypto from 'node:crypto';
 

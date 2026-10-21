@@ -215,6 +215,15 @@ input {
   font: inherit;
 }
 
+input[type="checkbox"] {
+  width: 1.2em;
+  min-height: 1.2em;
+  padding: 0;
+  margin: 0 0.45em 0 0;
+  vertical-align: middle;
+  accent-color: var(--ink);
+}
+
 select,
 textarea {
   width: 100%;

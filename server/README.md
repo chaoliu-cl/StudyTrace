@@ -18,9 +18,8 @@ free to:
 
 - use this server with the StudyTrace app over the AWARE protocol,
 - send data from any other client via the generic JSON API,
-- or point the StudyTrace app at a completely different AWARE-compatible
-  server (e.g. the official AWARE server, or their own). The app's Study URL
-  field accepts any HTTPS host.
+- or host their own AWARE-compatible server implementing the consent
+  enrollment API. Participant sign-in requires that API over HTTPS.
 
 Both front-ends are equivalent doors into the same per-sensor tables, so you
 can mix them (e.g. collect from the app via AWARE and from a wearable bridge
@@ -47,7 +46,7 @@ After a participant joins the study URL once, the AWARE join configuration
 points the iPhone app to the study's hosted ESM schedule:
 
 ```
-/index.php/webservice/index/{STUDY_ID}/{PASSWORD}/esm/config
+/index.php/webservice/index/{STUDY_ID}/{PERSONAL_TOKEN}/esm/config
 ```
 
 Use `/researcher/` to create or update the study's notification schedules:
@@ -197,16 +196,16 @@ The subset the StudyTrace client calls:
 
 | Client action        | Request                                                                 |
 |----------------------|-------------------------------------------------------------------------|
-| Join / get config    | `POST /index.php/webservice/index/{STUDY_ID}/{PASSWORD}` body `device_id=…` |
-| Create sensor table  | `POST …/{STUDY_ID}/{PASSWORD}/{table}/create_table`                      |
+| Join / get config    | `POST /index.php/webservice/index/{STUDY_ID}/{PERSONAL_TOKEN}` body `device_id=…` |
+| Create sensor table  | `POST …/{STUDY_ID}/{PERSONAL_TOKEN}/{table}/create_table`                      |
 | Insert data          | `POST …/{table}/insert` body `device_id=…&data=<JSON array>`            |
 | Latest row (sync)    | `POST …/{table}/latest` body `device_id=…`                              |
-| Clear table          | Disabled (returns 403). The study password is shared by every participant, so it cannot authorize deletion. |
+| Clear table          | Disabled (returns 403). Personal ingestion credentials cannot authorize destructive table deletion. |
 
 ## Generic JSON API front-end
 
 Protocol-neutral REST over the same storage. Ingestion authenticates with the
-participant study password as a Bearer token (`Authorization: Bearer <password>`)
+active, device-bound personal credential as a Bearer token (`Authorization: Bearer <personal-token>`)
 or an `x-study-password` header. Deleting data requires the researcher password
 (`x-researcher-password` or Bearer). Base: `/api/v1/studies/{STUDY_ID}`.
 
@@ -227,7 +226,7 @@ Example:
 
 ```bash
 curl -X POST https://YOUR-APP.up.railway.app/api/v1/studies/pilot1/sensors/heartrate/data \
-  -H "Authorization: Bearer choose-a-strong-password" \
+  -H "Authorization: Bearer pi_PERSONAL_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"device_id":"watch-1","rows":[{"timestamp":1719000000000,"bpm":62}]}'
 ```
@@ -372,84 +371,84 @@ After custom-domain verification, also check:
 
 ## Provision a study
 
-Each study has **two** credentials:
-
-| Credential | Who has it | What it allows |
-|------------|------------|----------------|
-| `password` (participant study password) | Every participant, inside the join URL / QR code | Joining, uploading data, downloading the survey schedule, withdrawing |
-| `researcher_password` (min. 12 chars) | Research team only | Researcher dashboard, exports, photo/screenshot access, schedule edits, deleting data |
-
-Both are stored as scrypt hashes; the server never keeps the plaintext.
-Studies are created through a token-guarded admin endpoint (or the `/admin/`
-dashboard):
+The administrator provisions a study with a researcher password (minimum 12
+characters). The existing `password` provisioning field remains for schema/API
+compatibility, but **shared study passwords no longer authorize participants**
+and provisioning never returns a shared join QR. Researcher passwords are scrypt
+hashes. Personal invitation tokens are cryptographically random 256-bit secrets;
+only their SHA-256 hashes are stored on the server.
 
 ```bash
-curl -X POST https://YOUR-APP.up.railway.app/admin/studies \
-  -H "Content-Type: application/json" \
-  -H "x-admin-token: $ADMIN_TOKEN" \
-  -d '{"study_id":"pilot1","password":"choose-a-strong-password","researcher_password":"a-different-long-secret","name":"StudyTrace Pilot"}'
+curl -X POST https://YOUR-APP/admin/studies \
+  -H "Content-Type: application/json" -H "x-admin-token: $ADMIN_TOKEN" \
+  -d '{"study_id":"pilot1","password":"unused-legacy-secret","researcher_password":"a-different-long-secret","name":"StudyTrace Pilot"}'
 ```
 
-Response:
+Existing participant data is preserved by the additive migration in
+`migrations/20261021_consent_enrollment.sql`, applied idempotently at server boot.
+There is no automatic consent backfill: existing installations need a personal
+invitation after staff verify their external consent. Deploy the server before
+releasing iOS build 13, coordinate that change with existing participants, and
+retain database backups. Older clients cannot use shared credentials afterward.
+Android clients need a corresponding activation flow before using this server.
 
-```json
-{
-  "status": true,
-  "created": true,
-  "study_id": "pilot1",
-  "researcher_password_set": true,
-  "study_url": "https://YOUR-APP.up.railway.app/index.php/webservice/index/pilot1/choose-a-strong-password",
-  "api_base": "https://YOUR-APP.up.railway.app/api/v1/studies/pilot1"
-}
-```
+## Consent verification and passwordless participant sign-in
 
-- `study_url` — paste/QR into the StudyTrace app (AWARE protocol). Because the
-  password is stored hashed, the URL is only returned when you send `password`
-  in the request. The response also carries `qr_svg`, a QR code of the URL, and
-  `/admin/` shows both after you save.
-- `api_base` — base path for the generic JSON API.
+1. Collect adult study-specific consent through the approved external process.
+   Keep signed forms and identity/code keys in the separate secure consent
+   register. This app does not claim the generic onboarding choice is a signed
+   study-specific consent form.
+2. In `/researcher/`, load the study with its researcher password. Under
+   **Consent verification and participant sign-in**, enter the participant code,
+   approved consent version, secure consent-register reference, signed date, and
+   verifying staff ID; confirm that completed adult consent was checked.
+3. **Issue personal invitation**. Privately give that participant the returned
+   QR or HTTPS link. It can first activate for seven days, binds atomically to
+   the first device, and permits retries from that device without extending the
+   deadline. The plaintext cannot be retrieved later; revoke a lost invitation
+   and issue another. The `participant` URL query is only a display label; the
+   server's verified consent record determines the identity.
+4. Participant: Study tab → **Study sign-in** to paste the link, or tap the QR
+   icon, scan the QR, and tap **Sign in to study**. The first sign-in requires
+   internet. The server verifies the invitation before AWARE study configuration
+   is joined or collection starts. Grant the requested study permissions,
+   including Always location access for background mobility collection. The
+   verified authorization is saved in this device's Keychain; daily passwords
+   and repeated manual sign-ins are unnecessary.
+5. Research collection ends 28 days after activation. The app schedules a local
+   deadline and checks it at collection/upload entry points and relaunch. The
+   server rejects expired data credentials on every route. Status is refreshed
+   on foreground and every 15 minutes while the process runs. Offline cached
+   access never extends beyond the original deadline. Remote revocation stops
+   server acceptance immediately; a running offline device learns it on a later
+   status check. Use **Settings → Quit Study** for immediate local withdrawal.
+6. **Refresh consent access** lists enrollment records and offers **Revoke
+   access**. Revocation blocks data and sign-in; a new invitation requires a new
+   staff verification. In-app Quit Study also revokes its enrollment and queues
+   the server withdrawal if offline. An old queued withdrawal cannot revoke a
+   newly verified enrollment on the same phone. Switching studies clears the
+   previous study's local data and pending uploads.
 
-Posting again for an existing study changes **only the fields you send**. To set
-or rotate the researcher password without disturbing enrolled phones:
+API equivalents (researcher password in `x-researcher-password`):
 
-```bash
-curl -X POST https://YOUR-APP.up.railway.app/admin/studies \
-  -H "Content-Type: application/json" \
-  -H "x-admin-token: $ADMIN_TOKEN" \
-  -d '{"study_id":"pilot1","researcher_password":"a-different-long-secret"}'
-```
+- `POST /api/v1/studies/{id}/join-link` body:
+  `{"participant":"P001","consent_verified":true,"consent_version":"APPROVED-VERSION","consent_reference":"REGISTER-REF","consented_at":"2026-10-20","verified_by":"STAFF-ID"}`.
+  Returns `study_url`, `qr_svg`, `enrollment_id`, and `invitation_expires_at`.
+- `GET /api/v1/studies/{id}/enrollments` lists consent/access metadata, never tokens.
+- `DELETE /api/v1/studies/{id}/enrollments/{enrollment_id}` revokes access.
+- Participant activation: `POST /api/v1/studies/{id}/enrollment`, Bearer personal
+  token, JSON `{"device_id":"..."}`. Response: participant code, consent version,
+  and fixed `expires_at`. `GET` on the same endpoint checks current authorization.
+- The admin `/admin/studies/{id}/join-link` endpoint accepts the same required
+  consent fields; it cannot bypass consent verification.
 
-### Upgrading studies created before researcher passwords existed
-
-On first boot after upgrading, existing plaintext study passwords are hashed
-automatically and participants keep working. The researcher dashboard for
-those studies stays **locked** (`researcher_password_not_set`) until an admin
-sets a researcher password as shown above. The `/admin/` studies table shows
-which studies still need one.
-
-## Connect the app
-
-The `study_url` above is what the StudyTrace client joins. You can:
-
-- **Paste it** into the app: StudyTrace tab → Study URL → enter the URL, or
-- **Encode it as a QR code** and scan it via the in-app QR reader. Any QR/URL
-  generator works; the app accepts `https://…` directly, and also accepts the
-  AWARE `aware-ssl://…` / `aware://…` scheme forms (it maps them to HTTPS).
-
-To add a participant identifier, append `?participant=<ID>`:
-
-```
-https://YOUR-APP.up.railway.app/index.php/webservice/index/pilot1/PASSWORD?participant=P001
-```
-
-Both dashboards can rebuild the URL and its QR code later: **Join link and QR
-code** in `/admin/`, and **Participant join link** in `/researcher/`. Enter the
-participant study password (only its hash is stored) and, optionally, a
-participant ID; you can copy the URL or download the QR as SVG or PNG. The API
-is `POST /admin/studies/{id}/join-link` (admin token) or
-`POST /api/v1/studies/{id}/join-link` (researcher password), with body
-`{"password": "...", "participant": "P001"}`. A wrong password counts toward
-the failed-login rate limit.
+For App Review, prepare a separate test study and synthetic data. Establish
+the applicable consent or approved test-access process before issuing review
+credentials. Issue several unused individual test invitations
+close to submission, provide them privately in Notes, and keep them valid during
+review. Never mark a fictitious signed human consent as real research consent.
+The Apple response must include the actual tested URL/QR and navigation after
+deployment. See `AppStoreAssets/AppReview/combined-app-review-response-draft.txt`.
 
 ## Inspect collected data
 
@@ -546,9 +545,9 @@ password `demo-researcher-password` (demo values from `scripts/dev-preview.mjs`)
 
 ## Security notes
 
-- Ingestion endpoints require the participant study password; researcher
+- Ingestion endpoints require an active device-bound personal credential; researcher
   endpoints (dashboards, exports, media, schedules, deletion) require the
-  separate researcher password. The participant password is never accepted
+  separate researcher password. Personal participant credentials are never accepted
   for researcher endpoints.
 - Passwords are stored as scrypt hashes and compared in constant time.
 - The admin endpoint requires the `x-admin-token` header to match `ADMIN_TOKEN`.

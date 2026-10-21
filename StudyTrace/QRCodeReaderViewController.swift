@@ -91,7 +91,8 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        configureActionButton(title: "Please scan a QR Code", enabled: false)
+        title = "Study sign-in"
+        configureActionButton(title: "Scan your personal invitation", enabled: false)
         
         qrcodeFrameView = UIView(frame: CGRect.zero)
         if let qrcodeFrameView = qrcodeFrameView {
@@ -186,7 +187,7 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                         scannedContent = QRCodeReaderViewController.classifyScannedContent(str)
                         switch scannedContent {
                         case .url:
-                            configureActionButton(title: "Join Study", enabled: true)
+                            configureActionButton(title: "Sign in to study", enabled: true)
                         case .json:
                             configureActionButton(title: "Import ESM Settings", enabled: true)
                         case .unknown:
@@ -208,7 +209,6 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
     
     @IBAction func didPushJoinButton(_ sender: UIButton) {
         if let qr = qrcode {
-            let study   = AWAREStudy.shared()
             
             switch scannedContent {
             case .url:
@@ -217,44 +217,32 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                     return
                 }
                 startIndicator()
-                study.join(withURL: secureURL, completion: { (settings, status, error) in
-                    DispatchQueue.main.async {
-                        
-                        switch status {
-                        case AwareStudyStateNetworkConnectionError, AwareStudyStateDataFormatError:
-                            let alert = UIAlertController(title: "Error", message: "Could not join this study \"\(qr)\" due to a network connection error. Please join this study again.", preferredStyle: .alert)
-                            alert.addAction(UIAlertAction.init(title: NSLocalizedString("Cancel", comment: ""), style: .cancel, handler: { (action) in
-                                self.dismissIndicator()
-                            }))
-                            self.present(alert, animated: true) { }
-                            return
-                        default:
-                            break
-                        }
-
-                        if StudyParticipationController.hasConsent() {
-                            let core = AWARECore.shared()
-                            core.requestPermissionForPushNotification { (_, _) in
-                                core.requestPermissionForBackgroundSensing { _ in
-                                    StudyParticipationController.refreshCollectionState(
-                                        fitbitPresenter: self,
-                                        createRemoteTables: true
-                                    )
-                                    self.dismiss(animated: true) {
-                                        self.dismissIndicator()
-                                    }
-                                }
-                            }
-                        } else {
-                            self.dismiss(animated: true) {
-                                self.dismissIndicator()
-                            }
+                ParticipantEnrollment.signIn(secureURL) { message in
+                    if let message = message {
+                        self.dismissIndicator()
+                        let alert = UIAlertController(title: "Study sign-in", message: message, preferredStyle: .alert)
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(alert, animated: true)
+                        return
+                    }
+                    let core = AWARECore.shared()
+                    core.requestPermissionForPushNotification { (_, _) in
+                        core.requestPermissionForBackgroundSensing { _ in
+                            StudyParticipationController.refreshCollectionState(fitbitPresenter: self, createRemoteTables: true)
+                            self.dismissIndicator()
+                            self.dismiss(animated: true)
                         }
                     }
-                })
+                }
                 break
             case .json:
-                
+                guard StudyParticipationController.hasConsent() else {
+                    let alert = UIAlertController(title: "Study sign-in required", message: "Sign in with your personal study invitation before importing survey schedules.", preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    present(alert, animated: true)
+                    return
+                }
+
                 do {
                     if let strData = qr.data(using: .utf8){
                         if let jsonArray = try JSONSerialization.jsonObject(with: strData,

@@ -7,7 +7,7 @@
 // the AWARE protocol. The AWARE routes remain available for the StudyTrace
 // iOS client; this is an additional, equivalent door into the same data.
 //
-// Auth: ingestion requests carry the participant study password as a Bearer
+// Auth: ingestion requests carry an active personal device credential as a Bearer
 // token (`Authorization: Bearer <password>`) or `x-study-password` header.
 // Destructive calls (DELETE) require the researcher password instead, sent as
 // `x-researcher-password` or Bearer. The study id is in the path.
@@ -24,7 +24,9 @@
 //                    "withdrawn_at": <epoch ms, optional> }
 
 import express from 'express';
+import { participantAccess, requestDeviceId, rowsMatchDevice, revokeDeviceEnrollment } from './enrollment.js';
 import {
+  getPool,
   safeTableName,
   createSensorTable,
   insertRows,
@@ -44,7 +46,6 @@ import {
   recordAuthFailure,
   researcherPasswordFrom,
   sendRateLimited,
-  studyAcceptsParticipantPassword,
   studyAcceptsResearcherPassword,
 } from './auth.js';
 
@@ -67,11 +68,15 @@ export function createGenericApiRouter() {
       const study = await getStudy(req.params.studyId);
       if (studyAcceptsResearcherPassword(study, researcherPassword)) {
         req.authRole = 'researcher';
-      } else if (studyAcceptsParticipantPassword(study, participantPassword)) {
-        req.authRole = 'participant';
       } else {
-        recordAuthFailure(req);
-        return res.status(403).json({ error: 'invalid study id or password' });
+        const enrollment = await participantAccess(req.params.studyId, participantPassword, requestDeviceId(req),
+          { allowInactive: req.method === 'POST' && req.path.endsWith('/withdrawal') });
+        if (!enrollment) {
+          recordAuthFailure(req);
+          return res.status(403).json({ error: 'verified participant sign-in required' });
+        }
+        req.authRole = 'participant';
+        req.enrollment = enrollment;
       }
       req.study = study;
       next();
@@ -94,6 +99,7 @@ export function createGenericApiRouter() {
   }
 
   function deviceIdFrom(req) {
+    if (req.enrollment) return req.enrollment.device_id;
     return (
       req.body?.device_id ||
       req.query.device_id ||
@@ -109,13 +115,14 @@ export function createGenericApiRouter() {
 
     const deviceId = deviceIdFrom(req);
     const rows = rowsFromBody(req.body);
+    if (req.enrollment && !rowsMatchDevice(rows, deviceId)) return res.status(403).json({ error: 'device mismatch' });
     if (rows.length === 0) {
       return res.status(400).json({ error: 'no rows to insert (send {device_id, rows:[...]})' });
     }
     try {
       await createSensorTable(table);
       const n = await insertRows(table, req.params.studyId, deviceId, rows);
-      if (deviceId) await upsertDevice(deviceId, req.params.studyId, req.query.participant);
+      if (deviceId) await upsertDevice(deviceId, req.params.studyId, req.enrollment?.participant || req.query.participant);
       return res.status(201).json({ ok: true, inserted: n, duplicates: rows.length - n });
     } catch (err) {
       console.error(`[api insert ${req.params.sensor}]`, err);
@@ -184,15 +191,30 @@ export function createGenericApiRouter() {
     const deleteData = req.body?.delete_data === true || req.body?.delete_data === 'true';
     const now = Date.now();
     const claimed = Number(req.body?.withdrawn_at);
-    const withdrawnAt = Number.isFinite(claimed) && claimed > 0 ? Math.min(claimed, now) : now;
+    let withdrawnAt = Number.isFinite(claimed) && claimed > 0 ? Math.min(claimed, now) : now;
+    if (req.enrollment) {
+      // Inactive credentials can retry deletion of their old data, but cannot
+      // choose a later cutoff that reaches a newly verified enrollment's data.
+      const deadline = new Date(req.enrollment.collection_expires_at).getTime();
+      const revoked = req.enrollment.revoked_at ? new Date(req.enrollment.revoked_at).getTime() : now;
+      withdrawnAt = Math.min(withdrawnAt, deadline, revoked);
+    }
     try {
-      const participant = await getDeviceParticipant(req.params.studyId, deviceId);
+      const participant = req.enrollment?.participant || await getDeviceParticipant(req.params.studyId, deviceId);
       const rowsDeleted = deleteData
         ? await deleteDeviceData(req.params.studyId, deviceId, { before: withdrawnAt })
         : 0;
       // Without deletion the device stays listed with its data but no longer
       // counts as enrolled; with deletion its registration is already gone.
       await markDeviceWithdrawn(req.params.studyId, deviceId, withdrawnAt);
+      // Revoke the credential that submitted this withdrawal. A delayed retry
+      // from an older enrollment must not revoke a newly verified enrollment.
+      if (req.enrollment) {
+        await getPool().query('UPDATE participant_enrollments SET revoked_at = $2 WHERE enrollment_id = $1',
+          [req.enrollment.enrollment_id, new Date()]);
+      } else {
+        await revokeDeviceEnrollment(req.params.studyId, deviceId);
+      }
       await recordWithdrawal({
         studyId: req.params.studyId,
         deviceId,

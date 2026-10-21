@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E1374A001234000000000001 /* ParticipantEnrollment.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1374A001234000000000002 /* ParticipantEnrollment.swift */; };
 		166FFA66C3A60DE408D54444 /* Pods_StudyTrace.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D83C1A3254FCB129D5EBD903 /* Pods_StudyTrace.framework */; };
 		40C62C7F2FBB845900B81347 /* studytracelogo.icon in Resources */ = {isa = PBXBuildFile; fileRef = 40C62C7E2FBB845900B81347 /* studytracelogo.icon */; };
 		4F0BC9A1222D4952006348E4 /* AdvancedSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0BC9A0222D4952006348E4 /* AdvancedSettingsViewController.swift */; };
@@ -64,6 +65,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		E1374A001234000000000002 /* ParticipantEnrollment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticipantEnrollment.swift; sourceTree = "<group>"; };
 		2037B1A5CBF8297D303D2168 /* Pods_StudyTraceUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_StudyTraceUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		31057451989BC97C547C3052 /* Pods-StudyTraceUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StudyTraceUITests.release.xcconfig"; path = "Target Support Files/Pods-StudyTraceUITests/Pods-StudyTraceUITests.release.xcconfig"; sourceTree = "<group>"; };
 		40C62C7E2FBB845900B81347 /* studytracelogo.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = studytracelogo.icon; sourceTree = "<group>"; };
@@ -223,6 +225,7 @@
 				40C62C7E2FBB845900B81347 /* studytracelogo.icon */,
 				4F530269240FB13D008E3342 /* StudyTrace.entitlements */,
 				4FFE19762226A10B00C4715E /* AppDelegate.swift */,
+				E1374A001234000000000002 /* ParticipantEnrollment.swift */,
 				4FFE19782226A10B00C4715E /* ViewController.swift */,
 				4FFE19B12226D2C100C4715E /* StudyTraceTableViewCell.swift */,
 				4FFE19A72226A41900C4715E /* ContextCardViewController.swift */,
@@ -572,6 +575,7 @@
 				4FEA0298237B8D1700CFDC2F /* OnboardingManager.swift in Sources */,
 				4FFE19B02226C7DC00C4715E /* ESMViewController.swift in Sources */,
 				4FFE19772226A10B00C4715E /* AppDelegate.swift in Sources */,
+				E1374A001234000000000001 /* ParticipantEnrollment.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -764,7 +768,7 @@
 				CODE_SIGN_ENTITLEMENTS = StudyTrace/StudyTrace.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 2F9Z668JPM;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = StudyTrace/Info.plist;
@@ -796,7 +800,7 @@
 				CODE_SIGN_ENTITLEMENTS = StudyTrace/StudyTrace.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 2F9Z668JPM;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = StudyTrace/Info.plist;

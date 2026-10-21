@@ -16,7 +16,7 @@ NSString * const AWARE_PREFERENCES_FREQUENCY_GPS       = @"frequency_gps";
 NSString * const AWARE_PREFERENCES_MIN_GPS_ACCURACY    = @"min_gps_accuracy";
 
 @implementation Locations{
-    NSTimer * locationTimer;
+    NSDate * lastSavedLocationTimestamp;
     double interval;
     double accuracy;
 }
@@ -166,14 +166,8 @@ NSString * const AWARE_PREFERENCES_MIN_GPS_ACCURACY    = @"min_gps_accuracy";
     
     [locationManager startUpdatingLocation];
     
-    if(self->interval > 0){
-        locationTimer = [NSTimer scheduledTimerWithTimeInterval:self->interval
-                                                         target:self
-                                                       selector:@selector(getGpsData:)
-                                                       userInfo:nil
-                                                        repeats:YES];
-        [self getGpsData:nil];
-    }
+    // StudyTrace: persist delivered fixes in the delegate callback. An ordinary
+    // timer cannot be relied on to run while iOS suspends the app between fixes.
     
     [self setSensingState:YES];
     return YES;
@@ -181,13 +175,12 @@ NSString * const AWARE_PREFERENCES_MIN_GPS_ACCURACY    = @"min_gps_accuracy";
 
 
 - (BOOL)stopSensor{
-    /// stop a sensing timer
-    [locationTimer invalidate];
-    locationTimer = nil;
-    
     /// stop location sensors
     [locationManager stopUpdatingLocation];
+    [locationManager stopMonitoringSignificantLocationChanges];
+    locationManager.delegate = nil;
     locationManager = nil;
+    _lastLocation = nil;
     
     if (self.storage != nil) {
         [self.storage saveBufferDataInMainThread:YES];
@@ -198,21 +191,24 @@ NSString * const AWARE_PREFERENCES_MIN_GPS_ACCURACY    = @"min_gps_accuracy";
     return YES;
 }
 
-- (void) getGpsData: (NSTimer *) theTimer {
-    if (_lastLocation != nil) {
-        [self saveLocation:_lastLocation];
-    }else{
-        _lastLocation = [locationManager location];
-        if (_lastLocation != nil) {
-            [self saveLocation:_lastLocation];
+- (void) saveLocation:(CLLocation * _Nonnull)location{
+    if (location.horizontalAccuracy < 0 || !isfinite(location.horizontalAccuracy) ||
+        !CLLocationCoordinate2DIsValid(location.coordinate)) {
+        return;
+    }
+    if (lastSavedLocationTimestamp != nil) {
+        NSTimeInterval elapsed = [location.timestamp timeIntervalSinceDate:lastSavedLocationTimestamp];
+        if (elapsed <= 0 || (interval > 0 && !_saveAll && elapsed < interval)) {
+            return;
         }
     }
-}
-
-- (void) saveLocation:(CLLocation * _Nonnull)location{
+    if (self.storage == nil || ![self.storage isStore]) {
+        return;
+    }
     
     NSMutableDictionary *dict = [[NSMutableDictionary alloc] init];
-    [dict setObject:[AWAREUtils getUnixTimestamp:[NSDate new]] forKey:@"timestamp"];
+    // Preserve acquisition time; do not turn a cached fix into a new sample.
+    [dict setObject:[AWAREUtils getUnixTimestamp:location.timestamp] forKey:@"timestamp"];
     [dict setObject:[self getDeviceId] forKey:@"device_id"];
     [dict setObject:@(location.coordinate.latitude)  forKey:@"double_latitude"];
     [dict setObject:@(location.coordinate.longitude) forKey:@"double_longitude"];
@@ -227,8 +223,24 @@ NSString * const AWARE_PREFERENCES_MIN_GPS_ACCURACY    = @"min_gps_accuracy";
         [dict setObject:@"" forKey:@"label"];
     }
     
+    // Core Location delivers on the run loop where the manager was created
+    // (the main thread in StudyTrace). Finish that write before returning to iOS.
+    if (![self.storage saveDataWithDictionary:dict buffer:NO saveInMainThread:[NSThread isMainThread]]) {
+        return;
+    }
+    lastSavedLocationTimestamp = location.timestamp;
     [self setLatestData:dict];
-    [self.storage saveDataWithDictionary:dict buffer:NO saveInMainThread:NO];
+
+    UIApplicationState state = UIApplication.sharedApplication.applicationState;
+    NSString *stateName = state == UIApplicationStateBackground ? @"background" :
+        (state == UIApplicationStateActive ? @"active" : @"inactive");
+    // Receipt time and app state allow a researcher to distinguish a background
+    // delivery from a deferred fix written when the app next opens. No coordinates
+    // are duplicated into this audit event.
+    [AWAREEventLogger.shared logEvent:@{@"class": @"Locations",
+                                       @"event": @"location_sample_received",
+                                       @"fix_timestamp": dict[@"timestamp"],
+                                       @"application_state": stateName}];
 
     [self setLatestValue:[NSString stringWithFormat:@"%f, %f, %f",
                           location.coordinate.latitude,
@@ -291,11 +303,11 @@ NSString * const AWARE_PREFERENCES_MIN_GPS_ACCURACY    = @"min_gps_accuracy";
     }
     if (locations != nil) {
         for (CLLocation* location in locations) {
-            _lastLocation = location;
-            /// If the interval value is less than or equal to 0, all of the location data will be saved.
-            if (self->interval <= 0 || _saveAll) {
-                [self saveLocation:location];
+            if (location.horizontalAccuracy >= 0 &&
+                (_lastLocation == nil || [location.timestamp compare:_lastLocation.timestamp] != NSOrderedAscending)) {
+                _lastLocation = location;
             }
+            [self saveLocation:location];
         }
     }
 }

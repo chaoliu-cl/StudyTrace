@@ -44,10 +44,10 @@
         <form id="admin-create-study" class="stack">
           <label><span>Study ID</span><input name="study_id" placeholder="pilot1" required></label>
           <label><span>Study name</span><input name="name" placeholder="StudyTrace Pilot"></label>
-          <label><span>Participant study password</span><input name="password" type="password" placeholder="Goes in the join link / QR code" autocomplete="new-password"></label>
+          <label><span>Legacy provisioning secret</span><input name="password" type="password" placeholder="Required for new studies; does not grant participant access" autocomplete="new-password"></label>
           <label><span>Researcher password</span><input name="researcher_password" type="password" placeholder="At least 12 characters; never share with participants" autocomplete="new-password"></label>
           <label><span>Default time zone</span><input name="timezone" placeholder="e.g. America/New_York (used until a phone reports its own)"></label>
-          <p class="section-note">New studies need both passwords. For an existing study, fill in only what you want to change. Leave the participant password blank to keep enrolled phones working.</p>
+          <p class="section-note">New studies need both passwords. For an existing study, fill in only what you want to change. Participants receive personal invitations after consent verification. The legacy provisioning secret does not grant access.</p>
           <button class="button button-primary" type="submit">Save study</button>
         </form>
         <div id="admin-create-link" class="hidden"></div>
@@ -57,15 +57,19 @@
       <section class="panel">
         <div class="section-head">
           <div>
-            <h2>Join link and QR code</h2>
-            <p class="section-note">Get the study URL and a scannable QR code for an existing study. The participant study password is stored hashed, so enter it here to rebuild the link. Add a participant ID to label that participant's device.</p>
+            <h2>Consent-verified invitation</h2>
+            <p class="section-note">After checking the signed consent in your secure consent register, issue one invitation per participant. Activation expires in seven days; collection ends 28 days after activation. Keep identity and signed consent outside this dashboard.</p>
           </div>
         </div>
         <form id="admin-join-link" class="stack">
           <label><span>Study ID</span><input name="study_id" placeholder="pilot1" required></label>
-          <label><span>Participant study password</span><input name="password" type="password" autocomplete="off" required></label>
-          <label><span>Participant ID, optional</span><input name="participant" placeholder="P001" maxlength="128"></label>
-          <button class="button button-primary" type="submit">Generate join link and QR code</button>
+          <label><span>Participant code</span><input name="participant" placeholder="P001" maxlength="128" required></label>
+          <label><span>Consent version</span><input name="consent_version" placeholder="IRB #374 — approved version/date" maxlength="128" required></label>
+          <label><span>Consent record reference (no names)</span><input name="consent_reference" placeholder="Secure consent register reference" maxlength="128" required></label>
+          <label><span>Date consent was signed</span><input name="consented_at" type="date" required></label>
+          <label><span>Verified by (staff ID)</span><input name="verified_by" maxlength="128" required></label>
+          <label><span><input name="consent_verified" type="checkbox" required> I verified completed adult consent for this study and its current procedures.</span></label>
+          <button class="button button-primary" type="submit">Issue personal invitation</button>
         </form>
         <p id="admin-join-link-message" class="status-line"></p>
         <div id="admin-join-link-result" class="hidden"></div>

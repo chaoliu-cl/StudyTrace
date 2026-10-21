@@ -67,8 +67,10 @@ final class StudyTraceUploadQueue: NSObject {
     /// Queues a request body. `id` is sent as the idempotency key and must be
     /// stable for one logical upload (e.g. a hash of the screenshot).
     func enqueue(kind: String, path: String, body: Data, id: String) {
-        guard let context = StudyTraceTelemetry.studyContext() else { return }
+        guard StudyParticipationController.hasConsent(), let context = StudyTraceTelemetry.studyContext() else { return }
         queue.async {
+            guard StudyParticipationController.hasConsent(),
+                  StudyTraceTelemetry.studyContext()?.studyId == context.studyId else { return }
             self.loadIfNeeded()
             self.enqueueLocked(kind: kind, path: path, body: body, id: id, studyId: context.studyId)
             self.drainLocked()
@@ -77,7 +79,9 @@ final class StudyTraceUploadQueue: NSObject {
 
     /// Buffers a telemetry row; rows are sent in batches.
     func addTelemetry(sensor: String, row: [String: Any]) {
+        guard StudyParticipationController.hasConsent() else { return }
         queue.async {
+            guard StudyParticipationController.hasConsent() else { return }
             self.loadIfNeeded()
             self.telemetryBuffer[sensor, default: []].append(row)
             self.persistTelemetryBuffer()
@@ -167,7 +171,7 @@ final class StudyTraceUploadQueue: NSObject {
     }
 
     private func drainLocked() {
-        guard !items.isEmpty, let context = StudyTraceTelemetry.studyContext() else { return }
+        guard StudyParticipationController.hasConsent(), !items.isEmpty, let context = StudyTraceTelemetry.studyContext() else { return }
         session.getAllTasks { tasks in
             let inFlight = Set(tasks.compactMap { $0.taskDescription })
             self.queue.async {
@@ -279,6 +283,9 @@ extension StudyTraceUploadQueue: URLSessionDataDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let id = task.taskDescription else { return }
         let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401 || status == 403 {
+            DispatchQueue.main.async { ParticipantEnrollment.refreshStatus(force: true) }
+        }
         queue.async {
             self.complete(id: id, status: status, error: error)
         }
@@ -318,7 +325,7 @@ enum UsageScreenshotUploader {
     }
 
     static func upload(_ image: UIImage, submission: UsageScreenshotSubmission, completion: @escaping (Outcome) -> Void) {
-        guard let context = StudyTraceTelemetry.studyContext() else {
+        guard StudyParticipationController.hasConsent(), let context = StudyTraceTelemetry.studyContext() else {
             completion(.failed(title: "Study Not Configured",
                                message: "Join a study before uploading a screenshot."))
             return

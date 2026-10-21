@@ -160,13 +160,14 @@ class ViewController: UIViewController {
         let study = AWAREStudy.shared()
 
         if let studyURL = study.getURL(), !studyURL.isEmpty {
-            study.join(withURL: studyURL) { [weak self] (settings, status, error) in
+            ParticipantEnrollment.signIn(studyURL) { [weak self] message in
                 DispatchQueue.main.async {
+                    sender.endRefreshing()
+                    if let message = message { self?.showStudySignInError(message); return }
                     StudyParticipationController.refreshCollectionState(
                         fitbitPresenter: self,
                         createRemoteTables: true
                     )
-                    sender.endRefreshing()
                     AWARETheme.notificationFeedback(.success)
                     self?.refreshStudySection()
                 }
@@ -260,8 +261,9 @@ class ViewController: UIViewController {
             self.present(alert, animated:true , completion: nil)
         } else {
             if let studyURL = study.getURL() {
-                study.join(withURL: studyURL) { (settings, status, error) in
+                ParticipantEnrollment.signIn(studyURL) { message in
                     DispatchQueue.main.async {
+                        if let message = message { self.showStudySignInError(message); return }
                         StudyParticipationController.refreshCollectionState(
                             fitbitPresenter: self,
                             createRemoteTables: true
@@ -315,8 +317,8 @@ class ViewController: UIViewController {
         }
 
          return [TableRowContent(type: .setting,
-                         title: "Study URL",
-                         details: AWAREStudy.shared().getURL() ?? "",
+                         title: "Study sign-in",
+                         details: StudyParticipationController.hasConsent() ? "Signed in as \(ParticipantEnrollment.authorization()?.participant ?? "participant")" : "Use your personal invitation after study consent",
                          identifier: TableRowIdentifier.studyId.rawValue),
          TableRowContent(type: .setting,
                          title: NSLocalizedString("device_id", comment: ""),
@@ -367,7 +369,7 @@ class ViewController: UIViewController {
         }
     }
 
-    private func refreshStudySection() {
+    fileprivate func refreshStudySection() {
         settings = getSettings()
 
         guard isViewLoaded else { return }
@@ -375,7 +377,7 @@ class ViewController: UIViewController {
     }
 
     private func updateUploadButtonState() {
-        let hasStudyURL = AppStoreDemo.isEnabled || !(AWAREStudy.shared().getURL() ?? "").isEmpty
+        let hasStudyURL = AppStoreDemo.isEnabled || StudyParticipationController.hasConsent()
         uploadButton.tintColor = hasStudyURL ? AWARETheme.accent : AWARETheme.secondaryInk
         uploadButton.image = UIImage(systemName: "icloud.and.arrow.up")
         uploadButton.isEnabled = hasStudyURL
@@ -586,9 +588,8 @@ extension ViewController {
     }
 
     func showReloadCompletionAlert(){
-        let study = AWAREStudy.shared()
         let alert = UIAlertController(title: "Study configuration reloaded successfully.",
-                                      message: study.getURL(),
+                                      message: "Your verified study access is active.",
                                       preferredStyle: .alert)
         let close = UIAlertAction(title: NSLocalizedString("Close", comment: ""),
                                    style: .default,
@@ -752,14 +753,20 @@ extension UIViewController {
         self.present(alert, animated: true, completion: nil)
     }
 
+    func showStudySignInError(_ message: String) {
+        let alert = UIAlertController(title: "Study sign-in", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
     func showAlertForSettingStudyId(){
-        let alert = UIAlertController(title:"Study URL", message:nil, preferredStyle: .alert)
+        let alert = UIAlertController(title:"Sign in to study", message:"Complete study consent with your research team, then paste your personal invitation. No password creation is needed.", preferredStyle: .alert)
         alert.addTextField(configurationHandler: { textField in
-            textField.placeholder = "https://url.for.studytrace.server"
+            textField.placeholder = "Personal study invitation URL"
             textField.clearButtonMode = .whileEditing
             textField.text = AWAREStudy.shared().getURL()
         })
-        alert.addAction(UIAlertAction(title: NSLocalizedString("Update", comment: "") , style: .default, handler: { (action) in
+        alert.addAction(UIAlertAction(title: "Sign in" , style: .default, handler: { (action) in
             if let textFields = alert.textFields {
                 if textFields.count > 0 {
                     if let textField = textFields.first {
@@ -768,16 +775,17 @@ extension UIViewController {
                                 self.showInsecureURLAlert()
                                 return
                             }
-                            let study = AWAREStudy.shared()
-                            study.setStudyURL(secureURL)
-                            study.join(withURL: secureURL, completion: { (settings, study, error) in
-                                DispatchQueue.main.async {
-                                    StudyParticipationController.refreshCollectionState(
-                                        fitbitPresenter: self,
-                                        createRemoteTables: true
-                                    )
+                            ParticipantEnrollment.signIn(secureURL) { message in
+                                if let message = message { self.showStudySignInError(message); return }
+                                let core = AWARECore.shared()
+                                core.requestPermissionForPushNotification { _, _ in
+                                    core.requestPermissionForBackgroundSensing { _ in
+                                        StudyParticipationController.refreshCollectionState(fitbitPresenter: self, createRemoteTables: true)
+                                        (UIApplication.shared.delegate as? AppDelegate)?.refreshRemoteESMScheduleIfNeeded(force: true)
+                                        (self as? ViewController)?.refreshStudySection()
+                                    }
                                 }
-                            })
+                            }
                         }
                     }
                 }

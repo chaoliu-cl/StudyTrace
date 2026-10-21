@@ -55,6 +55,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                                             "event":"application:didFinishLaunchingWithOptions:launchOptions:"]);
         StudyTraceTelemetry.recordEvent("app_launch", metadata: launchInfo)
         StudyTraceTelemetry.uploadDeviceState(reason: "app_launch")
+        ParticipantEnrollment.startMonitoring()
         StudyTraceHeartbeat.start()
         StudyTraceNotificationAudit.reportDeliveredNotifications()
 
@@ -169,6 +170,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
+        ParticipantEnrollment.refreshStatus(force: true)
         StudyTraceTelemetry.updateCachedAppState()
         StudyTraceTelemetry.recordEvent("app_did_become_active")
         StudyTraceHeartbeat.beatIfDue()
@@ -193,7 +195,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         self.saveContext()
     }
 
-    private func refreshRemoteESMScheduleIfNeeded(force: Bool) {
+    func refreshRemoteESMScheduleIfNeeded(force: Bool) {
         guard StudyParticipationController.hasConsent() else { return }
         let key = "studytrace.lastRemoteESMScheduleRefresh"
         let now = Date()
@@ -237,28 +239,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                     studyURL = studyURL.replacingCharacters(in: range, with: "https")
                 }
             }
-            let study = AWAREStudy.shared()
-            study.join(withURL: studyURL) { (settings, status, error) in
-                if status == AwareStudyStateUpdate || status == AwareStudyStateNew {
-                    StudyTraceTelemetry.recordEvent("study_joined", metadata: ["status": "\(status)"])
-                    let core = AWARECore.shared()
-                    guard StudyParticipationController.hasConsent() else { return }
-                    core.requestPermissionForPushNotification { (_, _) in
-                        core.requestPermissionForBackgroundSensing { _ in
-                            StudyParticipationController.refreshCollectionState(
-                                fitbitPresenter: self.window?.rootViewController,
-                                createRemoteTables: true
-                            )
-                            self.refreshRemoteESMScheduleIfNeeded(force: true)
-                            StudyTraceTelemetry.uploadDeviceState(reason: "study_joined")
-                        }
+            ParticipantEnrollment.signIn(studyURL) { message in
+                guard message == nil else {
+                    let alert = UIAlertController(title: "Study sign-in", message: message, preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.window?.rootViewController?.present(alert, animated: true)
+                    return
+                }
+                let core = AWARECore.shared()
+                core.requestPermissionForPushNotification { (_, _) in
+                    core.requestPermissionForBackgroundSensing { _ in
+                        StudyParticipationController.refreshCollectionState(
+                            fitbitPresenter: self.window?.rootViewController, createRemoteTables: true)
+                        self.refreshRemoteESMScheduleIfNeeded(force: true)
                     }
-                }else {
-                    StudyTraceTelemetry.recordEvent("study_join_failed", metadata: [
-                        "status": "\(status)",
-                        "error": error?.localizedDescription ?? ""
-                    ])
-                    // print("Error: ")
                 }
             }
         }
@@ -438,7 +432,7 @@ enum StudyParticipationController {
     static let consentTimestampKey = "com.studytrace.consent-timestamp"
 
     static func hasConsent() -> Bool {
-        UserDefaults.standard.bool(forKey: consentKey)
+        UserDefaults.standard.bool(forKey: consentKey) && ParticipantEnrollment.isAuthorized
     }
 
     static func recordConsentGranted() {
@@ -472,6 +466,7 @@ enum StudyParticipationController {
                                     completion: ((WithdrawalServerResult) -> Void)? = nil) {
         // Read the server context before settings are cleared below.
         let context = notifyServer ? StudyTraceTelemetry.studyContext() : nil
+        ParticipantEnrollment.clear()
         UserDefaults.standard.set(false, forKey: consentKey)
         UserDefaults.standard.removeObject(forKey: consentTimestampKey)
         OnboardingManager.recordConsentDecision()

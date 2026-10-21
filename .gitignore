@@ -5,3 +5,8 @@ server/node_modules/
 DerivedData/
 *.xcuserstate
 *.xcuserdatad/
+
+# Physical-device review recordings and local diagnostic captures stay private.
+AppStoreAssets/AppReview/**/*.mp4
+AppStoreAssets/AppReview/diagnostics/
+Pods/resources-to-copy-*.txt

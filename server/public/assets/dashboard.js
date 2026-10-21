@@ -98,7 +98,7 @@ function renderJoinLink(container, payload) {
           <button class="button" type="button" data-join-svg>Download QR (SVG)</button>
           <button class="button" type="button" data-join-png>Download QR (PNG)</button>
         </div>
-        <p class="section-note">Participants scan the QR code from the StudyTrace app's join screen or paste the URL there. The link contains the participant study password, so share it only with enrolled participants.</p>
+        <p class="section-note">Participants scan this from the StudyTrace QR screen or paste it in Study sign-in. This personal sign-in link is valid for activation for seven days and binds to the first device. Share it privately with this consented participant only.</p>
       </div>
     </div>
   `;
@@ -631,6 +631,7 @@ function initResearcher() {
     const password = formData.get('password');
     if (studyId !== currentStudyId) {
       clearJoinLink(joinLinkResult);
+      document.querySelector('#consent-enrollments').innerHTML = '';
       setMessage(joinLinkMessage, '');
     }
     currentStudyId = studyId;
@@ -692,6 +693,28 @@ function initResearcher() {
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
   });
 
+  const enrollmentList = document.querySelector('#consent-enrollments');
+  async function loadEnrollments() {
+    if (!currentStudyId || !currentPassword) return;
+    const res = await fetch(`/api/v1/studies/${encodeURIComponent(currentStudyId)}/enrollments`, {
+      headers: { 'x-researcher-password': currentPassword }, cache: 'no-store',
+    });
+    const payload = await readJson(res);
+    if (!res.ok) return setMessage(joinLinkMessage, payload.error || 'Could not load consent access.', true);
+    enrollmentList.innerHTML = '<table><thead><tr><th>Code</th><th>Consent version</th><th>Access</th><th>Action</th></tr></thead><tbody>' +
+      payload.enrollments.map(row => `<tr><td>${escapeHtml(row.participant)}</td><td>${escapeHtml(row.consent_version)}</td><td>${row.revoked_at ? 'Revoked' : row.collection_expires_at ? 'Ends ' + escapeHtml(row.collection_expires_at) : 'Awaiting sign-in'}</td><td>${row.revoked_at ? '' : `<button class="button" data-revoke-enrollment="${escapeHtml(row.enrollment_id)}">Revoke access</button>`}</td></tr>`).join('') + '</tbody></table>';
+  }
+  document.querySelector('#load-enrollments').addEventListener('click', loadEnrollments);
+  enrollmentList.addEventListener('click', async event => {
+    const button = event.target.closest('[data-revoke-enrollment]');
+    if (!button) return;
+    const res = await fetch(`/api/v1/studies/${encodeURIComponent(currentStudyId)}/enrollments/${encodeURIComponent(button.dataset.revokeEnrollment)}`, {
+      method: 'DELETE', headers: { 'x-researcher-password': currentPassword },
+    });
+    if (res.ok) await loadEnrollments();
+    else setMessage(joinLinkMessage, 'Could not revoke access.', true);
+  });
+
   joinLinkForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!currentStudyId || !currentPassword) {
@@ -707,8 +730,9 @@ function initResearcher() {
       clearJoinLink(joinLinkResult);
       return setMessage(joinLinkMessage, payload.error || 'Could not generate a join link.', true);
     }
-    setMessage(joinLinkMessage, '');
+    setMessage(joinLinkMessage, 'Personal invitation issued. Keep it private; revoke it below if it is lost or shared.');
     renderJoinLink(joinLinkResult, payload);
+    await loadEnrollments();
   });
 
   setupTemplatePicker({
@@ -987,11 +1011,11 @@ function initAdmin() {
     const button = event.target.closest('[data-join-study]');
     if (!button) return;
     joinLinkForm.elements.study_id.value = button.dataset.joinStudy;
-    joinLinkForm.elements.password.value = '';
+    joinLinkForm.elements.participant.value = '';
     clearJoinLink(joinLinkResult);
     setMessage(joinLinkMessage, '');
     joinLinkForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    joinLinkForm.elements.password.focus({ preventScroll: true });
+    joinLinkForm.elements.participant.focus({ preventScroll: true });
   });
 
   document.addEventListener('click', async (event) => {

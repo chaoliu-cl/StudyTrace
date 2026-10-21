@@ -16,8 +16,10 @@ consumer profiling.
 
 - First launch explains the app, the categories of data a study may request,
   research use, withdrawal, and platform permissions.
-- Upfront informed consent cannot be skipped. Study-specific consent is also
-  required before enrollment and collection.
+- Study-specific consent is required before research enrollment and collection.
+  iOS build 13 verifies a researcher-issued personal invitation online before
+  enabling collection; a local onboarding choice or device ID is insufficient.
+  See [consent verification and rollout](server/README.md#consent-verification-and-passwordless-participant-sign-in).
 - Android app-activity collection records package/app labels, foreground-use
   duration, launch counts, and screen lock/unlock events—not content viewed or
   typed inside other apps.

@@ -21,7 +21,7 @@
       <h1>iPhone enrollment workflow</h1>
       <p class="lede">
         StudyTrace on iPhone collects only the streams enabled by your research study after consent.
-        Join with a secure study URL or QR code from your research team.
+        Sign in once with a personal invitation from your research team.
       </p>
     </section>
 
@@ -32,11 +32,11 @@
       </article>
       <article class="panel">
         <h2>2. Consent</h2>
-        <p>Read the consent flow in the app. Data collection stays off until you explicitly agree.</p>
+        <p>Complete the study-specific consent with the research team. After verifying it, the team gives you a personal invitation.</p>
       </article>
       <article class="panel">
-        <h2>3. Join</h2>
-        <p>Paste the secure study URL or scan the QR code your team provides. The app accepts HTTPS links.</p>
+        <h2>3. Sign in once</h2>
+        <p>Scan your personal invitation in StudyTrace. An internet connection verifies your consent access and binds it to this device. No password creation or daily sign-in is required.</p>
       </article>
     </section>
 
@@ -46,7 +46,7 @@
         <li>Location collection only if your study enables it and you grant permission.</li>
         <li>Survey prompts and optional photo attachments when your protocol uses them.</li>
         <li>Optional Battery usage screenshot uploads if your study asks you to share iOS app-usage context.</li>
-        <li>The in-app quit action stops participation locally.</li>
+        <li>Settings → Quit Study stops collection and notifies the study server when connected.</li>
       </ul>
       <p class="section-note">
         App-usage screenshot collection is optional and participant-driven. If your study requests it, the app asks you to open
@@ -57,7 +57,7 @@
     <section class="panel">
       <h2>Study URL format</h2>
       <p>Researchers distribute URLs like the example below. The app should receive this inside StudyTrace, not in Safari.</p>
-      <pre><code>https://your-study.up.railway.app/index.php/webservice/index/pilot1/strong-password?participant=P001</code></pre>
+      <pre><code>https://your-study.up.railway.app/index.php/webservice/index/pilot1/pi_PERSONAL_INVITATION_TOKEN?participant=P001</code></pre>
     </section>
   </main>
 </body>

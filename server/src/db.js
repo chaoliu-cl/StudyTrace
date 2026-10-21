@@ -7,6 +7,7 @@
 // field the client sends without brittle per-sensor schemas.
 
 import crypto from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 import { hashSecret } from './auth.js';
 
@@ -108,6 +109,7 @@ export async function initSchema() {
   // dashboards count only devices that are still enrolled.
   await getPool().query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ`);
   await getPool().query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ`);
+  await getPool().query(await readFile(new URL('../migrations/20261021_consent_enrollment.sql', import.meta.url), 'utf8'));
   return true;
 }
 

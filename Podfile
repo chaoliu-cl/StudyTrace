@@ -44,6 +44,20 @@ target 'StudyTrace' do
 end
 
 post_install do |installer|
+  # Retain the reviewed location and interactive-join fixes on pod reinstall.
+  %w[aware-location-callback-storage.patch aware-study-sign-in.patch].each do |name|
+    patch_path = File.join(__dir__, 'patches', name)
+    patch_args = ['--batch', '-p1', '-i', patch_path]
+    already_applied = system('/usr/bin/patch', '--dry-run', '--reverse', *patch_args,
+                             chdir: __dir__, out: File::NULL, err: File::NULL)
+    unless already_applied
+      compatible = system('/usr/bin/patch', '--dry-run', '--forward', *patch_args, chdir: __dir__)
+      raise "AWARE patch needs review for this framework version: #{name}" unless compatible
+      applied = system('/usr/bin/patch', '--forward', *patch_args, chdir: __dir__)
+      raise "Could not apply AWARE patch: #{name}" unless applied
+    end
+  end
+
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'

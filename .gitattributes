@@ -1,0 +1,2 @@
+# Patch payloads must retain literal whitespace from the vendored upstream source.
+patches/*.patch -whitespace
