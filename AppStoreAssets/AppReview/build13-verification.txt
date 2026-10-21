@@ -1,0 +1,27 @@
+Build 13 validation — October 20, 2026 (America/New_York)
+
+- Root npm test: deployment entry points, existing ingestion/dashboard/data-quality
+  smoke suite, and consent enrollment security suite pass.
+- 20 iOS XCTest tests pass with code signing enabled, including Keychain
+  persistence, authorization expiry/device binding, local-consent collection
+  gating, denied sign-in, and existing callback location regressions.
+- Signed generic iPhone Release build succeeds (build 13).
+- Local HTTPS integration: synthetic TEST001 invitation activates; native study
+  configuration joins; Study sign-in displays Signed in as TEST001; force-close
+  and relaunch retain sign-in; revocation on the test server followed by
+  foregrounding removes access and returns the app to unsigned-in state.
+- Local browser integration: synthetic TEST-UI consent-verification form issues
+  a personal QR/link and shows Awaiting sign-in; Revoke access changes it to Revoked.
+- No production database was connected during automated or local integration tests.
+- Existing build-11 physical-device background-location recording is unchanged.
+
+Logs are in /Users/chaoliu/Library/Logs/StudyTraceReview-*.
+Local HTTPS fixture and screenshots are in
+/Users/chaoliu/Library/Caches/StudyTraceReview/enrollment-validation/.
+These fixtures contain synthetic test authorization, not real signed human consent.
+
+The disposable local servers were stopped after validation and the generated
+localhost TLS private key was removed. A one-day localhost test certificate was
+trusted only in the Simulator; no physical-device trust settings were changed.
+The Simulator sign-in screenshot is diagnostics/build13-consent-sign-in-simulator.png.
+It is synthetic sign-in evidence, not physical-device background-location proof.

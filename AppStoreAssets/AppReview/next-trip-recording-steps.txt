@@ -1,0 +1,42 @@
+StudyTrace build 11 — recording procedure
+
+Purpose: demonstrate real mobility-history collection while StudyTrace stays
+in the background. The October 20 trip recording has now been retrieved and
+validated; these steps are retained for future recordings. The validated
+deliverable is background-location-iPhone-build11.mp4.
+
+Before leaving
+
+1. Temporarily set Settings > Display & Brightness > Auto-Lock to Never so
+   the screen recording will not stop when the phone locks.
+2. Start the iPhone's built-in Screen Recording from Control Center.
+3. Show Settings > Apps > StudyTrace > Location with Always selected for
+   about five seconds.
+4. Open StudyTrace > Dashboard, tap the upper-right refresh icon, and leave
+   the Location map visible for about five seconds.
+5. Swipe Home. Keep StudyTrace running in the background without force-quitting
+   it. You can now disconnect the USB cable.
+
+During the trip
+
+Keep the recording running continuously and the screen awake. Stay outside
+StudyTrace for 6–10 minutes while travelling, reaching roughly 500 meters away
+from the starting point. Avoid a small loop around the starting point. The app
+uses a 300-meter movement filter and a three-minute sampling rate limit, so
+both movement and elapsed time matter. Do not reopen StudyTrace mid-trip.
+
+At the end
+
+1. Reopen StudyTrace > Dashboard and tap refresh. Leave the Location map
+   visible for about 10 seconds.
+2. Stop Screen Recording and keep the original video in Photos.
+3. Restore your preferred Auto-Lock setting.
+4. Reconnect and unlock the iPhone, then reply "trip complete".
+
+Validation afterward
+
+The recording alone will not establish when a point was saved. We will match
+the on-device location rows to receipt events showing background application
+state, fresh fix times, and delivery clearly before the app was reopened. Only
+after that check will a video be prepared as App Review evidence. The existing
+stationary/walking diagnostic videos are not suitable submission evidence.

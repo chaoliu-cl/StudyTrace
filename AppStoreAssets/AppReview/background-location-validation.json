@@ -1,0 +1,146 @@
+{
+  "validation_date": "2026-10-20",
+  "timezone": "America/New_York",
+  "device": {
+    "model": "iPhone 14 Pro",
+    "os_version_queried_after_test": "27.0.1",
+    "app_version": "1.0.0",
+    "app_build": "11",
+    "bundle_identifier": "com.liuchao.studytrace"
+  },
+  "permission": {
+    "always_selected": "confirmed by participant",
+    "authorization_status_at_launch": 3
+  },
+  "recording": {
+    "source_filename": "IMG_3621.MP4",
+    "source_creation_utc": "2026-10-21T01:37:04Z",
+    "source_duration_seconds": 356.070408,
+    "source_sha256": "6dc70f406fe9bfe7ff19f9ba99d814322112d0cc37d906264f167f9e71af94b8",
+    "output_filename": "background-location-iPhone-build11.mp4",
+    "output_duration_seconds": 356.066667,
+    "output_bytes": 10261771,
+    "output_sha256": "fc4adaa08b0a2906e89bf2a091bbac938209627de7b9052711d41c5087dec661",
+    "processing": "Complete source sequence at original speed; scaled to 720x1560 at 15 fps, H.264; audio omitted. No cuts, captions, simulated screens or inserted footage."
+  },
+  "recorded_background_interval": {
+    "start": "2026-10-20T21:37:31.467-04:00",
+    "end": "2026-10-20T21:42:45.268-04:00",
+    "duration_seconds": 313.801,
+    "approximate_video_start": "00:27",
+    "approximate_video_end": "05:41"
+  },
+  "verified_sample": {
+    "received": "2026-10-20T21:38:03.615-04:00",
+    "fix": "2026-10-20T21:38:03.543-04:00",
+    "fix_timestamp": 1792546683543,
+    "application_state": "background",
+    "persisted": true,
+    "inside_background_interval": true,
+    "fresh_within_30_seconds": true,
+    "accuracy_meters": 45,
+    "receipt_delay_seconds": 0.072,
+    "approximate_video_time": "01:00",
+    "displacement_from_previous_saved_fix_meters": 938.7
+  },
+  "verification_method": {
+    "matching_persisted_row_required": true,
+    "background_receipt_state_required": true,
+    "receipt_margin_from_lifecycle_boundaries_seconds": 5,
+    "freshness_threshold_seconds": 30
+  },
+  "confirmed_background_samples_inside_recording": 1,
+  "additional_confirmed_background_samples_outside_recording": [
+    {
+      "received": "2026-10-20T16:21:57.615-04:00",
+      "fix": "2026-10-20T16:21:56.999-04:00",
+      "fix_timestamp": 1792527716999,
+      "application_state": "background",
+      "persisted": true,
+      "inside_background_interval": true,
+      "fresh_within_30_seconds": true
+    },
+    {
+      "received": "2026-10-20T16:36:27.693-04:00",
+      "fix": "2026-10-20T16:36:27.523-04:00",
+      "fix_timestamp": 1792528587523,
+      "application_state": "background",
+      "persisted": true,
+      "inside_background_interval": true,
+      "fresh_within_30_seconds": true
+    },
+    {
+      "received": "2026-10-20T16:52:45.527-04:00",
+      "fix": "2026-10-20T16:52:45.502-04:00",
+      "fix_timestamp": 1792529565502,
+      "application_state": "background",
+      "persisted": true,
+      "inside_background_interval": true,
+      "fresh_within_30_seconds": true
+    },
+    {
+      "received": "2026-10-20T17:07:12.676-04:00",
+      "fix": "2026-10-20T17:07:12.565-04:00",
+      "fix_timestamp": 1792530432565,
+      "application_state": "background",
+      "persisted": true,
+      "inside_background_interval": true,
+      "fresh_within_30_seconds": true
+    },
+    {
+      "received": "2026-10-20T17:32:25.059-04:00",
+      "fix": "2026-10-20T17:32:24.950-04:00",
+      "fix_timestamp": 1792531944950,
+      "application_state": "background",
+      "persisted": true,
+      "inside_background_interval": true,
+      "fresh_within_30_seconds": true
+    },
+    {
+      "received": "2026-10-20T17:40:39.680-04:00",
+      "fix": "2026-10-20T17:40:39.269-04:00",
+      "fix_timestamp": 1792532439269,
+      "application_state": "background",
+      "persisted": true,
+      "inside_background_interval": true,
+      "fresh_within_30_seconds": true
+    },
+    {
+      "received": "2026-10-20T18:13:15.323-04:00",
+      "fix": "2026-10-20T18:13:15.225-04:00",
+      "fix_timestamp": 1792534395225,
+      "application_state": "background",
+      "persisted": true,
+      "inside_background_interval": true,
+      "fresh_within_30_seconds": true
+    },
+    {
+      "received": "2026-10-20T18:46:43.869-04:00",
+      "fix": "2026-10-20T18:46:43.740-04:00",
+      "fix_timestamp": 1792536403740,
+      "application_state": "background",
+      "persisted": true,
+      "inside_background_interval": true,
+      "fresh_within_30_seconds": true
+    },
+    {
+      "received": "2026-10-20T19:09:32.776-04:00",
+      "fix": "2026-10-20T19:09:09.709-04:00",
+      "fix_timestamp": 1792537749709,
+      "application_state": "background",
+      "persisted": true,
+      "inside_background_interval": true,
+      "fresh_within_30_seconds": true
+    },
+    {
+      "received": "2026-10-20T19:14:10.609-04:00",
+      "fix": "2026-10-20T19:14:10.585-04:00",
+      "fix_timestamp": 1792538050585,
+      "application_state": "background",
+      "persisted": true,
+      "inside_background_interval": true,
+      "fresh_within_30_seconds": true
+    }
+  ],
+  "scope": "Confirms a fresh location fix was received and persisted in the background before reopening. The three-minute configuration is a minimum sampling interval, not a guaranteed delivery schedule. Samples written at reopening were excluded."
+}

@@ -1,0 +1,113 @@
+Hello App Review Team,
+
+Thank you for identifying these issues. We are providing the revised adult
+consent form, the IRB approval notification, and physical-device background
+location evidence for StudyTrace.
+
+Guideline 5.1.3 — Health and Health Research
+
+The study is "Digital Habits and Student Well-Being: A Mixed-Methods Study of
+Smartphone App Use, Emotion, and Physical Activity," led by Chao Liu, PhD,
+Associate Professor of Psychology at Cedarville University. Participants must
+confirm that they are at least 18 years old.
+
+The attached Cedarville University Institutional Review Board notification
+identifies IRB #374 and documents approval on September 3, 2026, under
+expedited category 7. It states that approval is valid for 12 months from the
+notification date.
+
+The revised consent form describes:
+
+- Nature, purpose, and duration: an observational study of smartphone use,
+  mobility, well-being, stress, and physical activity, lasting 29 days with
+  approximately 3.5–5.5 hours of active participation.
+- Procedures, risks, and benefits: baseline/final surveys, daily cropped
+  app-usage screenshots, step counts, private audio or optional video
+  reflections, and background GPS collection during Days 1–28. Disclosures
+  include fatigue, emotional discomfort, increased battery/data use, and
+  privacy risks from precise locations and timestamps. There is no guaranteed
+  direct benefit.
+- Confidentiality and data handling: coded study identifiers, separate
+  identifying records, encrypted transfer/storage, restricted researcher
+  access, processing through the secure Azure-hosted system, limits on
+  sharing, and aggregate or de-identified reporting. Raw GPS records are to
+  be deleted after mobility measures are derived and verified, targeted
+  within 30 days of verification; retained mobility measures exclude precise
+  coordinates and individual travel maps. The form also explains raw-media
+  deletion, code-key destruction, and retention of de-identified records.
+- Contacts: Dr. Chao Liu, (937) 766-7881, for study questions; Cedarville
+  University's IRB, IRB@cedarville.edu or (937) 766-7677, for participant-rights
+  questions.
+- Withdrawal: voluntary withdrawal without penalty and requests to delete
+  identifiable information when feasible, with limits after de-identification
+  or aggregation. In the app, Quit Study in settings stops collection; the
+  investigator is available for study withdrawal and data-deletion questions.
+
+Participant access and consent verification:
+
+Study-specific adult consent is completed with the research team outside the
+app. Before issuing an invitation, authorized research staff verify the completed
+consent and record the participant code, approved consent version, consent date,
+secure consent-register reference, verification time, and verifying staff ID.
+Signed consent forms and the identifying code key are held separately from
+coded app data.
+
+StudyTrace build 13 adds a passwordless participant sign-in to the existing
+invitation flow. Each consent-verified participant receives a personal QR/link,
+valid for first activation for seven days. The app verifies it online and the
+server binds it to that participant's device. A shared study password, arbitrary
+participant code, or the generic onboarding consent choice cannot activate
+research collection. The participant does not create a password or sign in each
+day; verified access is remembered securely on that device.
+
+Research collection is limited to 28 days from activation. Expired or revoked
+credentials are rejected by the server across its study-data routes. The app
+checks the saved deadline, refreshes status when foregrounded and periodically
+while running, and stops collection when access expires or revocation is
+received. Offline cached access cannot extend the original collection deadline.
+Settings > Quit Study immediately stops local collection, clears local study
+data, and notifies the server, with a retry if offline. A new enrollment requires
+another researcher-verified invitation.
+
+Reviewer access: [INSERT A TESTED, UNUSED PERSONAL REVIEW INVITATION URL/QR FOR
+THE DEPLOYED SERVER; PROVIDE BACKUP UNUSED INVITATIONS FOR ADDITIONAL DEVICES.
+USE AN APPROPRIATE TEST/CONSENT AUTHORIZATION PROCESS AND SYNTHETIC STUDY DATA.]
+
+To sign in, open the rightmost More/StudyTrace tab, tap Study sign-in, paste the
+personal invitation, and tap Sign in. Alternatively, tap the QR icon, scan the supplied personal QR,
+and tap Sign in to study. Please allow the study permissions to exercise the
+consented collection features.
+
+Guideline 2.5.4 — Background Location
+
+Background location supports this study's mobility research. The revised
+consent expressly describes collecting precise coordinates, timestamps, and
+accuracy information throughout the study's location-collection period,
+including while participants use other apps. These data support the study's
+analysis of mobility in relation to well-being and physical activity.
+Participants can view their collected daily history in Dashboard > Location.
+
+We corrected storage to save delivered fixes in the Core Location callback,
+preserving their acquisition timestamps. We validated background persistence
+in StudyTrace 1.0.0 build 11 on a physical iPhone 14 Pro. Build 13 retains this
+callback storage fix and adds the consent-verified participant sign-in described
+above. The supplied physical-device recording was made with build 11; it does
+not show the new sign-in UI.
+
+Recording: [INSERT ACCESSIBLE URL FOR background-location-iPhone-build11.mp4]
+Review access: use the personal review invitation and steps above.
+
+The complete 5-minute 56-second recording shows Dashboard at the beginning,
+the app moving to the background at approximately 00:27, and its return at
+approximately 05:41. During the 5-minute 14-second background interval, a fresh
+fix was acquired at 9:38:03.543 PM EDT and saved with a background receipt
+audit at 9:38:03.615 PM. This matches the persisted location row before the app
+was reopened. The supporting validation file records these facts.
+
+The configured movement filter is 300 meters and the minimum sample spacing
+is three minutes; exact delivery timing depends on iOS. To reproduce, complete
+the verified enrollment/consent steps above, select Always location permission,
+open Dashboard > Location, then background the app while travelling. Return to
+Dashboard and tap its upper-right refresh icon to view the collected history.
+
+Thank you for reviewing the supporting documentation.

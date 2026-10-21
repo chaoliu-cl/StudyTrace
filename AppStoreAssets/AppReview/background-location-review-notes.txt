@@ -1,0 +1,133 @@
+Build 13 update: consent-verified personal invitation sign-in is implemented.
+See app-review-response.txt for the current combined Apple reply and
+build13-submission-preparation.txt for deployment and submission steps.
+The physical-device background-location evidence below is from build 11.
+
+StudyTrace background location evaluation and physical-device validation
+Validated October 20, 2026; times use America/New_York (EDT)
+
+Subsequent consent-scope finding
+
+The first two adult smartphone/well-being consent files supplied after this
+validation excluded GPS. The subsequent replacement labelled (2) now expressly
+includes background GPS collection and matches the title in the supplied
+Cedarville IRB #374 approval notification. Confirm that this consent version
+and its GPS procedures fall within the approved protocol or an applicable
+approved amendment. Build 13 implements prior-consent verification through
+personal invitations; deployment and reviewer access remain submission steps.
+The technical results below
+establish background operation; research authorization is a separate question.
+
+Conclusion
+
+Retain UIBackgroundModes/location for StudyTrace's ongoing mobility-history
+feature. The implementation uses the standard location service to collect
+consenting participants' movement history while they use other apps, and
+exposes daily collected locations under Dashboard > Location. That standard
+background service requires the location background mode. The need to preserve
+mobility history between foreground sessions is the feature to explain to App
+Review. The study's requested coverage should also be explained in its consent
+and reviewer access information.
+
+Build 11 now has verified fresh background persistence on a physical iPhone.
+The configuration retains a 300-meter movement filter, approximately
+hundred-meter requested accuracy, and a three-minute minimum sampling interval.
+Those settings do not guarantee an update every three minutes. Significant-
+change monitoring or regions would be suitable for a feature limited to coarse
+moves or boundary crossings; they do not offer the same configurable stream of
+standard location updates used by the current mobility-history implementation.
+
+Submission recording
+
+background-location-iPhone-build11.mp4
+  Full native iPhone Screen Recording, approximately 5 minutes 56 seconds.
+  720 x 1560, H.264, 15 fps, about 10.3 MB; audio omitted.
+  The complete sequence and original speed are preserved. There are no cuts,
+  inserted screens, captions, or simulated locations from this workflow.
+
+Physical device: iPhone 14 Pro
+OS queried after the test: iOS 27.0.1
+App: StudyTrace 1.0.0 build 11, com.liuchao.studytrace
+Permission: Always selected, confirmed by the participant; the app reported
+Core Location authorization status 3 at launch. The video opens on Dashboard.
+Source: Photos IMG_3621.MP4, creation time 9:37:04 PM EDT.
+No debugger was attached by the installation or validation workflow.
+
+What the recording and store establish
+
+Video positions are approximate to a second. Exact times below come from the
+on-device AWARE SQLite store, copied after the trip.
+
+  00:00       Dashboard > Location is visible at the beginning.
+  About 00:27 StudyTrace moves to the background; the Home screen is visible.
+  About 01:00 A fresh location is received and persisted in background state.
+  About 05:41 StudyTrace returns to the foreground; Dashboard is displayed
+              and refreshed to show the collected daily history.
+
+Logged background interval:
+  9:37:31.467 PM to 9:42:45.268 PM (313.801 seconds).
+
+Verified background fix:
+  Original CLLocation acquisition time: 9:38:03.543 PM.
+  Receipt audit time:                   9:38:03.615 PM.
+  Receipt application_state:            background.
+  Matching persisted location timestamp: 1792546683543 milliseconds Unix time.
+  Receipt delay from fix acquisition:   0.072 seconds.
+  Reported horizontal accuracy:         45 meters.
+  Displacement from the prior saved fix: approximately 939 meters.
+
+The receipt occurred 32.148 seconds after entering the background and 281.653
+seconds before returning. It matches a persisted location row with the original
+fix timestamp. This establishes fresh background persistence before reopening,
+rather than inferring collection from the final map alone. The point saved on
+reopening at 9:42:45.285 PM was in inactive state and is excluded as evidence.
+The final map includes the day's history, including foreground samples.
+
+There is one confirmed fresh background sample within the included recording.
+Ten other fresh persisted background samples were confirmed earlier that day,
+from 4:21:57 PM through 7:14:10 PM; those are outside this recording. The result
+confirms background operation, not a guaranteed periodic delivery schedule.
+
+background-location-validation.json contains the coordinate-free validation
+facts, receipt events, and SHA-256 digests of the source and deliverable. The
+original recording remains in Photos and a local working copy is retained at
+/Users/chaoliu/Library/Caches/StudyTraceReview/trip-original.mp4.
+
+Build 11 repair and checks
+
+The old positive-interval storage path depended on NSTimer saving a cached
+location. Build 11 saves accepted Core Location fixes in the delegate callback,
+uses acquisition timestamps, rate-limits by fix time, and rejects invalid,
+duplicate, or older fixes within a sensor session. Receipt audit events retain
+application state without duplicating coordinates. The sensor now also stops
+its significant-change monitor when stopped. Permission descriptions explain
+the mobility-history feature. A Podfile hook preserves the vendored AWARE fix
+through dependency reinstalls.
+
+Four location regression tests were added; all 14 unit tests passed. The signed
+Release build compiled and passed signature verification, was installed over
+build 8 preserving user data, and the device reports build 11. The delivery MP4
+passed a complete decode check. Info.plist lint, Podfile syntax, dependency
+patch applicability, and git diff whitespace checks passed.
+
+Earlier attempts
+
+Earlier diagnostic recordings and their history are retained under diagnostics/.
+They are not the submission recording. Those attempts had not established
+confirmed Always permission, or were stationary/inconclusive. The build 11 USB
+stationary capture did not finalize as a usable full-length movie. The valid
+native recording above supersedes those attempts for the App Review evidence.
+
+App Review materials
+
+Use app-review-response.txt as the response draft. Add the hosted recording URL
+and an active test-study invitation before submitting. Include the recording
+URL in App Store Connect > App Review Information > Notes for future builds.
+The video, notes, and build have not been uploaded or submitted by this task.
+
+Apple references
+
+https://developer.apple.com/app-store/review/guidelines/#software-requirements
+https://developer.apple.com/library/archive/documentation/UserExperience/Conceptual/LocationAwarenessPG/CoreLocation/CoreLocation.html
+https://developer.apple.com/documentation/corelocation/handling-location-updates-in-the-background
+https://developer.apple.com/forums/thread/127444

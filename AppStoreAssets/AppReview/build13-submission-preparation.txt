@@ -1,0 +1,30 @@
+BUILD 13 — SUBMISSION PREPARATION
+
+1. Deploy the updated server before distributing build 13. The additive migration
+   runs at startup. Existing research data is retained; shared participant study
+   passwords cease to authorize access. Verify external consent before privately
+   giving each existing participant a personal invitation. Coordinate any Android
+   rollout: Android does not yet implement the new activation flow.
+2. Confirm that IRB #374 covers the exact revised consent form and its precise
+   background GPS procedures, or obtain the required approved amendment. The
+   attached approval notification identifies the study, approval date and period;
+   it does not identify this revised form or explicitly describe GPS collection.
+   Do not represent an unapproved revision as approved.
+3. Establish appropriate review/test authorization and supply tested, unused
+   personal reviewer invitations from the deployed server, with backups for other
+   devices. Do not give reviewers another participant's identity or research data,
+   or fabricate a signed consent record. Keep invitations valid through review
+   (first activation expires after seven days; regenerate close to submission).
+4. Attach Adult_Informed_Consent_Smartphone_Wellbeing (2).docx and IRB approval.pdf.
+   Add the accessible URL of background-location-iPhone-build11.mp4 to the response
+   and App Review Information > Notes for this and future submissions. The video
+   is genuine physical-device evidence for build 11; build 13 retains that fix.
+5. Test the deployed server with the signed build and a genuinely consented
+   participant before claiming the new flow is live. Local validation used an
+   isolated synthetic fixture and a signed Simulator app. The iPhone Release
+   build succeeds, but the new sign-in flow has not been tested against the live
+   deployment on a physical device. No app or server deployment has been made.
+
+Current reply: app-review-response.txt. Replace its reviewer-invitation and video
+URL placeholders before submission. Neither this reply nor any attachment has
+been submitted to Apple by Codex.
