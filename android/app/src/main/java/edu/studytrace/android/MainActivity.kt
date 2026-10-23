@@ -20,6 +20,7 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -212,6 +213,12 @@ class MainActivity : Activity() {
         setContentView(buildOnboardingUi(pages[onboardingIndex], pages.size))
     }
 
+    private fun brandIcon(): ImageView = ImageView(this).apply {
+        setImageResource(R.mipmap.ic_launcher)
+        contentDescription = getString(R.string.app_name)
+        scaleType = ImageView.ScaleType.FIT_CENTER
+    }
+
     private fun buildOnboardingUi(page: OnboardingPage, pageCount: Int): View {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val outer = LinearLayout(this).apply {
@@ -236,17 +243,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        top.addView(TextView(this).apply {
-            text = "ST"
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(ACCENT, ACCENT_DARK),
-            ).apply { cornerRadius = dp(13).toFloat() }
-        }, LinearLayout.LayoutParams(dp(42), dp(42)))
+        top.addView(brandIcon(), LinearLayout.LayoutParams(dp(42), dp(42)))
         top.addView(TextView(this).apply {
             text = "StudyTrace"
             textSize = 18f
@@ -272,14 +269,15 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(14), dp(34), dp(14), dp(24))
         }
-        content.addView(TextView(this).apply {
+        val pageIcon = if (page.symbol == "ST") brandIcon() else TextView(this).apply {
             text = page.symbol
             textSize = if (page.symbol.length > 1) 24f else 34f
             setTextColor(ACCENT)
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             background = roundedBackground(0xFFEFF6FF.toInt(), dp(40), 0xFFBFDBFE.toInt(), 1)
-        }, LinearLayout.LayoutParams(dp(80), dp(80)).apply { bottomMargin = dp(26) })
+        }
+        content.addView(pageIcon, LinearLayout.LayoutParams(dp(80), dp(80)).apply { bottomMargin = dp(26) })
         content.addView(TextView(this).apply {
             text = page.title
             textSize = 27f
@@ -473,17 +471,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        brandRow.addView(TextView(this).apply {
-            text = "ST"
-            textSize = 20f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(ACCENT, ACCENT_DARK),
-            ).apply { cornerRadius = dp(18).toFloat() }
-        }, LinearLayout.LayoutParams(dp(58), dp(58)))
+        brandRow.addView(brandIcon(), LinearLayout.LayoutParams(dp(58), dp(58)))
         brandRow.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), 0, 0, 0)

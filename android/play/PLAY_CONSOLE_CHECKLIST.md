@@ -3,7 +3,7 @@
 ## Build identity
 
 - Package: `edu.cedarville.studytrace`
-- Version: `1.0` (`versionCode` 1)
+- Version: `1.0.1` (`versionCode` 2; increase above every previously uploaded code)
 - Target API: 36
 - Privacy policy: `https://liu-chao.site/StudyTrace/privacy/`
 - Release artifact: `app/build/outputs/bundle/release/app-release.aab`
@@ -20,6 +20,10 @@ it in the application, manifest, signing configuration, or repository secrets.
   `android/README.md`; verify the certificate is the registered upload certificate.
 - Supply a 512 x 512 Play icon, 1024 x 500 feature graphic, phone screenshots,
   app category, contact email, and support website.
+- Use `AppStoreAssets/Android/play-icon-512.png` for the app icon in the default,
+  translated, and custom listings. The installed icon uses the same research
+  logo, and the installed/listing name must both be StudyTrace. See
+  `REJECTION_ICON_FIX.md` for the icon-rejection resubmission steps.
 - Set the app's target audience accurately. Do not select children unless every
   deployed study and its parental-consent process complies with Families policy.
 
