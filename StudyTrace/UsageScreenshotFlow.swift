@@ -23,19 +23,23 @@ private func loc(_ key: String, _ english: String) -> String {
 enum UsageScreenshotKind: String {
     case battery
     case screenTimeActivity = "screen_time_activity"
+    case appUsageToday = "app_usage_today"
+
+    var uploadKind: String { self == .appUsageToday ? "screen_time_activity" : rawValue }
 
     /// esm_trigger of the survey prompt that asks for this screenshot.
     var promptTrigger: String {
         switch self {
         case .battery: return "battery_usage_screenshot"
         case .screenTimeActivity: return "screen_time_activity_screenshot"
+        case .appUsageToday: return "app_usage_screenshot"
         }
     }
 
     var heroSymbol: String {
         switch self {
         case .battery: return "battery.100.bolt"
-        case .screenTimeActivity: return "hourglass"
+        case .screenTimeActivity, .appUsageToday: return "hourglass"
         }
     }
 
@@ -43,6 +47,7 @@ enum UsageScreenshotKind: String {
         switch self {
         case .battery: return loc("shot_battery_prompt", " Battery screenshot upload available")
         case .screenTimeActivity: return loc("shot_activity_prompt", " Screen Time screenshot upload available")
+        case .appUsageToday: return loc("shot_today_prompt", " Today's app usage screenshot available")
         }
     }
 
@@ -50,6 +55,7 @@ enum UsageScreenshotKind: String {
         switch self {
         case .battery: return loc("shot_battery_title", "Take one Battery Usage screenshot")
         case .screenTimeActivity: return loc("shot_activity_title", "Take one Screen Time screenshot")
+        case .appUsageToday: return loc("shot_today_title", "Take a fresh screenshot of today's app usage")
         }
     }
 
@@ -59,6 +65,8 @@ enum UsageScreenshotKind: String {
             return loc("shot_battery_detail", "Apple does not let apps read Screen Time directly, so the study uses the iOS Battery screen. StudyTrace uploads the screenshot you choose to the study server.")
         case .screenTimeActivity:
             return loc("shot_activity_detail", "This screen shows one day of screen time, pickups, and notifications. StudyTrace uploads the screenshot you choose to the study server.")
+        case .appUsageToday:
+            return loc("shot_today_detail", "Show today's usage so far on this iPhone. Complete the upload within the response window shown by your study notification.")
         }
     }
 
@@ -80,6 +88,13 @@ enum UsageScreenshotKind: String {
                 loc("shot_activity_step4", "4. Take a screenshot showing the total, Most Used, Pickups, and Notifications (scroll and take a second one if needed)."),
                 loc("shot_activity_step5", "5. Return here and choose that screenshot.")
             ]
+        case .appUsageToday:
+            return [
+                "1. Open iPhone Settings > Screen Time > See All App & Website Activity.",
+                "2. Choose Day and select Today. Select this iPhone if a device selector is shown.",
+                "3. Show today's total and the Most Used app list, then take a fresh screenshot.",
+                "4. Return to StudyTrace and choose that screenshot."
+            ]
         }
     }
 
@@ -87,6 +102,7 @@ enum UsageScreenshotKind: String {
         switch self {
         case .battery: return loc("shot_battery_choose", "Choose Battery screenshot")
         case .screenTimeActivity: return loc("shot_activity_choose", "Choose Screen Time screenshot")
+        case .appUsageToday: return loc("shot_today_choose", "Choose today's screenshot")
         }
     }
 }
@@ -249,7 +265,7 @@ enum UsageScreenshotParser {
         switch kind {
         case .battery:
             return (lower.contains("battery") || lower.contains("バッテリー")) && !batteryRows(from: text).isEmpty
-        case .screenTimeActivity:
+        case .screenTimeActivity, .appUsageToday:
             let markers = ["screen time", "スクリーンタイム", "most used", "よく使われた", "pickups", "持ち上げ"]
             return markers.contains { lower.contains($0) }
         }
@@ -398,6 +414,17 @@ enum UsageScreenshotOCR {
 
 /// The screenshot's context sent with the image. App rows and totals are
 /// extracted on the server from `ocrText`; the participant never edits them.
+struct UsageScreenshotPrompt {
+    let identifier: String
+    let scheduleId: String
+    let period: String
+    let scheduledAt: Date
+    let deliveredAt: Date
+    let expiresAt: Date
+
+    func isOpen(at date: Date) -> Bool { date >= deliveredAt && date < expiresAt }
+}
+
 struct UsageScreenshotSubmission {
     var kind: UsageScreenshotKind
     /// Battery screenshots: the tab the instructions ask participants to keep selected.
@@ -406,6 +433,7 @@ struct UsageScreenshotSubmission {
     var activityDate = Date()
     var capturedAt: Date?
     var ocrText = ""
+    var prompt: UsageScreenshotPrompt?
 
     init(kind: UsageScreenshotKind) {
         self.kind = kind
@@ -423,15 +451,21 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
     private var completion: ((UsageScreenshotKind, UsageScreenshotUploader.Outcome) -> Void)?
     private(set) var isBusy = false
     private var progress: UIViewController?
+    private var prompt: UsageScreenshotPrompt?
+    private var validatePrompt: (() -> Bool)?
 
     func start(kind: UsageScreenshotKind,
                from presenter: UIViewController,
                showInstructions: Bool = true,
+               prompt: UsageScreenshotPrompt? = nil,
+               validatePrompt: (() -> Bool)? = nil,
                completion: @escaping (UsageScreenshotKind, UsageScreenshotUploader.Outcome) -> Void) {
         guard !isBusy else { return }
         self.kind = kind
         self.presenter = presenter
         self.completion = completion
+        self.prompt = prompt
+        self.validatePrompt = validatePrompt
         if showInstructions {
             presentInstructions()
         } else {
@@ -518,6 +552,11 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
         var submission = UsageScreenshotSubmission(kind: kind)
         submission.capturedAt = capturedAt
         submission.ocrText = text
+        submission.prompt = prompt
+        if kind == .appUsageToday {
+            submission.usageWindow = "today_so_far"
+            submission.activityDate = capturedAt ?? Date()
+        }
         if kind == .screenTimeActivity {
             // Participants are asked for yesterday; the screenshot may say otherwise.
             let offset = UsageScreenshotParser.dayOffsetHint(in: text) ?? -1
@@ -559,6 +598,10 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
     }
 
     private func upload(image: UIImage, submission: UsageScreenshotSubmission) {
+        if let prompt = prompt, !prompt.isOpen(at: Date()) || validatePrompt?() == false {
+            end(.failed(title: "Screenshot request closed", message: "The response window has ended. Please wait for the next screenshot request."))
+            return
+        }
         UsageScreenshotUploader.upload(image, submission: submission) { [weak self] outcome in
             self?.end(outcome)
         }

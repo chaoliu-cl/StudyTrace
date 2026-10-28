@@ -84,7 +84,7 @@ class ESMViewController: UIViewController {
         promptStack.alignment = .center
         promptStack.spacing = 14
         promptStack.translatesAutoresizingMaskIntoConstraints = false
-        for kind in [UsageScreenshotKind.battery, .screenTimeActivity] {
+        for kind in [UsageScreenshotKind.battery, .screenTimeActivity, .appUsageToday] {
             let button = UIButton(type: .system)
             button.backgroundColor = AWARETheme.warmAccent
             button.setTitleColor(.white, for: .normal)
@@ -215,11 +215,13 @@ class ESMViewController: UIViewController {
     /// Which screenshot a schedule asks for, or nil for an ordinary survey.
     private func screenshotKind(for schedule: EntityESMSchedule) -> UsageScreenshotKind? {
         let scheduleId = schedule.schedule_id?.lowercased() ?? ""
+        if scheduleId.contains("app_usage_screenshot") { return .appUsageToday }
         if scheduleId.contains("screen_time_activity") { return .screenTimeActivity }
         var isBattery = scheduleId.contains("battery")
         if let esms = schedule.esms {
             for item in esms {
                 let trigger = item.esm_trigger?.lowercased() ?? ""
+                if trigger == UsageScreenshotKind.appUsageToday.promptTrigger { return .appUsageToday }
                 if trigger == UsageScreenshotKind.screenTimeActivity.promptTrigger { return .screenTimeActivity }
                 let title = item.esm_title?.lowercased() ?? ""
                 let instructions = item.esm_instructions?.lowercased() ?? ""
@@ -234,8 +236,29 @@ class ESMViewController: UIViewController {
     }
 
     private func startScreenshot(_ kind: UsageScreenshotKind) {
-        screenshotCoordinator.start(kind: kind, from: self) { [weak self] kind, outcome in
-            self?.handleScreenshotOutcome(kind, outcome)
+        if AppStoreDemo.isEnabled {
+            presentDemoInstructions(for: kind)
+            return
+        }
+        guard let schedule = activeScreenshotSchedules[kind],
+              let occurrence = ESMScheduleManager.shared().studytraceOccurrence(for: schedule, at: Date()),
+              let identifier = occurrence["id"] as? String,
+              let delivered = occurrence["delivered_at"] as? NSNumber,
+              let expires = occurrence["expires_at"] as? NSNumber else {
+            checkESMSchedules()
+            showScreenshotResult(title: "Screenshot request closed", message: "There is no open request. Please wait for the next notification.")
+            return
+        }
+        let scheduleId = schedule.schedule_id ?? ""
+        let period = ["morning", "afternoon", "evening"].first { scheduleId.contains("_\($0)_") } ?? "test"
+        let prompt = UsageScreenshotPrompt(identifier: identifier, scheduleId: scheduleId, period: period,
+            scheduledAt: Date(timeIntervalSince1970: (occurrence["planned_at"] as? NSNumber)?.doubleValue ?? delivered.doubleValue),
+            deliveredAt: Date(timeIntervalSince1970: delivered.doubleValue),
+            expiresAt: Date(timeIntervalSince1970: expires.doubleValue))
+        screenshotCoordinator.start(kind: kind, from: self, prompt: prompt, validatePrompt: {
+            ESMScheduleManager.shared().studytraceOccurrenceIsOpen(identifier, at: Date())
+        }) { [weak self] kind, outcome in
+            self?.handleScreenshotOutcome(kind, outcome, schedule: schedule)
         }
     }
 
@@ -243,7 +266,7 @@ class ESMViewController: UIViewController {
         screenshotCoordinator.start(kind: kind, from: self) { _, _ in }
     }
 
-    private func handleScreenshotOutcome(_ kind: UsageScreenshotKind, _ outcome: UsageScreenshotUploader.Outcome) {
+    private func handleScreenshotOutcome(_ kind: UsageScreenshotKind, _ outcome: UsageScreenshotUploader.Outcome, schedule: EntityESMSchedule) {
         switch outcome {
         case .uploaded(let feedback):
             if feedback?.needsReview == true {
@@ -255,18 +278,18 @@ class ESMViewController: UIViewController {
                 })
                 // Keeping the upload still counts as answering the prompt.
                 alert.addAction(UIAlertAction(title: "Keep Uploaded Screenshot", style: .cancel) { [weak self] _ in
-                    self?.completeScreenshotSchedule(kind)
+                    self?.completeScreenshotSchedule(schedule)
                 })
                 present(alert, animated: true)
                 return
             }
-            completeScreenshotSchedule(kind)
+            completeScreenshotSchedule(schedule)
             showScreenshotResult(title: "Screenshot Uploaded",
                                  message: feedback?.message ?? "Your screenshot was uploaded to the study server.")
         case .queued:
             // The screenshot is safely stored and will upload on its own,
             // so the participant has done their part for this prompt.
-            completeScreenshotSchedule(kind)
+            completeScreenshotSchedule(schedule)
             showScreenshotResult(title: "Screenshot Saved",
                                  message: "StudyTrace could not reach the study server right now. Your screenshot is saved on this iPhone and will upload automatically when a connection is available.")
         case .failed(let title, let message):
@@ -274,10 +297,8 @@ class ESMViewController: UIViewController {
         }
     }
 
-    private func completeScreenshotSchedule(_ kind: UsageScreenshotKind) {
-        if let schedule = activeScreenshotSchedules[kind] {
-            markScheduleCompleted(schedule)
-        }
+    private func completeScreenshotSchedule(_ schedule: EntityESMSchedule) {
+        markScheduleCompleted(schedule)
         checkESMSchedules()
     }
 

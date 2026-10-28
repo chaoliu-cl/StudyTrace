@@ -93,6 +93,15 @@ Schedules without times never notify. Battery and Screen Time screenshot
 prompts are iOS-only and skipped. See [survey timing](../docs/SURVEY_TIMING.md)
 for both platforms and rollout checks.
 
+`app_usage_screenshot` is supported on Android: the participant opens Digital
+Wellbeing (or the phone's equivalent), takes a screenshot of Today, then selects
+it with the system document picker. No broad photo permission is needed. The
+image is queued as a `plugin_ios_esm` answer with the original prompt deadline,
+period, and `today_so_far` window. Upload batches also have a byte limit so an
+offline image backlog stays below the server request limit. Android screenshots
+are available for manual coding; optional Usage Access logging is separate.
+See the [six-prompt pilot guide](../docs/studies/mind-body-pilot/SCREENSHOT_PILOT.md).
+
 ## Leaving a study
 
 `Leave Study` asks whether the server should also delete this phone's uploaded

@@ -285,6 +285,16 @@ object SurveyRepository {
                 .put("scheduled_at", record.promptAtMillis)
                 .put("delivered_at", record.deliveredAtMillis)
                 .put("expires_at", record.expiresAtMillis)
+                .apply {
+                    if (schedule?.optString("studytrace_prompt_type") == "app_usage_screenshot") {
+                        put("platform", "android")
+                        put("screenshot_kind", "app_usage")
+                        put("screenshot_period", schedule.optString("studytrace_period"))
+                        put("usage_window", "today_so_far")
+                        put("activity_date", java.time.Instant.ofEpochMilli(nowMillis).atZone(ZoneId.systemDefault()).toLocalDate().toString())
+                        put("submitted_at", answerTime)
+                    }
+                }
         }
     }
 

@@ -9,6 +9,34 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 class PromptPlannerTest {
+    @Test
+    fun appUsageScreenshotsAreScheduledAlongsideSurveys() {
+        assertTrue(PromptPlanner.isAndroidSurvey("app_usage_screenshot", "studytrace_app_usage_screenshot_morning"))
+        assertTrue(PromptPlanner.isAndroidSurvey("esm_survey", "daily"))
+        assertFalse(PromptPlanner.isAndroidSurvey("screen_time_activity_screenshot", "yesterday"))
+        assertFalse(PromptPlanner.isAndroidSurvey("battery_usage_screenshot", "battery"))
+        val periods = listOf(
+            Triple("10:30", 90, "09:00" to "12:00"),
+            Triple("14:30", 150, "12:00" to "17:00"),
+            Triple("19:00", 120, "17:00" to "21:00"),
+        )
+        for (participant in listOf("P001", "P002")) {
+            for (offset in 0L..13L) {
+                val date = day.plusDays(offset)
+                val prompts = periods.mapIndexed { index, (anchor, range, hours) ->
+                    val slot = PromptSchedule("usage_$index", listOf(anchor), range, 60, null, null, hours.first, hours.second)
+                    PromptPlanner.occurrencesOn(slot, date, zone, participant).single()
+                }
+                assertEquals(3, prompts.size)
+                prompts.zip(periods).forEach { (prompt, period) ->
+                    val clock = java.time.Instant.ofEpochMilli(prompt.promptAtMillis).atZone(zone).toLocalTime()
+                    assertFalse(clock.isBefore(java.time.LocalTime.parse(period.third.first)))
+                    assertFalse(clock.isAfter(java.time.LocalTime.parse(period.third.second)))
+                }
+            }
+        }
+    }
+
     private val zone = ZoneId.of("America/Chicago")
     private val day = LocalDate.of(2026, 9, 30)
 

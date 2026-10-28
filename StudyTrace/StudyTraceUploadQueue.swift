@@ -330,12 +330,18 @@ enum UsageScreenshotUploader {
                                message: "StudyTrace could not prepare the selected screenshot."))
             return
         }
-        let uploadId = SHA256.hash(data: imageData).map { String(format: "%02x", $0) }.joined()
+        if let prompt = submission.prompt, !prompt.isOpen(at: Date()) {
+            completion(.failed(title: "Screenshot request closed", message: "The response window has ended."))
+            return
+        }
+        // One image may be chosen for different prompts; retries of the same prompt deduplicate.
+        let identityData = imageData + Data((submission.prompt?.identifier ?? "").utf8)
+        let uploadId = SHA256.hash(data: identityData).map { String(format: "%02x", $0) }.joined()
         var payload: [String: Any] = [
             "device_id": context.deviceId,
             "timestamp": Date().timeIntervalSince1970 * 1000,
             "upload_id": uploadId,
-            "screenshot_kind": submission.kind.rawValue,
+            "screenshot_kind": submission.kind.uploadKind,
             "screenshot_base64": imageData.base64EncodedString(),
             "timezone": TimeZone.current.identifier
         ]
@@ -350,11 +356,24 @@ enum UsageScreenshotUploader {
         switch submission.kind {
         case .battery:
             payload["usage_window"] = submission.usageWindow
-        case .screenTimeActivity:
+        case .screenTimeActivity, .appUsageToday:
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = "yyyy-MM-dd"
             payload["activity_date"] = formatter.string(from: submission.activityDate)
+            if submission.kind == .appUsageToday {
+                payload["usage_window"] = "today_so_far"
+                payload["prompt_type"] = "app_usage_screenshot"
+            }
+        }
+        if let prompt = submission.prompt {
+            payload["notification_id"] = prompt.identifier
+            payload["schedule_id"] = prompt.scheduleId
+            payload["screenshot_period"] = prompt.period
+            payload["scheduled_at"] = prompt.scheduledAt.timeIntervalSince1970 * 1000
+            payload["delivered_at"] = prompt.deliveredAt.timeIntervalSince1970 * 1000
+            payload["expires_at"] = prompt.expiresAt.timeIntervalSince1970 * 1000
+            payload["submitted_at"] = Date().timeIntervalSince1970 * 1000
         }
         guard JSONSerialization.isValidJSONObject(payload),
               let body = try? JSONSerialization.data(withJSONObject: payload, options: []) else {

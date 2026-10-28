@@ -106,6 +106,7 @@ const LONG_SESSION_SECONDS = 15 * 60;
 const MAX_SESSION_SECONDS = 6 * 60 * 60;
 const BATTERY_PROMPT = 'battery_usage_screenshot';
 const ACTIVITY_PROMPT = 'screen_time_activity_screenshot';
+const APP_USAGE_PROMPT = 'app_usage_screenshot';
 const LOCATION_DAILY_SUMMARY_SENSOR = 'location_daily_summary';
 const SURVEY_QUALITY_SENSOR = 'survey_quality';
 const PARTICIPANT_HEALTH_SENSOR = 'participant_health';
@@ -664,6 +665,20 @@ export function createApp() {
     }
   });
 
+  app.get('/api/v1/studies/:studyId/app-usage-screenshot-schedule', requireResearcher, (req, res) => {
+    res.json(scheduleResponse(req.study, 'app_usage_screenshot_schedule'));
+  });
+
+  app.put('/api/v1/studies/:studyId/app-usage-screenshot-schedule', requireResearcher, async (req, res, next) => {
+    try {
+      const schedule = buildAppUsageScreenshotSchedule(req.body || {});
+      const updated = await updateStudyConfig(req.params.studyId, { app_usage_screenshot_schedule: schedule });
+      res.json(scheduleResponse(updated, 'app_usage_screenshot_schedule'));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // Unified screenshot upload (Battery or Screen Time "See All Activity").
   app.post('/api/v1/studies/:studyId/usage-screenshots', requireParticipant, async (req, res) => {
     try {
@@ -1215,7 +1230,7 @@ async function deriveAppUsageCombined({ studyId, deviceId } = {}) {
       timezone,
       platform: 'ios',
       construct: 'screen_time_app_total',
-      usage_window: 'day',
+      usage_window: data.usage_window || 'day',
       app_name: data.app_name,
       package_name: '',
       seconds: data.screen_time_seconds ?? '',
@@ -1834,6 +1849,9 @@ function summarizeEsmSchedule(schedule) {
       : (Array.isArray(item.hours) ? item.hours.map((hour) => `${String(hour).padStart(2, '0')}:00`) : []),
     randomize_minutes: Number(item.randomize || 0),
     expiration_minutes: Number(item.expiration || 0),
+    period: item.studytrace_period || '',
+    window_start: item.studytrace_window_start || '',
+    window_end: item.studytrace_window_end || '',
     notification_title: item.notification_title || '',
     notification_body: item.notification_body || '',
     question_count: Array.isArray(item.esms) ? item.esms.length : 0,
@@ -1842,6 +1860,9 @@ function summarizeEsmSchedule(schedule) {
 
 function scheduleForKey(study, key = 'esm_schedule') {
   const config = study?.config || {};
+  if (key === 'app_usage_screenshot_schedule') {
+    return (Array.isArray(config[key]) ? config[key] : []).filter((item) => schedulePromptType(item) === APP_USAGE_PROMPT);
+  }
   const esmSchedule = Array.isArray(config.esm_schedule) ? config.esm_schedule : [];
   const batterySchedule = Array.isArray(config.battery_screenshot_schedule) ? config.battery_screenshot_schedule : [];
   if (key === 'battery_screenshot_schedule') {
@@ -1859,12 +1880,14 @@ function scheduleForKey(study, key = 'esm_schedule') {
 function schedulePromptType(item) {
   if (item?.studytrace_prompt_type) return normalizePromptType(item.studytrace_prompt_type);
   const scheduleId = String(item?.schedule_id || '').toLowerCase();
+  if (scheduleId.includes('app_usage_screenshot')) return APP_USAGE_PROMPT;
   if (scheduleId.includes('screen_time_activity')) return ACTIVITY_PROMPT;
   if (scheduleId.includes('battery_screenshot') || scheduleId.includes('battery_usage')) return BATTERY_PROMPT;
   return 'esm_survey';
 }
 
 function buildEsmScheduleFromRequest(body, defaultPromptType = 'esm_survey') {
+  if (body.enabled === false || body.enabled === 'false') return [];
   const mode = body.mode === 'random' ? 'random' : 'fixed';
   const promptType = normalizePromptType(body.prompt_type || body.studytrace_prompt_type || defaultPromptType);
   const promptTimes = parsePromptTimes(body.times || body.hours);
@@ -1902,26 +1925,69 @@ function buildEsmScheduleFromRequest(body, defaultPromptType = 'esm_survey') {
   ];
 }
 
+// Each period is a separate schedule so delayed delivery cannot spill into
+// another period. Existing clients already understand anchor +/- randomize.
+function buildAppUsageScreenshotSchedule(body) {
+  if (body.enabled === false || body.enabled === 'false') return [];
+  if (body.mode && !['fixed', 'periods'].includes(body.mode)) throw httpError(400, 'mode must be periods or fixed');
+  const expiration = Number(body.expiration_minutes ?? 60);
+  if (!Number.isInteger(expiration) || expiration < 1 || expiration > 1440) {
+    throw httpError(400, 'expiration_minutes must be an integer from 1 to 1440');
+  }
+  if (body.mode === 'fixed' && parsePromptTimes(body.times).times.some((time) => time < '09:00' || time > '21:00')) {
+    throw httpError(400, 'fixed screenshot test times must fall within 09:00–21:00');
+  }
+  const periods = body.mode === 'fixed'
+    ? [{ name: 'test', times: body.times, randomize: 0, start: '09:00', end: '21:00' }]
+    : [
+      { name: 'morning', times: '10:30', randomize: 90, start: '09:00', end: '12:00' },
+      { name: 'afternoon', times: '14:30', randomize: 150, start: '12:00', end: '17:00' },
+      { name: 'evening', times: '19:00', randomize: 120, start: '17:00', end: '21:00' },
+    ];
+  return periods.flatMap((period) => buildEsmScheduleFromRequest({
+    ...body,
+    prompt_type: APP_USAGE_PROMPT,
+    schedule_id: `studytrace_app_usage_screenshot_${period.name}`,
+    mode: period.randomize ? 'random' : 'fixed',
+    times: period.times,
+    randomize_minutes: period.randomize,
+    expiration_minutes: body.expiration_minutes ?? 60,
+    prompt_window_start: period.start,
+    prompt_window_end: period.end,
+    esms: defaultEsmQuestions(APP_USAGE_PROMPT),
+    esms_json: undefined,
+  }).map((schedule) => ({
+    ...schedule,
+    studytrace_delivery_mode: body.mode === 'fixed' ? 'fixed' : 'periods',
+    studytrace_period: period.name,
+    studytrace_usage_day: 'today',
+  })));
+}
+
 function normalizePromptType(value) {
   const text = String(value || '').trim().toLowerCase();
+  if (text === APP_USAGE_PROMPT) return APP_USAGE_PROMPT;
   if (text === 'esm' || text === 'esm_survey' || text === 'survey') return 'esm_survey';
   if (text === ACTIVITY_PROMPT || text === 'screen_time_activity') return ACTIVITY_PROMPT;
   return BATTERY_PROMPT;
 }
 
 function scheduleSlugForPrompt(promptType) {
+  if (promptType === APP_USAGE_PROMPT) return 'app_usage_screenshot';
   if (promptType === 'esm_survey') return 'esm_survey';
   if (promptType === ACTIVITY_PROMPT) return 'screen_time_activity';
   return 'battery_screenshot';
 }
 
 function defaultNotificationTitle(promptType) {
+  if (promptType === APP_USAGE_PROMPT) return 'App usage screenshot';
   if (promptType === 'esm_survey') return 'StudyTrace survey available';
   if (promptType === ACTIVITY_PROMPT) return 'StudyTrace Screen Time screenshot';
   return 'StudyTrace Battery screenshot';
 }
 
 function defaultNotificationBody(promptType) {
+  if (promptType === APP_USAGE_PROMPT) return "Please upload a screenshot of today's app usage so far.";
   if (promptType === 'esm_survey') return 'Please complete your scheduled study survey.';
   if (promptType === ACTIVITY_PROMPT) return "Please upload yesterday's Screen Time activity screenshot.";
   return 'Please upload your iOS Battery usage screenshot.';
@@ -2001,6 +2067,17 @@ function normalizeEsmArray(value) {
 }
 
 function defaultEsmQuestions(promptType = 'battery_usage_screenshot') {
+  if (promptType === APP_USAGE_PROMPT) {
+    return [{
+      esm_type: 14,
+      esm_title: "Today's app usage screenshot",
+      esm_instructions: 'Take a fresh screenshot of today\'s usage so far. On iPhone: Settings > Screen Time > See All App & Website Activity > Day > Today, showing the total and most-used apps. On Android: Settings > Digital Wellbeing & parental controls > Dashboard (or your phone\'s equivalent), showing today\'s total and app list. Return to StudyTrace and choose that screenshot.',
+      esm_trigger: APP_USAGE_PROMPT,
+      esm_submit: 'Upload screenshot',
+      esm_na: false,
+      studytrace_required: true,
+    }];
+  }
   if (promptType === 'esm_survey') {
     return [
       {
@@ -2121,6 +2198,17 @@ async function handleUsageScreenshotUpload(req, res, studyId, forcedKind) {
     double_esm_user_answer_timestamp: timestamp,
     esm_status: 2,
   };
+  if (payload.prompt_type === APP_USAGE_PROMPT) {
+    row.esm_trigger = APP_USAGE_PROMPT;
+    row.esm_json = JSON.stringify(defaultEsmQuestions(APP_USAGE_PROMPT)[0]);
+    row.platform = 'ios';
+    for (const field of ['notification_id', 'schedule_id', 'screenshot_period']) {
+      if (typeof payload[field] === 'string') row[field] = payload[field].slice(0, 250);
+    }
+    for (const field of ['scheduled_at', 'delivered_at', 'expires_at', 'submitted_at']) {
+      if (Number.isFinite(Number(payload[field])) && Number(payload[field]) > 0) row[field] = Number(payload[field]);
+    }
+  }
   if (payload.battery_usage_ocr_text || payload.ocr_text) {
     row.battery_usage_ocr_text = String(payload.battery_usage_ocr_text || payload.ocr_text);
   }
@@ -2159,7 +2247,7 @@ async function handleUsageScreenshotUpload(req, res, studyId, forcedKind) {
 function confirmedScreenshotFields(payload, kindName) {
   const fields = {};
   const window = String(payload.usage_window || '');
-  if (['last_24_hours', 'last_10_days'].includes(window)) fields.usage_window = window;
+  if (['last_24_hours', 'last_10_days', 'today_so_far'].includes(window)) fields.usage_window = window;
   const capturedAt = Number(payload.captured_at);
   if (Number.isFinite(capturedAt) && capturedAt > 0) fields.captured_at = new Date(capturedAt).toISOString();
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(payload.activity_date || ''))) fields.activity_date = String(payload.activity_date);
@@ -2498,6 +2586,10 @@ async function processScreenTimeActivityUploads({ studyId, limit } = {}) {
       source_row_id: String(source.id),
       source_image_url: sourceImageUrl,
       activity_date: data.activity_date || '',
+      usage_window: data.usage_window || 'day',
+      notification_id: data.notification_id || '',
+      schedule_id: data.schedule_id || '',
+      screenshot_period: data.screenshot_period || '',
       captured_at: data.captured_at || '',
       participant_edited: data.participant_edited === true,
       extraction_method: method,
@@ -2641,6 +2733,9 @@ async function findBatteryScreenshotRows({ studyId, limit: rawLimit } = {}) {
 
 function isBatteryScreenshotEsmRow(row) {
   if (!row?.data || !decodeImageAnswer(row.data.esm_user_answer)) return false;
+  // Android Digital Wellbeing images remain raw screenshots; the iOS Battery
+  // parser does not describe their layout or measurement window.
+  if (row.data.esm_trigger === APP_USAGE_PROMPT) return false;
   if (isScreenTimeActivityEsmRow(row)) return false;
   const esmJson = parseEsmJson(row.data.esm_json);
   const text = [

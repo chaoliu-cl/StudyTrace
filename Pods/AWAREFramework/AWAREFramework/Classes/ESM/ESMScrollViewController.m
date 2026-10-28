@@ -170,7 +170,7 @@
     ///////////////////////////////////////////////////////////////
     if(!flowsFlag){ /// normal case
         ESMScheduleManager *esmManager = [ESMScheduleManager sharedESMScheduleManager];
-        esmSchedules = [esmManager getValidSchedulesWithDatetime:[NSDate new]];
+        esmSchedules = [[esmManager getValidSchedulesWithDatetime:[NSDate new]] filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"NOT (schedule_id CONTAINS[c] %@ OR schedule_id CONTAINS[c] %@ OR schedule_id CONTAINS[c] %@)", @"app_usage_screenshot", @"battery", @"screen_time_activity"]];
         
         if(esmSchedules != nil && esmSchedules.count > 0){
 if (studytraceOccurrenceId != nil) {
@@ -494,7 +494,7 @@ if (studytraceOccurrenceId != nil) {
             NSLog(@"%@", error);
             [[CoreDataHandler sharedHandler].managedObjectContext reset];
             ESMScheduleManager * esmManager = [ESMScheduleManager sharedESMScheduleManager];
-            esmSchedules = [esmManager getValidSchedulesWithDatetime:[NSDate new]];
+            esmSchedules = [[esmManager getValidSchedulesWithDatetime:[NSDate new]] filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"NOT (schedule_id CONTAINS[c] %@ OR schedule_id CONTAINS[c] %@ OR schedule_id CONTAINS[c] %@)", @"app_usage_screenshot", @"battery", @"screen_time_activity"]];
         }
     }else{
         success = true;

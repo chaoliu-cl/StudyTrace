@@ -98,6 +98,10 @@ write_patched(manager, text)
 
 controller = esm.join('ESMScrollViewController.m')
 text = controller.read.gsub("\r\n", "\n")
+# The guided screenshot activities have their own picker/upload controller.
+# Keep an overlapping screenshot prompt out of the ordinary questionnaire form.
+ordinary_schedules = 'esmSchedules = [esmManager getValidSchedulesWithDatetime:[NSDate new]];'
+text = text.gsub(ordinary_schedules, 'esmSchedules = [[esmManager getValidSchedulesWithDatetime:[NSDate new]] filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"NOT (schedule_id CONTAINS[c] %@ OR schedule_id CONTAINS[c] %@ OR schedule_id CONTAINS[c] %@)", @"app_usage_screenshot", @"battery", @"screen_time_activity"]];')
 text = insert_once(text, '    NSNumber * sessionTimestamp;', "    NSString *studytraceOccurrenceId;\n    NSString *studytraceScheduleId;\n")
 text = insert_once(text, '- (void) pushedSubmitButton:(id) senser {', <<~'OBJC')
   - (BOOL)studytraceValidateSession {

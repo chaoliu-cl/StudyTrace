@@ -87,7 +87,8 @@ export function createAwareRouter(getPublicBaseUrl) {
     const esmSchedule = Array.isArray(config.esm_schedule) ? config.esm_schedule : [];
     const batterySchedule = Array.isArray(config.battery_screenshot_schedule) ? config.battery_screenshot_schedule : [];
     const activitySchedule = Array.isArray(config.screen_time_activity_schedule) ? config.screen_time_activity_schedule : [];
-    res.json([...esmSchedule, ...batterySchedule, ...activitySchedule]);
+    const appUsageSchedule = Array.isArray(config.app_usage_screenshot_schedule) ? config.app_usage_screenshot_schedule : [];
+    res.json([...esmSchedule, ...batterySchedule, ...activitySchedule, ...appUsageSchedule]);
   });
 
   // ---- Per-sensor actions ---------------------------------------------------

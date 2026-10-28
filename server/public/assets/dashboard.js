@@ -424,6 +424,15 @@ function findScheduleForPrompt(schedule, promptType) {
 
 function fillScheduleForm(form, schedule, promptType) {
   const item = findScheduleForPrompt(schedule, promptType);
+  if (promptType === 'app_usage_screenshot') {
+    form.elements.enabled.value = schedule.length ? 'true' : 'false';
+    form.elements.mode.value = item?.studytrace_delivery_mode === 'fixed' ? 'fixed' : 'periods';
+    form.elements.times.value = item?.studytrace_delivery_mode === 'fixed' ? item.times.join(', ') : '';
+    form.elements.expiration_minutes.value = String(item?.expiration ?? 60);
+    form.elements.start_date.value = item?.start_date || '';
+    form.elements.end_date.value = item?.end_date || '';
+    return;
+  }
   form.elements.mode.value = item?.studytrace_delivery_mode || (Number(item?.randomize || 0) > 0 ? 'random' : 'fixed');
   form.elements.times.value = Array.isArray(item?.times) && item.times.length
     ? item.times.join(', ')
@@ -460,7 +469,7 @@ async function saveScheduleSection({ studyId, password, form, result, message, p
   const formData = new FormData(form);
   const body = Object.fromEntries(formData.entries());
   body.prompt_type = promptType;
-  if (!body.esms_json) body.esms = defaultQuestionsForPrompt(promptType);
+  if (!body.esms_json && promptType !== 'app_usage_screenshot') body.esms = defaultQuestionsForPrompt(promptType);
   const res = await fetch(`/api/v1/studies/${encodeURIComponent(studyId)}/${endpoint}`, {
     method: 'PUT',
     headers: {
@@ -568,6 +577,8 @@ function initResearcher() {
   const batteryScheduleResult = document.querySelector('#researcher-battery-schedule-result');
   const activityScheduleForm = document.querySelector('#researcher-activity-schedule');
   const activityScheduleResult = document.querySelector('#researcher-activity-schedule-result');
+  const usageScheduleForm = document.querySelector('#researcher-usage-schedule');
+  const usageScheduleResult = document.querySelector('#researcher-usage-schedule-result');
   const screenTimeActivity = document.querySelector('#researcher-screen-time-activity');
   const devicesUpdated = document.querySelector('#researcher-devices-updated');
   const joinLinkForm = document.querySelector('#researcher-join-link');
@@ -680,6 +691,10 @@ function initResearcher() {
       endpoint: 'screen-time-activity-schedule',
       message,
     });
+    await loadScheduleSection({
+      studyId, password, form: usageScheduleForm, result: usageScheduleResult,
+      promptType: 'app_usage_screenshot', endpoint: 'app-usage-screenshot-schedule', message,
+    });
     await loadScreenTimeActivity({ studyId, password, table: screenTimeActivity, message });
     await loadBatteryUsageDiagnostics({
       studyId,
@@ -754,6 +769,18 @@ function initResearcher() {
       promptType: 'battery_usage_screenshot',
       label: 'Battery screenshot',
       endpoint: 'battery-screenshot-schedule',
+    });
+  });
+
+  usageScheduleForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!currentStudyId || !currentPassword) {
+      return setMessage(message, 'Load a study before saving screenshot reminders.', true);
+    }
+    await saveScheduleSection({
+      studyId: currentStudyId, password: currentPassword,
+      form: usageScheduleForm, result: usageScheduleResult, message,
+      promptType: 'app_usage_screenshot', label: 'App usage screenshot', endpoint: 'app-usage-screenshot-schedule',
     });
   });
 

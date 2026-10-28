@@ -71,7 +71,7 @@ object PromptPlanner {
     private val usDate = DateTimeFormatter.ofPattern("MM-dd-yyyy", Locale.US)
 
     /** studytrace_prompt_type values the server normalizes to an ESM survey. */
-    private val SURVEY_PROMPT_TYPES = setOf("esm", "esm_survey", "survey")
+    private val SURVEY_PROMPT_TYPES = setOf("esm", "esm_survey", "survey", "app_usage_screenshot")
 
     /**
      * Mirrors the server's schedulePromptType(): an explicit

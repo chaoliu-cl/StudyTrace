@@ -105,7 +105,7 @@ object UploadQueue {
             if (active.exists()) {
                 val lines = runCatching { active.readLines(Charsets.UTF_8) }.getOrDefault(emptyList())
                     .filter { it.isNotBlank() }
-                lines.chunked(MAX_BATCH_ROWS).forEach { chunk ->
+                UploadPolicy.batchLines(lines, MAX_BATCH_ROWS).forEach { chunk ->
                     val name = "%s%013d-%06d.jsonl".format(
                         Locale.US,
                         BATCH_PREFIX,

@@ -4,6 +4,7 @@
 
 import assert from 'node:assert';
 import zlib from 'node:zlib';
+import { readFileSync } from 'node:fs';
 import { newDb } from 'pg-mem';
 import * as db from '../src/db.js';
 
@@ -1323,6 +1324,81 @@ try {
   enrollSummary = await enrollCounts();
   assert.strictEqual(enrollSummary.summary.device_count, 4, 'backfilled device counted');
   console.log('✓ device counts track joins, uploads, withdrawals, and re-joins');
+
+  // Add screenshot prompts without replacing the 25-item mind-body survey.
+  const pilotRoot = '/api/v1/studies/pilot-shots';
+  const pilotCreate = await post('/admin/studies', JSON.stringify({ study_id: 'pilot-shots', password: 'pilot-pw', researcher_password: researcherAuth['x-researcher-password'] }), adminJson);
+  assert.strictEqual(pilotCreate.status, 200, 'create isolated screenshot pilot');
+  const pilotQuestions = JSON.parse(readFileSync(new URL('../../docs/studies/mind-body-pilot/questions.json', import.meta.url), 'utf8'));
+  const pilotSurvey = await request('PUT', `${pilotRoot}/esm-schedule`, {
+    headers: researcherAuth, body: JSON.stringify({ mode: 'random', times: '11:00, 15:00, 19:00', randomize_minutes: 120, expiration_minutes: 60, esms: pilotQuestions }),
+  });
+  assert.strictEqual(pilotSurvey.status, 200);
+  const usageSave = await request('PUT', `${pilotRoot}/app-usage-screenshot-schedule`, {
+    headers: researcherAuth, body: JSON.stringify({ enabled: true, mode: 'periods', expiration_minutes: 60 }),
+  });
+  assert.strictEqual(usageSave.status, 200);
+  assert.deepStrictEqual(usageSave.json.schedule_summary.map((s) => [s.period, s.window_start, s.window_end, s.randomize_minutes]), [
+    ['morning', '09:00', '12:00', 90], ['afternoon', '12:00', '17:00', 150], ['evening', '17:00', '21:00', 120],
+  ]);
+  assert.ok(usageSave.json.esm_schedule.every((s) => s.esms.length === 1 && s.esms[0].esm.esm_type === 14));
+  for (const endpoint of ['battery-screenshot-schedule', 'screen-time-activity-schedule']) {
+    const oldSchedule = await request('PUT', `${pilotRoot}/${endpoint}`, { headers: researcherAuth, body: JSON.stringify({ times: '10:00' }) });
+    assert.strictEqual(oldSchedule.status, 200);
+    const disabled = await request('PUT', `${pilotRoot}/${endpoint}`, { headers: researcherAuth, body: JSON.stringify({ enabled: false }) });
+    assert.deepStrictEqual(disabled.json.esm_schedule, [], 'older screenshot activities can be disabled independently');
+  }
+  const pilotRemotePath = '/index.php/webservice/index/pilot-shots/pilot-pw';
+  const pilotRemote = await request('GET', `${pilotRemotePath}/esm/config`);
+  assert.strictEqual(pilotRemote.json.length, 4, 'one three-slot survey plus three independent screenshot schedules');
+  assert.strictEqual(pilotRemote.json.reduce((n, s) => n + s.times.length, 0), 6, 'six intended prompts per local day');
+  assert.strictEqual(pilotRemote.json.find((s) => s.studytrace_prompt_type === 'esm_survey').esms.length, 25, 'all three questionnaires preserved');
+  const noUsageAuth = await request('PUT', `${pilotRoot}/app-usage-screenshot-schedule`, {
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer pilot-pw' }, body: JSON.stringify({ enabled: false }),
+  });
+  assert.strictEqual(noUsageAuth.status, 403, 'participants cannot change the schedule');
+  for (const body of [{ mode: 'fixed', times: '08:00' }, { expiration_minutes: 0 }, { mode: 'unknown' }]) {
+    const invalid = await request('PUT', `${pilotRoot}/app-usage-screenshot-schedule`, { headers: researcherAuth, body: JSON.stringify(body) });
+    assert.strictEqual(invalid.status, 400, 'invalid screenshot settings rejected');
+  }
+  const fixedUsage = await request('PUT', `${pilotRoot}/app-usage-screenshot-schedule`, {
+    headers: researcherAuth, body: JSON.stringify({ enabled: true, mode: 'fixed', times: '10:30', expiration_minutes: 60 }),
+  });
+  assert.strictEqual(fixedUsage.json.esm_schedule[0].randomize, 0, 'fixed test has no random offset');
+  const usageOff = await request('PUT', `${pilotRoot}/app-usage-screenshot-schedule`, { headers: researcherAuth, body: JSON.stringify({ enabled: 'false' }) });
+  assert.deepStrictEqual(usageOff.json.esm_schedule, []);
+  assert.strictEqual((await request('GET', `${pilotRemotePath}/esm/config`)).json.length, 1, 'turning screenshots off preserves the survey');
+
+  const pilotParticipant = { 'Content-Type': 'application/json', Authorization: 'Bearer pilot-pw' };
+  const shotTime = Date.now();
+  const iosShotBody = {
+    device_id: 'pilot-iphone', timestamp: shotTime, upload_id: 'pilot-morning-image', screenshot_kind: 'screen_time_activity',
+    prompt_type: 'app_usage_screenshot', screenshot_base64: tinyPngBase64, usage_window: 'today_so_far', activity_date: '2026-10-28',
+    notification_id: 'morning-instance', schedule_id: 'studytrace_app_usage_screenshot_morning_1030', screenshot_period: 'morning',
+    delivered_at: shotTime - 300000, expires_at: shotTime + 3300000, submitted_at: shotTime,
+    ocr_text: 'Screen Time\nToday\n1h 20m\nMOST USED\nMessages\n40m',
+  };
+  const iosShot = await request('POST', `${pilotRoot}/usage-screenshots`, { headers: pilotParticipant, body: JSON.stringify(iosShotBody) });
+  assert.strictEqual(iosShot.status, 201);
+  const iosRetry = await request('POST', `${pilotRoot}/usage-screenshots`, { headers: pilotParticipant, body: JSON.stringify(iosShotBody) });
+  assert.strictEqual(iosRetry.json.duplicate, true, 'offline retry does not duplicate a screenshot');
+  const androidShot = await post(`${pilotRemotePath}/plugin_ios_esm/insert`, form({ device_id: 'pilot-android', data: JSON.stringify([{
+    timestamp: shotTime + 1, esm_trigger: 'app_usage_screenshot', esm_json: JSON.stringify({ esm_type: 14, esm_title: "Today's app usage screenshot" }),
+    esm_user_answer: `data:image/png;base64,${tinyPngBase64}`, esm_status: 2, platform: 'android', usage_window: 'today_so_far',
+    screenshot_period: 'afternoon', notification_id: 'afternoon-instance',
+  }]) }), formHeaders);
+  assert.strictEqual(androidShot.status, 200);
+  const pilotRaw = await request('GET', `${pilotRoot}/export/plugin_ios_esm?format=json`, { headers: researcherAuth });
+  assert.strictEqual(pilotRaw.json.rows.length, 2, 'screenshots from both platforms stored once');
+  assert.ok(pilotRaw.json.rows.every((row) => row.data.esm_trigger === 'app_usage_screenshot' && row.data.notification_id));
+  const pilotActivity = await request('GET', `${pilotRoot}/dashboard/screen-time-activity`, { headers: researcherAuth });
+  const morningSummary = pilotActivity.json.rows.find((row) => row.row_type === 'summary');
+  assert.strictEqual(morningSummary.usage_window, 'today_so_far', 'cumulative window is preserved');
+  assert.strictEqual(morningSummary.screenshot_period, 'morning', 'period links to the source prompt');
+  assert.strictEqual(morningSummary.total_screen_time_seconds, 4800);
+  const pilotBattery = await request('GET', `${pilotRoot}/dashboard/battery-usage`, { headers: researcherAuth });
+  assert.strictEqual(pilotBattery.json.screenshotRows.length, 0, 'Digital Wellbeing images are not interpreted as iOS Battery data');
+  console.log('✓ six daily pilot prompts, separate configuration, Android/iOS images, retry deduplication, and cumulative usage metadata');
 
   // 28. Repeated failed logins are throttled (run last: it blocks this IP).
   let limited = null;

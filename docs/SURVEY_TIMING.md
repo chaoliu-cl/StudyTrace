@@ -9,6 +9,13 @@ or after the deadline are rejected, including a form left open beforehand.
 
 ## Configure the mind body pilot
 
+For the extended pilot, [SCREENSHOT_PILOT.md](studies/mind-body-pilot/SCREENSHOT_PILOT.md)
+adds three separate app usage screenshot prompts (09:00–12:00, 12:00–17:00,
+17:00–21:00 local). These share the delivery/deadline rules below. Guided
+iPhone screenshot uploads and Android image selection check the original
+deadline before accepting an image. With all six daily prompts, the iOS
+notification budget covers about nine days; open the app daily to replenish it.
+
 After deploying the server and installing the updated Android and iOS builds,
 save these values in the researcher dashboard's ESM survey form:
 

@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -14,6 +16,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
+import android.util.Base64
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -39,6 +42,7 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import org.json.JSONObject
 import java.text.DateFormat
 import java.util.Date
+import java.io.ByteArrayOutputStream
 
 class MainActivity : Activity() {
     private lateinit var prefs: StudyPrefs
@@ -63,6 +67,8 @@ class MainActivity : Activity() {
     private var showingOnboarding = false
     private var onboardingIndex = 0
     private var initialIntentHandled = false
+    private var screenshotOccurrenceId: String? = null
+    private val screenshotRequestCode = 3107
     private val handler = Handler(Looper.getMainLooper())
 
     private enum class MainTab { SURVEY, DASHBOARD, SETTINGS }
@@ -70,6 +76,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = StudyPrefs(this)
+        screenshotOccurrenceId = savedInstanceState?.getString("screenshot_occurrence_id")
         NotificationHelper.ensureChannels(this)
         if (isJoined()) SyncWorker.schedule(this)
         if (StudyWithdrawal.hasPending(this)) WithdrawalWorker.enqueue(this)
@@ -945,6 +952,10 @@ class MainActivity : Activity() {
     private fun showSurvey(prompt: SurveyRepository.OpenPrompt) {
         val schedule = prompt.schedule
         val questions = SurveyRepository.allQuestions(schedule)
+        if (schedule.optString("studytrace_prompt_type") == "app_usage_screenshot") {
+            showUsageScreenshot(prompt)
+            return
+        }
         if (questions.isEmpty()) {
             toast(getString(R.string.survey_no_questions))
             return
@@ -991,6 +1002,72 @@ class MainActivity : Activity() {
                 submitSurvey(prompt, answers)
             }
             .show()
+    }
+
+    private fun showUsageScreenshot(prompt: SurveyRepository.OpenPrompt) {
+        AlertDialog.Builder(this)
+            .setTitle("Today's app usage screenshot")
+            .setMessage("1. Open Settings > Digital Wellbeing & parental controls > Dashboard (or your phone's app usage screen).\n\n2. Select Today and take a fresh screenshot showing today's total and the app list.\n\n3. Return to StudyTrace and choose that screenshot.\n\nComplete this within 60 minutes of the notification, or the duration set by your research team.")
+            .setNeutralButton(getString(R.string.survey_later), null)
+            .setNegativeButton(getString(R.string.survey_dismiss)) { _, _ -> dismissSurvey(prompt) }
+            .setPositiveButton("Choose screenshot") { _, _ ->
+                screenshotOccurrenceId = prompt.record.id
+                @Suppress("DEPRECATION")
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    type = "image/*"
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }, screenshotRequestCode)
+            }
+            .show()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("screenshot_occurrence_id", screenshotOccurrenceId)
+        super.onSaveInstanceState(outState)
+    }
+
+    @Deprecated("Uses the system document picker without broad photo permissions")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != screenshotRequestCode) return
+        val occurrenceId = screenshotOccurrenceId ?: return
+        screenshotOccurrenceId = null
+        val uri = data?.data
+        if (resultCode != RESULT_OK || uri == null) return
+        background("Preparing screenshot...") {
+            val prompt = SurveyRepository.openPrompt(this, occurrenceId)
+                ?: return@background null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Choose a readable screenshot image." }
+            val options = BitmapFactory.Options().apply { inSampleSize = 1 }
+            while (maxOf(bounds.outWidth, bounds.outHeight) / options.inSampleSize > 2800) {
+                options.inSampleSize *= 2
+            }
+            val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+                ?: error("StudyTrace could not read this image.")
+            val bytes = ByteArrayOutputStream().use { output ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                if (output.size() > 6 * 1024 * 1024) {
+                    output.reset()
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
+                    "data:image/jpeg;base64," to output.toByteArray()
+                } else "data:image/png;base64," to output.toByteArray()
+            }
+            bitmap.recycle()
+            require(bytes.second.size <= 8 * 1024 * 1024) { "Choose a smaller screenshot." }
+            prompt to (bytes.first + Base64.encodeToString(bytes.second, Base64.NO_WRAP))
+        }.onResult { prepared ->
+            if (prepared == null) {
+                toast(getString(R.string.survey_no_longer_available))
+                renderOpenPrompts()
+            } else {
+                val (prompt, answer) = prepared
+                // submitAnswers rechecks the original deadline after image preparation.
+                submitSurvey(prompt, SurveyRepository.allQuestions(prompt.schedule).map { it to answer })
+            }
+        }
     }
 
     private fun submitSurvey(prompt: SurveyRepository.OpenPrompt, answers: List<Pair<JSONObject, String>>) {

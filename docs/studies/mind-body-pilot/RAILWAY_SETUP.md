@@ -4,6 +4,8 @@ This guide configures one survey containing your PANAS-10, Perceived Stress Scal
 
 Railway hosts the server and PostgreSQL database. You create the study and survey in the StudyTrace web dashboards. The phone downloads the schedule and creates its notifications; a Railway cron job is unnecessary.
 
+For the second pilot with **three additional random app usage screenshot requests per day**, follow [SCREENSHOT_PILOT.md](SCREENSHOT_PILOT.md). It covers the new screenshot schedule, Railway deployment, Android and iPhone steps, fixed-time tests, and image exports. This original guide describes the questionnaire-only schedule.
+
 **Install the updated Android and iOS builds as well as deploying the updated server.** The timing fix starts the 60-minute window from notification delivery, preserves that deadline across reopening/refreshes, and checks it on submission. Older installed clients still have the anchor-based expiration bug. Mobile operating systems can delay or suppress notifications; see [survey timing](../../SURVEY_TIMING.md) for the remaining platform limits and rollout checks.
 
 Prepared from the repository and your three source documents on October 28, 2026. Railway menu labels can vary by account and interface version.
@@ -114,7 +116,7 @@ Get-Content -Raw -Encoding UTF8 .\docs\studies\mind-body-pilot\questions.json | 
 
 The randomization setting is **plus or minus** 120 minutes around each time, producing nominal local windows of 09:00–13:00, 13:00–17:00, and 17:00–21:00. There is one draw per window. This differs from drawing three unrestricted times across the entire day. The windows meet, so prompts can be close together at their boundaries.
 
-Keep all 25 questions in this single schedule. Saving each questionnaire separately replaces the ordinary ESM schedule; it does not add a separate questionnaire to the previous save. The optional **Question templates → Add to survey** button appends questions, so it is unnecessary when using the supplied JSON. The Battery and Screen Time screenshot forms configure separate activities and are unnecessary for these surveys.
+Keep all 25 questions in this single schedule. Saving each questionnaire separately replaces the ordinary ESM schedule; it does not add a separate questionnaire to the previous save. The optional **Question templates → Add to survey** button appends questions, so it is unnecessary when using the supplied JSON. For the added screenshot activities, use **App usage screenshot reminders (iPhone and Android)** as explained in [SCREENSHOT_PILOT.md](SCREENSHOT_PILOT.md); its save preserves this questionnaire schedule.
 
 Schedule updates become effective on phones after the phones download them. On Android, use **Refresh surveys** after every test change. Avoid changing item wording or response codes after pilot enrollment without retaining a dated copy of the previous configuration.
 

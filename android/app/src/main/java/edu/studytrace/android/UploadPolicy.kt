@@ -4,6 +4,27 @@ package edu.studytrace.android
 enum class UploadOutcome { SUCCESS, RETRY, DROP }
 
 object UploadPolicy {
+    /** Leave room below the server's 25 MB JSON limit, including image answers. */
+    const val MAX_BATCH_BYTES = 12 * 1024 * 1024
+
+    fun batchLines(lines: List<String>, maxRows: Int, maxBytes: Int = MAX_BATCH_BYTES): List<List<String>> {
+        val batches = mutableListOf<List<String>>()
+        var batch = mutableListOf<String>()
+        var bytes = 0
+        for (line in lines) {
+            val size = line.toByteArray(Charsets.UTF_8).size + 1
+            if (batch.isNotEmpty() && (batch.size >= maxRows || bytes + size > maxBytes)) {
+                batches += batch
+                batch = mutableListOf()
+                bytes = 0
+            }
+            batch += line
+            bytes += size
+        }
+        if (batch.isNotEmpty()) batches += batch
+        return batches
+    }
+
     /** HTTP status used by StudyApi when the request never got a response. */
     const val NETWORK_ERROR = -1
 

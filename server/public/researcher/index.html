@@ -161,6 +161,26 @@
       <section class="panel">
         <div class="section-head">
           <div>
+            <h2>App usage screenshot reminders (iPhone and Android)</h2>
+            <p class="section-note">Adds three reminders per day alongside your surveys: one random time in 09:00–12:00, 12:00–17:00, and 17:00–21:00, in each phone's local time. Participants upload today's usage so far from iPhone Screen Time or Android Digital Wellbeing. These are cumulative snapshots; do not add the three totals together.</p>
+          </div>
+        </div>
+        <form id="researcher-usage-schedule" class="stack">
+          <label><span>Screenshot reminders</span><select name="enabled"><option value="false">Off</option><option value="true">On</option></select></label>
+          <label><span>Delivery mode</span><select name="mode"><option value="periods">Random morning, afternoon, and evening</option><option value="fixed">Fixed times for a phone test (09:00–21:00)</option></select></label>
+          <label><span>Fixed test times, 24-hour HH:MM (used only in test mode)</span><input name="times" placeholder="10:30"></label>
+          <label><span>Minutes to upload after delivery</span><input name="expiration_minutes" type="number" min="1" max="1440" value="60" required></label>
+          <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="10-29-2026"></label>
+          <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="11-05-2026"></label>
+          <p class="section-note">Saving this section preserves the questionnaire schedule. Updated iPhone and Android apps are required. Leave the separate Battery and yesterday's Screen Time schedules unused for this pilot to avoid additional screenshot requests. Save Off to stop these reminders, then refresh the phones.</p>
+          <button class="button button-primary" type="submit">Save app usage screenshot reminders</button>
+        </form>
+        <pre id="researcher-usage-schedule-result" class="result-box"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
             <h2>Battery screenshot notifications</h2>
             <p class="section-note">Schedule prompts that ask participants to upload Settings → Battery → View All Battery Usage screenshots. This section uses an <code>esm_type: 14</code> photo question.</p>
           </div>

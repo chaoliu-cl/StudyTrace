@@ -12,6 +12,21 @@ import AWAREFramework
 @testable import StudyTrace
 
 class StudyTraceTests: XCTestCase {
+    func testAppUsageScreenshotAsksForTodayAndPreservesItsDeadline() {
+        let kind = UsageScreenshotKind.appUsageToday
+        XCTAssertEqual(kind.promptTrigger, "app_usage_screenshot")
+        XCTAssertEqual(kind.uploadKind, "screen_time_activity")
+        XCTAssertTrue(kind.steps.joined().contains("Today"))
+        XCTAssertFalse(kind.steps.joined().contains("yesterday"))
+        let delivered = Date(timeIntervalSince1970: 1_800_000_000)
+        let prompt = UsageScreenshotPrompt(identifier: "morning", scheduleId: "usage", period: "morning",
+            scheduledAt: delivered.addingTimeInterval(-300), deliveredAt: delivered,
+            expiresAt: delivered.addingTimeInterval(3600))
+        XCTAssertTrue(prompt.isOpen(at: delivered.addingTimeInterval(3599)))
+        XCTAssertFalse(prompt.isOpen(at: delivered.addingTimeInterval(3600)))
+        XCTAssertFalse(prompt.isOpen(at: delivered.addingTimeInterval(-1)))
+    }
+
 
     func testSurveyDeadlineCountsFromDeliveryForEarlyAndLatePrompts() {
         let anchor = Date(timeIntervalSince1970: 1_800_000_000)

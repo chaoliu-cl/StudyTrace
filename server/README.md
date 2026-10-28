@@ -65,10 +65,30 @@ Use `/researcher/` to create or update the study's notification schedules:
   `prompt_window_end`; participant configs expose `studytrace_window_start`
   and `studytrace_window_end`. Already open surveys retain their full window.
 - `ESM survey notifications` schedule ordinary study survey prompts.
+- `App usage screenshot reminders (iPhone and Android)` adds three independent
+  daily prompts in local 09:00–12:00, 12:00–17:00, and 17:00–21:00 windows.
+  Updated phones ask participants to select a fresh image of today's usage so
+  far: iPhone Screen Time or Android Digital Wellbeing. Save this separately
+  from the ordinary ESM survey. The authenticated researcher endpoint is
+  `GET/PUT /api/v1/studies/{studyId}/app-usage-screenshot-schedule`.
+  PUT `{ "enabled": true, "mode": "periods", "expiration_minutes": 60 }`
+  enables the three periods; `{ "enabled": false }` stops them. Fixed test
+  mode uses `{ "enabled": true, "mode": "fixed", "times": "10:30",
+  "expiration_minutes": 60 }`. Optional dates use `MM-DD-YYYY`.
+- Screenshot responses use `esm_trigger: app_usage_screenshot`, retain the
+  prompt/period identifiers, and describe cumulative `today_so_far` usage.
+  iPhone images use the existing Screen Time OCR pipeline; Android images
+  remain available for manual coding. Do not sum the three daily snapshots.
+  See the [pilot walkthrough](../docs/studies/mind-body-pilot/SCREENSHOT_PILOT.md).
 - `Battery screenshot notifications` schedule the photo-upload prompt for
   Settings → Battery → View All Battery Usage screenshots.
 - Each section has its own question JSON. Use `esm_type: 14` for an in-survey
   photo question.
+
+The app usage reminder section supplies its image question automatically.
+PUT `{ "enabled": false }` to either legacy screenshot schedule endpoint to
+stop that activity independently; this leaves the survey and new reminders
+intact. Already downloaded schedules change after a phone refreshes online.
 
 Existing schedules without notification-hour fields retain unrestricted hours
 until edited. Deploying the server does not update installed phone code: install
