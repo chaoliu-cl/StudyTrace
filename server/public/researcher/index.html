@@ -131,6 +131,9 @@
           <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="09:30, 17:15" required></label>
           <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
           <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="120"></label>
+          <label><span>Earliest notification, local time (optional)</span><input name="prompt_window_start" type="time" value="09:00"></label>
+          <label><span>Latest notification, local time (optional)</span><input name="prompt_window_end" type="time" value="21:00"></label>
+          <p class="section-note">Updated apps start the response window at notification delivery. These hours limit new prompts; a delivered survey can stay open afterward. Leave both hours blank for unrestricted delivery.</p>
           <label><span>Notification title</span><input name="notification_title" value="StudyTrace survey available"></label>
           <label><span>Notification body</span><input name="notification_body" value="Please complete your scheduled study survey."></label>
           <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>

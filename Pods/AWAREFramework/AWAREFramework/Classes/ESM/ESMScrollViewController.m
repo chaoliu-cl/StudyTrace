@@ -59,6 +59,8 @@
     
     NSObject * quickBtnObserver;
     
+    NSString *studytraceOccurrenceId;
+    NSString *studytraceScheduleId;
     NSNumber * sessionTimestamp;
     
     
@@ -155,6 +157,7 @@
 
 - (void)viewDidAppear:(BOOL)animated{
     [super viewDidAppear:animated];
+    if (![self studytraceValidateSession]) return;
     esmCells = [[NSMutableArray alloc] init];
     // Remove all UIView contents from super view (_mainScrollView).
     for (UIView * view in _mainScrollView.subviews) {
@@ -170,7 +173,18 @@
         esmSchedules = [esmManager getValidSchedulesWithDatetime:[NSDate new]];
         
         if(esmSchedules != nil && esmSchedules.count > 0){
+if (studytraceOccurrenceId != nil) {
+    NSPredicate *sameSchedule = [NSPredicate predicateWithFormat:@"schedule_id == %@", studytraceScheduleId];
+    esmSchedules = [esmSchedules filteredArrayUsingPredicate:sameSchedule];
+    if (esmSchedules.count == 0) return;
+}
             EntityESMSchedule * esmSchedule = esmSchedules[0];
+if (studytraceOccurrenceId == nil && esmSchedule.fire_hour.integerValue >= 0) {
+    NSDictionary *occurrence = [esmManager studytraceOccurrenceForSchedule:esmSchedule atDate:[NSDate date]];
+    studytraceOccurrenceId = occurrence[@"id"];
+    studytraceScheduleId = esmSchedule.schedule_id;
+    sessionTimestamp = @([occurrence[@"delivered_at"] doubleValue] * 1000);
+}
             if (study.isDebug) NSLog(@"[interface: %@]", esmSchedule.interface);
             NSSet * childEsms = esmSchedule.esms;
             // NSNumber * interface = schedule.interface;
@@ -325,6 +339,7 @@
 #pragma mark - Button Events
 
 - (void) pushedCancelButton:(id) senser {
+    if (![self studytraceValidateSession]) return;
     AudioServicesPlaySystemSound(1104);
     
     [[NSNotificationCenter defaultCenter] postNotificationName:ACTION_AWARE_ESM_CANCEL
@@ -349,7 +364,21 @@
 }
 
 
+- (BOOL)studytraceValidateSession {
+    if (studytraceOccurrenceId == nil) return YES; // Context/demo surveys have no delivery window.
+    ESMScheduleManager *manager = [ESMScheduleManager sharedESMScheduleManager];
+    if ([manager studytraceOccurrenceIsOpen:studytraceOccurrenceId atDate:[NSDate date]]) return YES;
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Survey closed" message:@"The response window for this survey has ended." preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self.navigationController popToRootViewControllerAnimated:YES];
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
+    return NO;
+}
+
 - (void) pushedSubmitButton:(id) senser {
+    if (![self studytraceValidateSession]) return;
     AudioServicesPlaySystemSound(1105);
     // AWAREDelegate *delegate=(AWAREDelegate*)[UIApplication sharedApplication].delegate;
     NSManagedObjectContext * context = [[NSManagedObjectContext alloc] initWithConcurrencyType:NSMainQueueConcurrencyType];
@@ -395,10 +424,15 @@
             }else{
                 answer.timestamp = esm.timestamp;
             }
+            if (studytraceOccurrenceId != nil) answer.timestamp = sessionTimestamp;
             answer.device_id   = deviceId;
             answer.esm_json    = esm.esm_json;
             answer.esm_trigger = esm.esm_trigger;
             answer.esm_expiration_threshold         = esm.esm_expiration_threshold;
+if (studytraceOccurrenceId != nil) {
+    NSDictionary *timing = [[ESMScheduleManager sharedESMScheduleManager] studytraceOccurrenceForSchedule:esmSchedules[0] atDate:[NSDate date]];
+    answer.esm_expiration_threshold = @([timing[@"expires_at"] doubleValue] - [timing[@"delivered_at"] doubleValue]);
+}
             answer.double_esm_user_answer_timestamp = unixtime;
             answer.esm_user_answer = esmUserAnswer;
             answer.esm_status      = esmState;
@@ -452,6 +486,7 @@
     // Save all data to SQLite
     bool success = false;
     if (_isSaveAnswer) {
+        if (![self studytraceValidateSession]) return;
         NSError * error = nil;
         success = [context save:&error];
         context.mergePolicy = originalMergePolicy;
@@ -873,6 +908,8 @@
 #pragma mark - History
 
 - (void) saveHistory:(EntityESMSchedule *)esmSchedule context:(NSManagedObjectContext *)context {
+    [[ESMScheduleManager sharedESMScheduleManager] studytraceCompleteOccurrence:studytraceOccurrenceId];
+    studytraceOccurrenceId = nil;
     EntityESMAnswerHistory * entityESMHistory = (EntityESMAnswerHistory *) [NSEntityDescription insertNewObjectForEntityForName:NSStringFromClass([EntityESMAnswerHistory class])
                                                                             
                                                                                                          inManagedObjectContext:context];

@@ -173,6 +173,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         StudyTraceTelemetry.recordEvent("app_did_become_active")
         StudyTraceHeartbeat.beatIfDue()
         StudyTraceTelemetry.uploadDeviceState(reason: "app_did_become_active")
+        if StudyParticipationController.hasConsent() {
+            ESMScheduleManager.shared().refreshESMNotifications()
+        }
         refreshRemoteESMScheduleIfNeeded(force: true)
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationDidBecomeActive:"]);
@@ -191,6 +194,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationWillTerminate:"]);
         self.saveContext()
+    }
+
+    func applicationSignificantTimeChange(_ application: UIApplication) {
+        guard StudyParticipationController.hasConsent() else { return }
+        ESMScheduleManager.shared().refreshESMNotifications()
+        StudyTraceNotificationAudit.reportDeliveredNotifications()
     }
 
     private func refreshRemoteESMScheduleIfNeeded(force: Bool) {
@@ -482,6 +491,7 @@ enum StudyParticipationController {
         AWARECore.shared().deactivate()
 
         cancelStudyNotifications()
+        ESMScheduleManager.shared().studytraceClearTiming()
         deleteLocalStudyDatabase()
         // Queued telemetry/screenshots are study data stored on this iPhone
         // too; the server's withdrawal log is the record of the withdrawal.
@@ -638,9 +648,13 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        StudyTraceNotificationAudit.markReported(notification)
+        let allowed = StudyTraceNotificationAudit.markReported(notification)
         StudyTraceTelemetry.recordEvent("notification_presented",
                                         metadata: StudyTraceNotificationAudit.metadata(for: notification))
+        guard allowed else {
+            completionHandler([])
+            return
+        }
         if #available(iOS 14.0, *) {
             completionHandler([.banner, .list, .sound, .badge])
         } else {

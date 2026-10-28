@@ -77,10 +77,21 @@ server dedupes rows by `dedupe_key`/`event_id`, so retries are safe.
 Survey schedules come from `GET .../index.php/webservice/index/{STUDY_ID}/{PASSWORD}/esm/config`
 and are cached for offline use. Each schedule `times` entry (or `hours` when
 there are no times) becomes one prompt per local day, shifted by a
-deterministic random offset of up to +/- `randomize` minutes and open until
-`expiration` minutes after the scheduled slot (end of day when 0). Each prompt
-is notified once, up to about 15 minutes late. Schedules without times never
-notify. Battery and Screen Time screenshot prompts are iOS-only and skipped.
+deterministic random offset of up to +/- `randomize` minutes, seeded by device,
+schedule, local date, and slot. A delivered prompt remains open for `expiration`
+minutes after Android posts its notification (end of day when 0). Both opening
+and submitting check the persisted deadline; leaving a form open cannot extend
+it. `studytrace_window_start` and `studytrace_window_end` optionally limit new
+notifications by local clock. An open survey keeps its full response window
+past the end of those notification hours.
+
+Each occurrence is notified once. WorkManager checks about every 15 minutes,
+but Android can delay background work longer. Undelivered occurrences are
+eligible for catch-up until scheduled time plus `expiration`; stale prompts or
+prompts caught after the notification hours are missed rather than delivered.
+Schedules without times never notify. Battery and Screen Time screenshot
+prompts are iOS-only and skipped. See [survey timing](../docs/SURVEY_TIMING.md)
+for both platforms and rollout checks.
 
 ## Leaving a study
 

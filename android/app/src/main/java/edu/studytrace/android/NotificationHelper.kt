@@ -45,17 +45,24 @@ object NotificationHelper {
             .build()
 
     /** Posts one notification per prompt occurrence, tagged with its id so it can be cancelled on expiry. */
-    fun showSurveyNotification(context: Context, occurrenceId: String, title: String, body: String) {
+    fun showSurveyNotification(context: Context, occurrenceId: String, title: String, body: String, responseMillis: Long): Boolean {
         ensureChannels(context)
         val manager = context.getSystemService(NotificationManager::class.java)
+        if (!manager.areNotificationsEnabled() || manager.getNotificationChannel(SYNC_CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) return false
         val notification = NotificationCompat.Builder(context, SYNC_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_studytrace)
             .setContentTitle(title.ifBlank { context.getString(R.string.survey_notification_default_title) })
             .setContentText(body.ifBlank { context.getString(R.string.survey_notification_default_body) })
             .setAutoCancel(true)
+            .setTimeoutAfter(responseMillis.coerceAtLeast(1))
             .setContentIntent(openAppIntent(context, occurrenceId))
             .build()
-        manager.notify(occurrenceId, SURVEY_NOTIFICATION_ID, notification)
+        return try {
+            manager.notify(occurrenceId, SURVEY_NOTIFICATION_ID, notification)
+            true
+        } catch (_: SecurityException) {
+            false
+        }
     }
 
     fun cancelSurveyNotification(context: Context, occurrenceId: String) {

@@ -56,18 +56,26 @@ Use `/researcher/` to create or update the study's notification schedules:
   `09:30, 17:15`.
 - `Randomized around listed times` sends each notification at a random offset
   within the configured randomization window around each listed time.
-- `Expiration window` controls how long a survey remains valid after the
-  scheduled time.
+- `Expiration window` controls how long a survey remains valid after
+  notification delivery in the updated Android and iOS apps. Opening or
+  refreshing a survey does not restart the response window.
+- `Earliest notification` and `Latest notification` limit new ordinary ESM
+  prompts in participant-local time (default 09:00–21:00 for a new schedule).
+  Leave both blank for no limit. API clients use `prompt_window_start` and
+  `prompt_window_end`; participant configs expose `studytrace_window_start`
+  and `studytrace_window_end`. Already open surveys retain their full window.
 - `ESM survey notifications` schedule ordinary study survey prompts.
 - `Battery screenshot notifications` schedule the photo-upload prompt for
   Settings → Battery → View All Battery Usage screenshots.
 - Each section has its own question JSON. Use `esm_type: 14` for an in-survey
   photo question.
 
-Existing participants pick up the schedule when the app starts/restarts its
-collection state. For immediate testing after changing a schedule, ask the
-participant to open the app once after deployment. QR-based ESM import remains
-available as a fallback/debug workflow.
+Existing schedules without notification-hour fields retain unrestricted hours
+until edited. Deploying the server does not update installed phone code: install
+both updated clients, save the desired hours in the researcher dashboard, and
+refresh each phone's schedule (Android: **Refresh surveys**; iOS: reopen while
+online). QR-based ESM import remains available as a fallback/debug workflow.
+See [survey timing](../docs/SURVEY_TIMING.md) for delivery and OS limitations.
 
 ## Storage model
 

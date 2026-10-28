@@ -1873,6 +1873,13 @@ function buildEsmScheduleFromRequest(body, defaultPromptType = 'esm_survey') {
     : 0;
   const scheduleId = sanitizeScheduleId(body.schedule_id || `studytrace_${mode}_${scheduleSlugForPrompt(promptType)}`);
   const esms = parseEsmQuestions(body, promptType);
+  const windowStart = String(body.prompt_window_start ?? (promptType === 'esm_survey' ? '09:00' : '')).trim();
+  const windowEnd = String(body.prompt_window_end ?? (promptType === 'esm_survey' ? '21:00' : '')).trim();
+  const start = parsePromptTime(windowStart);
+  const end = parsePromptTime(windowEnd);
+  if ((windowStart || windowEnd) && (!start || !end || start.minutes >= end.minutes)) {
+    throw httpError(400, 'prompt window must contain a valid start and later end time, or leave both blank');
+  }
 
   return [
     {
@@ -1883,6 +1890,8 @@ function buildEsmScheduleFromRequest(body, defaultPromptType = 'esm_survey') {
       studytrace_delivery_mode: mode,
       randomize: randomMinutes,
       expiration: clampInteger(body.expiration_minutes, 0, 1440, mode === 'random' ? randomMinutes * 2 : 120),
+      studytrace_window_start: start?.time || '',
+      studytrace_window_end: end?.time || '',
       start_date: normalizeDateString(body.start_date),
       end_date: normalizeDateString(body.end_date),
       notification_title: String(body.notification_title || defaultNotificationTitle(promptType)),

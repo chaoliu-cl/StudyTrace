@@ -63,12 +63,54 @@ class PromptPlannerTest {
     }
 
     @Test
-    fun expirationCountsFromOriginalSlotLikeAware() {
-        val occurrence = PromptPlanner.occurrencesOn(schedule(randomize = 30, expiration = 60), day, zone).first()
-        val offset = PromptPlanner.randomOffsetMinutes("daily", day, "09:00", 30)
-        val expected = if (offset < 60) at(day, 10) else occurrence.promptAtMillis + 60 * 60_000L
-        assertEquals(expected, occurrence.expiresAtMillis)
-        assertTrue(occurrence.expiresAtMillis > occurrence.promptAtMillis)
+    fun earlyAndLateRandomizedPromptsBothGetFullHourFromDelivery() {
+        val offsets = mutableSetOf<Int>()
+        repeat(40) { index ->
+            val date = day.plusDays(index.toLong())
+            val occurrence = PromptPlanner.occurrencesOn(schedule(randomize = 120), date, zone).first()
+            offsets += ((occurrence.promptAtMillis - occurrence.originalAtMillis) / 60_000).toInt()
+            val deliveredAt = occurrence.promptAtMillis + 17 * 60_000L
+            val record = PromptPlanner.recordDelivery(occurrence, deliveredAt)
+            assertEquals(deliveredAt + 60 * 60_000L, record.expiresAtMillis)
+            assertTrue(PromptPlanner.canRespond(record, record.expiresAtMillis - 1))
+            assertFalse(PromptPlanner.canRespond(record, record.expiresAtMillis))
+            assertFalse(PromptPlanner.canRespond(record, record.expiresAtMillis + 1))
+            assertFalse(PromptPlanner.canRespond(record.copy(status = OccurrenceStatus.ANSWERED), deliveredAt))
+        }
+        assertTrue(offsets.any { it < 0 })
+        assertTrue(offsets.any { it > 0 })
+    }
+
+    @Test
+    fun randomizationIsIndependentPerParticipantAndStableAcrossRefreshes() {
+        val first = (0 until 14).map { PromptPlanner.randomOffsetMinutes("daily", day.plusDays(it.toLong()), "11:00", 120, "P001") }
+        val second = (0 until 14).map { PromptPlanner.randomOffsetMinutes("daily", day.plusDays(it.toLong()), "11:00", 120, "P002") }
+        assertTrue(first != second)
+        assertEquals(first[0], PromptPlanner.randomOffsetMinutes("daily", day, "11:00", 120, "P001"))
+    }
+
+    @Test
+    fun lateWorkerSkipsQuietHoursButAnOpenSurveyKeepsItsFullHour() {
+        val bounded = schedule(slots = listOf("20:50")).copy(windowStart = "09:00", windowEnd = "21:00")
+        val quiet = PromptPlanner.plan(listOf(bounded), emptyMap(), at(day, 21, 5), at(day, 0), zone)
+        assertTrue(quiet.deliver.isEmpty())
+        assertEquals(1, quiet.missed.size)
+        val occurrence = PromptPlanner.occurrencesOn(bounded, day, zone).single()
+        val record = PromptPlanner.recordDelivery(occurrence, at(day, 20, 55))
+        assertTrue(PromptPlanner.canRespond(record, at(day, 21, 30)))
+        assertEquals(at(day, 21, 55), record.expiresAtMillis)
+        assertFalse(PromptPlanner.isInsideDeliveryWindow(bounded, at(day, 8, 59), zone))
+        assertTrue(PromptPlanner.isInsideDeliveryWindow(bounded, at(day, 21), zone))
+    }
+
+    @Test
+    fun responseWindowSurvivesDaylightSavingAndTimeZoneChange() {
+        val dstDay = LocalDate.of(2026, 11, 1)
+        val occurrence = PromptPlanner.occurrencesOn(schedule(slots = listOf("01:30")), dstDay, zone).single()
+        val record = PromptPlanner.recordDelivery(occurrence, occurrence.promptAtMillis)
+        assertEquals(3_600_000L, record.expiresAtMillis - record.deliveredAtMillis)
+        assertTrue(PromptPlanner.canRespond(record, record.deliveredAtMillis + 59 * 60_000L))
+        assertFalse(PromptPlanner.canRespond(record, record.deliveredAtMillis + 60 * 60_000L))
     }
 
     @Test

@@ -10,6 +10,7 @@
 
 import UIKit
 import UserNotifications
+import AWAREFramework
 
 enum StudyTraceHeartbeat {
     private static let lastHeartbeatKey = "com.studytrace.telemetry.last-heartbeat"
@@ -88,6 +89,15 @@ enum StudyTraceNotificationAudit {
         return [
             "notification_id": notification.request.identifier,
             "delivered_at": notification.date.timeIntervalSince1970 * 1000,
+            "scheduled_at": content.userInfo["planned_at"] as? Double ?? 0,
+            "within_notification_hours": ESMScheduleManager.studytraceIsWithinWindow(
+                notification.date, start: content.userInfo["window_start"] as? String,
+                end: content.userInfo["window_end"] as? String
+            ),
+            "expires_at": ESMScheduleManager.studytraceDeadline(
+                delivery: notification.date,
+                expirationMinutes: (content.userInfo["expiration_threshold"] as? NSNumber)?.intValue ?? 0
+            ).timeIntervalSince1970 * 1000,
             "is_survey_prompt": isSurveyPrompt(content),
             "schedule_id": content.userInfo["schedule_id"] as? String ?? "",
             "thread": content.threadIdentifier,
@@ -97,8 +107,12 @@ enum StudyTraceNotificationAudit {
 
     /// Remember a notification already reported by the presented/tapped
     /// handlers, so the delivered-notification sweep does not repeat it.
-    static func markReported(_ notification: UNNotification) {
+    @discardableResult
+    static func markReported(_ notification: UNNotification) -> Bool {
+        guard StudyParticipationController.hasConsent() else { return false }
+        let allowed = ESMScheduleManager.shared().studytraceRecordNotification(notification)
         remember([key(for: notification)])
+        return allowed
     }
 
     /// Logs prompts delivered while StudyTrace was not in the foreground.
@@ -111,6 +125,7 @@ enum StudyTraceNotificationAudit {
                 let reported = Set(UserDefaults.standard.stringArray(forKey: reportedKey) ?? [])
                 var newKeys: [String] = []
                 for notification in notifications.sorted(by: { $0.date < $1.date }) {
+                    _ = ESMScheduleManager.shared().studytraceRecordNotification(notification)
                     let notificationKey = key(for: notification)
                     guard !reported.contains(notificationKey) else { continue }
                     newKeys.append(notificationKey)

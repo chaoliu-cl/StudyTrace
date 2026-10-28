@@ -8,9 +8,84 @@
 
 import XCTest
 import UserNotifications
+import AWAREFramework
 @testable import StudyTrace
 
 class StudyTraceTests: XCTestCase {
+
+    func testSurveyDeadlineCountsFromDeliveryForEarlyAndLatePrompts() {
+        let anchor = Date(timeIntervalSince1970: 1_800_000_000)
+        for offset in [-120, -30, 30, 120] {
+            let delivered = anchor.addingTimeInterval(TimeInterval(offset * 60 + 17 * 60))
+            let deadline = ESMScheduleManager.studytraceDeadline(delivery: delivered, expirationMinutes: 60)
+            XCTAssertEqual(deadline.timeIntervalSince(delivered), 3600)
+            XCTAssertTrue(ESMScheduleManager.studytraceIsOpen(delivery: delivered, expirationMinutes: 60, now: deadline.addingTimeInterval(-0.001)))
+            XCTAssertFalse(ESMScheduleManager.studytraceIsOpen(delivery: delivered, expirationMinutes: 60, now: deadline))
+            XCTAssertFalse(ESMScheduleManager.studytraceIsOpen(delivery: delivered, expirationMinutes: 60, now: deadline.addingTimeInterval(1)))
+        }
+    }
+
+    func testRandomDrawsAreStableAndVaryByParticipantAndDay() {
+        let first = (1...14).map { ESMScheduleManager.studytraceOffset(seed: "P001|daily|2026-10-\($0)|11:00", range: 120) }
+        let second = (1...14).map { ESMScheduleManager.studytraceOffset(seed: "P002|daily|2026-10-\($0)|11:00", range: 120) }
+        XCTAssertTrue(first.allSatisfy { (-120...120).contains($0) })
+        XCTAssertGreaterThan(Set(first).count, 1)
+        XCTAssertNotEqual(first, second)
+        XCTAssertEqual(first[0], ESMScheduleManager.studytraceOffset(seed: "P001|daily|2026-10-1|11:00", range: 120))
+    }
+
+    func testNotificationHoursUseLocalClockAndIncludeBoundary() {
+        let calendar = Calendar.current
+        let base = calendar.startOfDay(for: Date())
+        for (hour, minute, allowed) in [(8, 59, false), (9, 0, true), (20, 59, true), (21, 0, true), (21, 1, false)] {
+            let date = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: base)!
+            XCTAssertEqual(ESMScheduleManager.studytraceIsWithinWindow(date, start: "09:00", end: "21:00"), allowed)
+        }
+    }
+
+    func testObservedDeliveryIsPersistedAndReopeningCannotExtendDeadline() {
+        let key = "studytrace.esm.occurrences.v2"
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: key)
+        defer {
+            if let previous = previous { defaults.set(previous, forKey: key) }
+            else { defaults.removeObject(forKey: key) }
+        }
+        let identifier = "studytrace.esm.v2|timing-test|2026-10-28"
+        defaults.set([identifier: ["id": identifier, "schedule_id": "timing-test", "status": "scheduled", "expiration": 60, "window_start": "", "window_end": ""]], forKey: key)
+        let manager = ESMScheduleManager.shared()
+        let delivered = Date()
+        XCTAssertTrue(manager.studytraceRecordDelivery(identifier: identifier, at: delivered))
+        // Simulates tapping/re-reporting the same notification half an hour later.
+        XCTAssertTrue(manager.studytraceRecordDelivery(identifier: identifier, at: delivered.addingTimeInterval(1800)))
+        XCTAssertTrue(manager.studytraceOccurrenceIsOpen(identifier, at: delivered.addingTimeInterval(3599)))
+        XCTAssertFalse(manager.studytraceOccurrenceIsOpen(identifier, at: delivered.addingTimeInterval(3600)))
+        XCTAssertFalse(manager.studytraceOccurrenceIsOpen(identifier, at: delivered.addingTimeInterval(4000)))
+        manager.studytraceCompleteOccurrence(identifier)
+        XCTAssertFalse(manager.studytraceOccurrenceIsOpen(identifier, at: delivered.addingTimeInterval(1)))
+    }
+
+    func testLateObservedDeliveryIsNotAnOpenSurvey() {
+        let key = "studytrace.esm.occurrences.v2"
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: key)
+        defer {
+            if let previous = previous { defaults.set(previous, forKey: key) }
+            else { defaults.removeObject(forKey: key) }
+        }
+        let identifier = "studytrace.esm.v2|late-test|2026-10-28"
+        defaults.set([identifier: ["id": identifier, "schedule_id": "late-test", "status": "scheduled", "expiration": 60, "window_start": "09:00", "window_end": "21:00"]], forKey: key)
+        let late = Calendar.current.date(bySettingHour: 21, minute: 5, second: 0, of: Date())!
+        let manager = ESMScheduleManager.shared()
+        XCTAssertFalse(manager.studytraceRecordDelivery(identifier: identifier, at: late))
+        XCTAssertFalse(manager.studytraceOccurrenceIsOpen(identifier, at: late.addingTimeInterval(1)))
+    }
+
+    func testResponseDurationCanExtendAcrossMidnight() {
+        let delivered = Calendar.current.date(bySettingHour: 23, minute: 45, second: 0, of: Date())!
+        XCTAssertTrue(ESMScheduleManager.studytraceIsOpen(delivery: delivered, expirationMinutes: 60, now: delivered.addingTimeInterval(59 * 60)))
+        XCTAssertFalse(ESMScheduleManager.studytraceIsOpen(delivery: delivered, expirationMinutes: 60, now: delivered.addingTimeInterval(60 * 60)))
+    }
 
     override func setUp() {
         // Put setup code here. This method is called before the invocation of each test method in the class.

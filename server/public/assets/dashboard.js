@@ -429,7 +429,11 @@ function fillScheduleForm(form, schedule, promptType) {
     ? item.times.join(', ')
     : (Array.isArray(item?.hours) ? item.hours.map((hour) => `${String(hour).padStart(2, '0')}:00`).join(', ') : promptDefaults[promptType].times);
   form.elements.randomize_minutes.value = String(item?.randomize || 30);
-  form.elements.expiration_minutes.value = String(item?.expiration || 120);
+  form.elements.expiration_minutes.value = String(item?.expiration ?? 120);
+  if (form.elements.prompt_window_start) {
+    form.elements.prompt_window_start.value = item ? (item.studytrace_window_start || '') : '09:00';
+    form.elements.prompt_window_end.value = item ? (item.studytrace_window_end || '') : '21:00';
+  }
   form.elements.notification_title.value = item?.notification_title || promptDefaults[promptType].title;
   form.elements.notification_body.value = item?.notification_body || promptDefaults[promptType].body;
   form.elements.start_date.value = item?.start_date || '';

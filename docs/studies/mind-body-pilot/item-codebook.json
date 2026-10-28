@@ -1,0 +1,300 @@
+{
+  "version": "mindbody_pilot_v1",
+  "protocol": {
+    "questionnaires_per_prompt": 3,
+    "items_per_prompt": 25,
+    "prompts_per_day": 3,
+    "requested_local_hours": "09:00-21:00",
+    "requested_response_minutes": 60
+  },
+  "timing_warning": "Install the updated Android and iOS builds and deploy the updated server. Positive expiration runs from delivery; operating systems can still delay or suppress notifications. Read RAILWAY_SETUP.md and ../../SURVEY_TIMING.md before collecting protocol data.",
+  "coding_note": "Numeric prefixes were added to the supplied response labels for analysis. The DOCX files contain labels without numeric codes. Exports contain answer strings; these files do not calculate questionnaire scores.",
+  "missing_data_note": "esm_na=false removes the N/A option where supported; it does not enforce complete answers in the current Android app. Blank strings are missing, never zero.",
+  "questionnaires": [
+    {
+      "id": "panas10",
+      "name": "PANAS-10",
+      "source_file": "PANAS-10.docx",
+      "item_count": 10,
+      "recall_period": "Right now / present moment",
+      "source_instructions": "Thinking about yourself and how you feel right now, to what extent do you feel at the present moment:",
+      "response_options": [
+        {
+          "code": 1,
+          "source_label": "Very slightly or not at all",
+          "exported_answer": "1 - Very slightly or not at all"
+        },
+        {
+          "code": 2,
+          "source_label": "A little",
+          "exported_answer": "2 - A little"
+        },
+        {
+          "code": 3,
+          "source_label": "Moderately",
+          "exported_answer": "3 - Moderately"
+        },
+        {
+          "code": 4,
+          "source_label": "Quite a bit",
+          "exported_answer": "4 - Quite a bit"
+        },
+        {
+          "code": 5,
+          "source_label": "Extremely",
+          "exported_answer": "5 - Extremely"
+        }
+      ]
+    },
+    {
+      "id": "pss10",
+      "name": "Perceived Stress Scale",
+      "source_file": "Perceived Stress Scale.docx",
+      "item_count": 10,
+      "recall_period": "In the last month",
+      "response_options": [
+        {
+          "code": 0,
+          "source_label": "never",
+          "exported_answer": "0 - never"
+        },
+        {
+          "code": 1,
+          "source_label": "almost never",
+          "exported_answer": "1 - almost never"
+        },
+        {
+          "code": 2,
+          "source_label": "sometimes",
+          "exported_answer": "2 - sometimes"
+        },
+        {
+          "code": 3,
+          "source_label": "fairly often",
+          "exported_answer": "3 - fairly often"
+        },
+        {
+          "code": 4,
+          "source_label": "very often",
+          "exported_answer": "4 - very often"
+        }
+      ]
+    },
+    {
+      "id": "mwq",
+      "name": "Mind-Wandering Questionnaire",
+      "source_file": "The Mind-Wandering Questionnaire .docx",
+      "item_count": 5,
+      "recall_period": "General tendencies; no momentary recall instruction supplied",
+      "response_options": [
+        {
+          "code": 1,
+          "source_label": "Almost Never",
+          "exported_answer": "1 - Almost Never"
+        },
+        {
+          "code": 2,
+          "source_label": "Very Infrequently",
+          "exported_answer": "2 - Very Infrequently"
+        },
+        {
+          "code": 3,
+          "source_label": "Somewhat Infrequently",
+          "exported_answer": "3 - Somewhat Infrequently"
+        },
+        {
+          "code": 4,
+          "source_label": "Somewhat Frequently",
+          "exported_answer": "4 - Somewhat Frequently"
+        },
+        {
+          "code": 5,
+          "source_label": "Very Frequently",
+          "exported_answer": "5 - Very Frequently"
+        },
+        {
+          "code": 6,
+          "source_label": "Almost Always",
+          "exported_answer": "6 - Almost Always"
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "position": 1,
+      "esm_trigger": "panas10_01",
+      "questionnaire": "panas10",
+      "item_number": 1,
+      "wording": "Upset"
+    },
+    {
+      "position": 2,
+      "esm_trigger": "panas10_02",
+      "questionnaire": "panas10",
+      "item_number": 2,
+      "wording": "Hostile"
+    },
+    {
+      "position": 3,
+      "esm_trigger": "panas10_03",
+      "questionnaire": "panas10",
+      "item_number": 3,
+      "wording": "Alert"
+    },
+    {
+      "position": 4,
+      "esm_trigger": "panas10_04",
+      "questionnaire": "panas10",
+      "item_number": 4,
+      "wording": "Ashamed"
+    },
+    {
+      "position": 5,
+      "esm_trigger": "panas10_05",
+      "questionnaire": "panas10",
+      "item_number": 5,
+      "wording": "Inspired"
+    },
+    {
+      "position": 6,
+      "esm_trigger": "panas10_06",
+      "questionnaire": "panas10",
+      "item_number": 6,
+      "wording": "Nervous"
+    },
+    {
+      "position": 7,
+      "esm_trigger": "panas10_07",
+      "questionnaire": "panas10",
+      "item_number": 7,
+      "wording": "Determined"
+    },
+    {
+      "position": 8,
+      "esm_trigger": "panas10_08",
+      "questionnaire": "panas10",
+      "item_number": 8,
+      "wording": "Attentive"
+    },
+    {
+      "position": 9,
+      "esm_trigger": "panas10_09",
+      "questionnaire": "panas10",
+      "item_number": 9,
+      "wording": "Afraid"
+    },
+    {
+      "position": 10,
+      "esm_trigger": "panas10_10",
+      "questionnaire": "panas10",
+      "item_number": 10,
+      "wording": "Active"
+    },
+    {
+      "position": 11,
+      "esm_trigger": "pss10_01",
+      "questionnaire": "pss10",
+      "item_number": 1,
+      "wording": "In the last month, how often have you been upset because of something that happened unexpectedly?"
+    },
+    {
+      "position": 12,
+      "esm_trigger": "pss10_02",
+      "questionnaire": "pss10",
+      "item_number": 2,
+      "wording": "In the last month, how often have you felt that you were unable to control the important things in your life?"
+    },
+    {
+      "position": 13,
+      "esm_trigger": "pss10_03",
+      "questionnaire": "pss10",
+      "item_number": 3,
+      "wording": "In the last month, how often have you felt nervous and stressed?"
+    },
+    {
+      "position": 14,
+      "esm_trigger": "pss10_04",
+      "questionnaire": "pss10",
+      "item_number": 4,
+      "wording": "In the last month, how often have you felt confident about your ability to handle your personal problems?"
+    },
+    {
+      "position": 15,
+      "esm_trigger": "pss10_05",
+      "questionnaire": "pss10",
+      "item_number": 5,
+      "wording": "In the last month, how often have you felt that things were going your way?"
+    },
+    {
+      "position": 16,
+      "esm_trigger": "pss10_06",
+      "questionnaire": "pss10",
+      "item_number": 6,
+      "wording": "In the last month, how often have you found that you could not cope with all the things that you had to do?"
+    },
+    {
+      "position": 17,
+      "esm_trigger": "pss10_07",
+      "questionnaire": "pss10",
+      "item_number": 7,
+      "wording": "In the last month, how often have you been able to control irritations in your life?"
+    },
+    {
+      "position": 18,
+      "esm_trigger": "pss10_08",
+      "questionnaire": "pss10",
+      "item_number": 8,
+      "wording": "In the last month, how often have you felt that you were on top of things?"
+    },
+    {
+      "position": 19,
+      "esm_trigger": "pss10_09",
+      "questionnaire": "pss10",
+      "item_number": 9,
+      "wording": "In the last month, how often have you been angered because of things that happened that were outside of your control?"
+    },
+    {
+      "position": 20,
+      "esm_trigger": "pss10_10",
+      "questionnaire": "pss10",
+      "item_number": 10,
+      "wording": "In the last month, how often have you felt difficulties were piling up so high that you could not overcome them?"
+    },
+    {
+      "position": 21,
+      "esm_trigger": "mwq_01",
+      "questionnaire": "mwq",
+      "item_number": 1,
+      "wording": "I have difficulty maintaining focus on simple or repetitive work."
+    },
+    {
+      "position": 22,
+      "esm_trigger": "mwq_02",
+      "questionnaire": "mwq",
+      "item_number": 2,
+      "wording": "While reading, I find I haven’t been thinking about the text and must therefore read it again"
+    },
+    {
+      "position": 23,
+      "esm_trigger": "mwq_03",
+      "questionnaire": "mwq",
+      "item_number": 3,
+      "wording": "I do things without paying full attention."
+    },
+    {
+      "position": 24,
+      "esm_trigger": "mwq_04",
+      "questionnaire": "mwq",
+      "item_number": 4,
+      "wording": "I find myself listening with one ear, thinking about something else at the same time."
+    },
+    {
+      "position": 25,
+      "esm_trigger": "mwq_05",
+      "questionnaire": "mwq",
+      "item_number": 5,
+      "wording": "I mind-wander during lectures or presentations."
+    }
+  ]
+}

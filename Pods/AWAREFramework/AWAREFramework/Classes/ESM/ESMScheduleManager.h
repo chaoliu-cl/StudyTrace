@@ -9,6 +9,8 @@
 #import "ESMSchedule.h"
 #import "ESMItem.h"
 
+@class UNNotification;
+
 @interface ESMScheduleManager : NSObject
 
 + (ESMScheduleManager * _Nonnull) sharedESMScheduleManager;
@@ -42,5 +44,17 @@ typedef void (^NotificationRemoveCompleteHandler)(void);
              esmUserAnswerTimestamp:(NSNumber * _Nonnull) esmUserAnswerTimestamp
                       esmUserAnswer:(NSString * _Nonnull) esmUserAnswer
                           esmStatus:(NSNumber * _Nonnull) esmStatus;
+
+// StudyTrace delivery-based timing (implemented in the maintained .inc file).
++ (NSDate * _Nonnull)studytraceDeadlineForDelivery:(NSDate * _Nonnull)delivery expirationMinutes:(NSInteger)minutes NS_SWIFT_NAME(studytraceDeadline(delivery:expirationMinutes:));
++ (BOOL)studytraceIsOpenWithDelivery:(NSDate * _Nonnull)delivery expirationMinutes:(NSInteger)minutes now:(NSDate * _Nonnull)now NS_SWIFT_NAME(studytraceIsOpen(delivery:expirationMinutes:now:));
++ (NSInteger)studytraceOffsetForSeed:(NSString * _Nonnull)seed range:(NSInteger)range NS_SWIFT_NAME(studytraceOffset(seed:range:));
++ (BOOL)studytraceIsWithinWindow:(NSDate * _Nonnull)date start:(NSString * _Nullable)start end:(NSString * _Nullable)end NS_SWIFT_NAME(studytraceIsWithinWindow(_:start:end:));
+- (BOOL)studytraceRecordNotification:(UNNotification * _Nonnull)notification NS_SWIFT_NAME(studytraceRecordNotification(_:));
+- (BOOL)studytraceRecordDeliveryForIdentifier:(NSString * _Nonnull)identifier atDate:(NSDate * _Nonnull)delivery NS_SWIFT_NAME(studytraceRecordDelivery(identifier:at:));
+- (BOOL)studytraceOccurrenceIsOpen:(NSString * _Nonnull)identifier atDate:(NSDate * _Nonnull)date NS_SWIFT_NAME(studytraceOccurrenceIsOpen(_:at:));
+- (NSDictionary * _Nullable)studytraceOccurrenceForSchedule:(EntityESMSchedule * _Nonnull)schedule atDate:(NSDate * _Nonnull)date NS_SWIFT_NAME(studytraceOccurrence(for:at:));
+- (void)studytraceCompleteOccurrence:(NSString * _Nonnull)identifier NS_SWIFT_NAME(studytraceCompleteOccurrence(_:));
+- (void)studytraceClearTiming;
 
 @end

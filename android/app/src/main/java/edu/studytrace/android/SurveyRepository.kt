@@ -77,6 +77,8 @@ object SurveyRepository {
             expirationMinutes = json.optInt("expiration", 0).coerceAtLeast(0),
             startDate = PromptPlanner.parseScheduleDate(json.optString("start_date")),
             endDate = PromptPlanner.parseScheduleDate(json.optString("end_date")),
+            windowStart = json.optString("studytrace_window_start"),
+            windowEnd = json.optString("studytrace_window_end"),
         )
     }
 
@@ -98,27 +100,30 @@ object SurveyRepository {
                 nowMillis = nowMillis,
                 floorMillis = studyPrefs.joinedAtMillis,
                 zone = ZoneId.systemDefault(),
+                participantSeed = studyPrefs.deviceId,
             )
             val notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+            var deliveredCount = 0
 
             for (occurrence in plan.deliver) {
                 val json = scheduleJson[occurrence.scheduleId] ?: continue
-                val record = OccurrenceRecord(
-                    id = occurrence.id,
-                    scheduleId = occurrence.scheduleId,
-                    status = OccurrenceStatus.DELIVERED,
-                    promptAtMillis = occurrence.promptAtMillis,
-                    deliveredAtMillis = nowMillis,
-                    expiresAtMillis = occurrence.expiresAtMillis,
-                )
+                val record = PromptPlanner.recordDelivery(occurrence, nowMillis)
                 records[occurrence.id] = record
                 saveRecords(context, records)
-                NotificationHelper.showSurveyNotification(
+                val posted = notificationsEnabled && NotificationHelper.showSurveyNotification(
                     context,
                     occurrence.id,
                     json.optString("notification_title"),
                     json.optString("notification_body"),
+                    record.expiresAtMillis - nowMillis,
                 )
+                if (!posted) {
+                    records[occurrence.id] = record.copy(status = OccurrenceStatus.MISSED, deliveredAtMillis = 0L)
+                    Telemetry.recordEvent(context, "survey_prompt_missed", promptMetadata(record, json)
+                        .put("is_survey_prompt", false).put("reason", "notifications_disabled"))
+                    continue
+                }
+                deliveredCount++
                 Telemetry.recordEvent(
                     context,
                     "notification_delivered",
@@ -157,7 +162,7 @@ object SurveyRepository {
 
             records.values.removeAll { maxOf(it.promptAtMillis, it.expiresAtMillis) < nowMillis - RECORD_RETENTION_MILLIS }
             saveRecords(context, records)
-            plan.deliver.size
+            deliveredCount
         }
 
     /** Delivered prompts still inside their window, newest first. */
@@ -165,7 +170,7 @@ object SurveyRepository {
         synchronized(lock) {
             val scheduleJson = surveySchedules(cachedConfig(context)).associate { it.first.scheduleId to it.second }
             loadRecords(context).values
-                .filter { it.status == OccurrenceStatus.DELIVERED && it.expiresAtMillis > nowMillis }
+                .filter { PromptPlanner.canRespond(it, nowMillis) }
                 .mapNotNull { record -> scheduleJson[record.scheduleId]?.let { OpenPrompt(record, it) } }
                 .sortedByDescending { it.record.promptAtMillis }
         }
@@ -180,7 +185,7 @@ object SurveyRepository {
             val record = records[occurrenceId] ?: return@synchronized null
             if (record.status != OccurrenceStatus.DELIVERED) return@synchronized null
             val json = surveySchedules(cachedConfig(context)).firstOrNull { it.first.scheduleId == record.scheduleId }?.second
-            if (record.expiresAtMillis <= nowMillis || json == null) {
+            if (!PromptPlanner.canRespond(record, nowMillis) || json == null) {
                 resolve(context, records, record, json, ESM_STATUS_EXPIRED, null, nowMillis)
                 saveRecords(context, records)
                 return@synchronized null
@@ -223,7 +228,13 @@ object SurveyRepository {
             val record = records[occurrenceId] ?: return@synchronized false
             if (record.status != OccurrenceStatus.DELIVERED) return@synchronized false
             val json = surveySchedules(cachedConfig(context)).firstOrNull { it.first.scheduleId == record.scheduleId }?.second
-            resolve(context, records, record, json, status, answers, System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            if (!PromptPlanner.canRespond(record, now) || json == null) {
+                resolve(context, records, record, json, ESM_STATUS_EXPIRED, null, now)
+                saveRecords(context, records)
+                return@synchronized false
+            }
+            resolve(context, records, record, json, status, answers, now)
             saveRecords(context, records)
             true
         }
@@ -270,7 +281,10 @@ object SurveyRepository {
                 .put("esm_user_answer", answer)
                 .put("double_esm_user_answer_timestamp", answerTime)
                 .put("esm_status", esmStatus)
-                .put("esm_expiration_threshold", ((record.expiresAtMillis - record.promptAtMillis) / 1000).coerceAtLeast(0))
+                .put("esm_expiration_threshold", ((record.expiresAtMillis - promptTime) / 1000).coerceAtLeast(0))
+                .put("scheduled_at", record.promptAtMillis)
+                .put("delivered_at", record.deliveredAtMillis)
+                .put("expires_at", record.expiresAtMillis)
         }
     }
 

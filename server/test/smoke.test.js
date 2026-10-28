@@ -523,6 +523,24 @@ try {
   );
   const savedEsmSchedule = researcherEsmScheduleSave.json.esm_schedule[0];
   assert.deepStrictEqual(savedEsmSchedule.times, ['10:15'], 'researcher ESM schedule stores exact times');
+  assert.strictEqual(savedEsmSchedule.studytrace_window_start, '09:00', 'survey defaults to 9 a.m. local notification start');
+  assert.strictEqual(savedEsmSchedule.studytrace_window_end, '21:00', 'survey defaults to 9 p.m. local notification end');
+  const invalidWindowSave = await request('PUT', `${apiBase}/esm-schedule`, {
+    body: JSON.stringify({ prompt_type: 'esm_survey', times: '11:00', prompt_window_start: '21:00', prompt_window_end: '09:00' }),
+    headers: researcherAuth,
+  });
+  assert.strictEqual(invalidWindowSave.status, 400, 'invalid delivery hours are rejected instead of silently disabling the limit');
+  const unboundedWindowSave = await request('PUT', `${apiBase}/esm-schedule`, {
+    body: JSON.stringify({ prompt_type: 'esm_survey', times: '23:30', prompt_window_start: '', prompt_window_end: '', expiration_minutes: 60 }),
+    headers: researcherAuth,
+  });
+  assert.strictEqual(unboundedWindowSave.status, 200, 'researcher can explicitly disable notification-hour limits');
+  assert.strictEqual(unboundedWindowSave.json.esm_schedule[0].studytrace_window_start, '');
+  // Restore the schedule used by the remaining integration checks.
+  await request('PUT', `${apiBase}/esm-schedule`, {
+    body: JSON.stringify({ prompt_type: 'esm_survey', mode: 'random', times: '10:15', randomize_minutes: 15 }),
+    headers: researcherAuth,
+  });
   const researcherScheduleGet = await request('GET', `${apiBase}/esm-schedule`, { headers: researcherAuth });
   assert.strictEqual(researcherScheduleGet.status, 200, 'researcher gets ESM schedule');
   assert.ok(

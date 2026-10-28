@@ -120,6 +120,7 @@ class ESMViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         self.tabBarController?.tabBar.isHidden = false
         NotificationCenter.default.addObserver(self, selector: #selector(willEnterForegroundNotification(notification:)), name: UIApplication.willEnterForegroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(surveyTimingUpdated), name: Notification.Name("StudyTraceSurveyTimingUpdated"), object: nil)
         self.checkESMSchedules()
         self.hideContextViewIfNeeded()
         if StudyParticipationController.hasConsent() {
@@ -129,6 +130,11 @@ class ESMViewController: UIViewController {
     
     override func viewDidDisappear(_ animated: Bool) {
         NotificationCenter.default.removeObserver(self, name: UIApplication.willEnterForegroundNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: Notification.Name("StudyTraceSurveyTimingUpdated"), object: nil)
+    }
+
+    @objc private func surveyTimingUpdated() {
+        checkESMSchedules()
     }
     
     @objc func willEnterForegroundNotification(notification: NSNotification) {
@@ -276,6 +282,11 @@ class ESMViewController: UIViewController {
     }
 
     private func markScheduleCompleted(_ schedule: EntityESMSchedule) {
+        let manager = ESMScheduleManager.shared()
+        if let occurrence = manager.studytraceOccurrence(for: schedule, at: Date()),
+           let identifier = occurrence["id"] as? String {
+            manager.studytraceCompleteOccurrence(identifier)
+        }
         guard let context = CoreDataHandler.shared().managedObjectContext else {
             return
         }

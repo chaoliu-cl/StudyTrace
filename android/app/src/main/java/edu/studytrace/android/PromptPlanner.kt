@@ -21,6 +21,8 @@ data class PromptSchedule(
     val expirationMinutes: Int,
     val startDate: LocalDate?,
     val endDate: LocalDate?,
+    val windowStart: String = "",
+    val windowEnd: String = "",
 )
 
 /** A concrete prompt: one schedule slot on one local day. */
@@ -35,6 +37,7 @@ data class PromptOccurrence(
     /** Slot time after the deterministic random offset. */
     val promptAtMillis: Long,
     val expiresAtMillis: Long,
+    val expirationMinutes: Int,
 )
 
 enum class OccurrenceStatus { DELIVERED, ANSWERED, DISMISSED, EXPIRED, MISSED }
@@ -108,9 +111,9 @@ object PromptPlanner {
      * Offset in [-randomize, +randomize] minutes (AWARE semantics), seeded by
      * the occurrence so every worker run computes the same prompt time.
      */
-    fun randomOffsetMinutes(scheduleId: String, date: LocalDate, slot: String, randomizeMinutes: Int): Int {
+    fun randomOffsetMinutes(scheduleId: String, date: LocalDate, slot: String, randomizeMinutes: Int, participantSeed: String = ""): Int {
         if (randomizeMinutes <= 0) return 0
-        val random = Random(stableHash(occurrenceId(scheduleId, date, slot)))
+        val random = Random(stableHash("$participantSeed|${occurrenceId(scheduleId, date, slot)}"))
         return random.nextInt(randomizeMinutes * 2 + 1) - randomizeMinutes
     }
 
@@ -120,13 +123,14 @@ object PromptPlanner {
         return true
     }
 
-    fun occurrencesOn(schedule: PromptSchedule, date: LocalDate, zone: ZoneId): List<PromptOccurrence> {
+    fun occurrencesOn(schedule: PromptSchedule, date: LocalDate, zone: ZoneId, participantSeed: String = ""): List<PromptOccurrence> {
         if (!isActiveOn(schedule, date)) return emptyList()
         return schedule.slots.mapNotNull { slot ->
             val time = parseSlot(slot)?.let { LocalTime.of(it / 60, it % 60) } ?: return@mapNotNull null
             val original = date.atTime(time).atZone(zone).toInstant().toEpochMilli()
-            val offset = randomOffsetMinutes(schedule.scheduleId, date, slot, schedule.randomizeMinutes)
+            val offset = randomOffsetMinutes(schedule.scheduleId, date, slot, schedule.randomizeMinutes, participantSeed)
             val promptAt = original + offset * MINUTE
+            if (!isInsideDeliveryWindow(schedule, promptAt, zone)) return@mapNotNull null
             PromptOccurrence(
                 id = occurrenceId(schedule.scheduleId, date, slot),
                 scheduleId = schedule.scheduleId,
@@ -134,20 +138,22 @@ object PromptPlanner {
                 slot = slot,
                 originalAtMillis = original,
                 promptAtMillis = promptAt,
-                expiresAtMillis = expiresAt(schedule, date, original, promptAt, zone),
+                expiresAtMillis = if (schedule.expirationMinutes > 0) promptAt + schedule.expirationMinutes * MINUTE
+                    else date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(),
+                expirationMinutes = schedule.expirationMinutes,
             )
         }
     }
 
     /** Occurrences whose (randomized) prompt time falls in [fromMillis, toMillis]. */
-    fun occurrencesBetween(schedule: PromptSchedule, fromMillis: Long, toMillis: Long, zone: ZoneId): List<PromptOccurrence> {
+    fun occurrencesBetween(schedule: PromptSchedule, fromMillis: Long, toMillis: Long, zone: ZoneId, participantSeed: String = ""): List<PromptOccurrence> {
         if (toMillis < fromMillis) return emptyList()
         // One extra day on each side: a random offset can cross midnight.
         var date = Instant.ofEpochMilli(fromMillis).atZone(zone).toLocalDate().minusDays(1)
         val lastDate = Instant.ofEpochMilli(toMillis).atZone(zone).toLocalDate().plusDays(1)
         val result = mutableListOf<PromptOccurrence>()
         while (!date.isAfter(lastDate)) {
-            occurrencesOn(schedule, date, zone)
+            occurrencesOn(schedule, date, zone, participantSeed)
                 .filterTo(result) { it.promptAtMillis in fromMillis..toMillis }
             date = date.plusDays(1)
         }
@@ -166,14 +172,16 @@ object PromptPlanner {
         nowMillis: Long,
         floorMillis: Long,
         zone: ZoneId,
+        participantSeed: String = "",
     ): PromptPlan {
         val deliver = mutableListOf<PromptOccurrence>()
         val missed = mutableListOf<PromptOccurrence>()
         val from = maxOf(floorMillis, nowMillis - LOOKBACK_MILLIS)
         for (schedule in schedules) {
-            val pending = occurrencesBetween(schedule, from, nowMillis, zone)
+            val pending = occurrencesBetween(schedule, from, nowMillis, zone, participantSeed)
                 .filter { it.id !in records }
-            val open = pending.filter { nowMillis < it.expiresAtMillis }
+            val open = pending.filter { nowMillis < it.expiresAtMillis && isInsideDeliveryWindow(schedule, nowMillis, zone) &&
+                isActiveOn(schedule, Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()) }
             val newest = open.maxByOrNull { it.promptAtMillis }
             if (newest != null) deliver += newest
             missed += pending.filter { it !== newest }
@@ -188,18 +196,27 @@ object PromptPlanner {
         )
     }
 
-    /**
-     * AWARE measures expiration from the original (unrandomized) slot time; a
-     * zero expiration means "no expiry", which here closes the prompt at the
-     * end of its local day so it can still be recorded as expired.
-     */
-    private fun expiresAt(schedule: PromptSchedule, date: LocalDate, original: Long, promptAt: Long, zone: ZoneId): Long {
-        if (schedule.expirationMinutes <= 0) {
-            val endOfDay = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
-            return maxOf(endOfDay, promptAt + MINUTE)
-        }
-        val fromOriginal = original + schedule.expirationMinutes * MINUTE
-        return if (fromOriginal > promptAt) fromOriginal else promptAt + schedule.expirationMinutes * MINUTE
+    /** The response window starts when Android posts the notification, including a delayed worker. */
+    fun recordDelivery(occurrence: PromptOccurrence, deliveredAtMillis: Long) = OccurrenceRecord(
+        id = occurrence.id,
+        scheduleId = occurrence.scheduleId,
+        status = OccurrenceStatus.DELIVERED,
+        promptAtMillis = occurrence.promptAtMillis,
+        deliveredAtMillis = deliveredAtMillis,
+        expiresAtMillis = if (occurrence.expirationMinutes > 0)
+            deliveredAtMillis + occurrence.expirationMinutes * MINUTE else occurrence.expiresAtMillis,
+    )
+
+    fun canRespond(record: OccurrenceRecord, nowMillis: Long): Boolean =
+        record.status == OccurrenceStatus.DELIVERED && nowMillis >= record.deliveredAtMillis && nowMillis < record.expiresAtMillis
+
+    /** End is inclusive for posting at exactly 21:00; responses may continue past the delivery window. */
+    fun isInsideDeliveryWindow(schedule: PromptSchedule, millis: Long, zone: ZoneId): Boolean {
+        val start = parseSlot(schedule.windowStart) ?: return true
+        val end = parseSlot(schedule.windowEnd) ?: return true
+        val time = Instant.ofEpochMilli(millis).atZone(zone).toLocalTime()
+        return !time.isBefore(LocalTime.of(start / 60, start % 60)) &&
+            !time.isAfter(LocalTime.of(end / 60, end % 60))
     }
 
     /** Minutes after midnight for "H", "HH", "H:MM" or "HH:MM"; null if invalid. */

@@ -6,7 +6,8 @@ target 'StudyTrace' do
   use_frameworks!
 
   # Pods for StudyTrace
-  pod 'AWAREFramework', '~> 1.14.5'
+  # The maintained scheduler patch is validated against this version.
+  pod 'AWAREFramework', '1.14.18'
   # The following subspecs are intentionally NOT included: StudyTrace does not
   # collect Motion/Activity, Bluetooth, Calendar, Contacts, or HealthKit data.
   # Linking them would pull in CoreMotion/CoreBluetooth/EventKit/Contacts/
@@ -44,6 +45,10 @@ target 'StudyTrace' do
 end
 
 post_install do |installer|
+  # Keep the vendored AWARE timing fix after CocoaPods replaces its sources.
+  system('ruby', File.join(__dir__, 'scripts', 'apply_aware_timing_patch.rb')) ||
+    raise('Could not apply the StudyTrace AWARE timing patch')
+
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
