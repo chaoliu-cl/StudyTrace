@@ -1438,6 +1438,7 @@ try {
   const association = await request('GET', '/.well-known/apple-app-site-association');
   assert.strictEqual(association.status, 200);
   assert.deepStrictEqual(association.json.applinks.details[0].appIDs, ['2F9Z668JPM.com.liuchao.studytrace']);
+  assert.ok(association.json.applinks.details[0].components.some((item) => item['/'] === '/index.php/webservice/index/*'), 'existing printed HTTPS study QR codes also open updated iPhones');
   assert.ok(researcherLink.json.join_url.startsWith('https://example.up.railway.app/join?'));
   assert.ok(researcherLink.json.app_url.startsWith('studytrace://join?'));
   assert.strictEqual(new URL(researcherLink.json.join_url).searchParams.get('url'), researcherLink.json.study_url);

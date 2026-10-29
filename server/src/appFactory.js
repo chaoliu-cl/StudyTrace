@@ -255,7 +255,7 @@ export function createApp() {
     next();
   });
   app.get('/.well-known/apple-app-site-association', (_req, res) => {
-    res.json({ applinks: { details: [{ appIDs: (process.env.IOS_APP_IDS || '2F9Z668JPM.com.liuchao.studytrace').split(','), components: [{ '/': '/join' }] }] } });
+    res.json({ applinks: { details: [{ appIDs: (process.env.IOS_APP_IDS || '2F9Z668JPM.com.liuchao.studytrace').split(','), components: [{ '/': '/join' }, { '/': '/index.php/webservice/index/*' }] }] } });
   });
   app.get('/join', (_req, res) => res.sendFile(path.join(publicDir, 'join.html')));
   app.use(express.static(publicDir));

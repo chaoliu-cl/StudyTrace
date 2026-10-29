@@ -104,7 +104,8 @@ scanning with Camera opens StudyTrace and fills the **Study URL** in its
 StudyTrace tab. Enrollment still requires review and the Update action. The
 fallback page offers **Open StudyTrace**, and the in-app readers on both
 platforms unwrap the same link. iOS registers `studytrace://join`, the two
-AWARE schemes, and associated domains for both production hosts. Other hosts
+AWARE schemes, and associated domains for both production hosts. Existing HTTPS
+study QR codes on those hosts are also associated with the updated app. Other hosts
 can use the fallback button or in-app scanner. Set `IOS_APP_IDS` if distributing
 an iOS build under a different Apple team/bundle id; the default is
 `2F9Z668JPM.com.liuchao.studytrace`.
