@@ -59,9 +59,10 @@ changing study schedules, passwords, participant records, or uploaded data.
   changes to those preferences remain available.
 - AWARE replaced a zero replay cursor with the current time during storage
   initialization. A process restart after a failed recovery could therefore
-  skip retained data. Zero now remains a valid replay cursor. At the first
-  updated launch, retained sensor rows are replayed once, with server
-  deduplication, and automatic local data cleaning is disabled for recovery.
+  skip retained data. Zero now remains a valid replay cursor, and automatic
+  local data cleaning is disabled. The update retries pending uploads without
+  automatically rewinding existing cursors: old AWARE rows do not contain a
+  study id, so a blanket replay could misattribute an earlier study’s records.
 - Survey answer queries did not recognize the `esm` table used by the iOS
   questionnaire controller. It is now included. SQLite ESM batches are ordered
   by answer time and include the complete final timestamp group, preventing a
@@ -75,9 +76,10 @@ changing study schedules, passwords, participant records, or uploaded data.
   sensor sync and flushes device-state telemetry.
 
 The iPhone audit identifies concrete failure paths; it does not certify an
-end-to-end upload from a physical pilot iPhone. Replaying can recover only data
-still retained locally. Data never recorded or already deleted cannot be
-reconstructed by this update.
+end-to-end upload from a physical pilot iPhone. Recovery is limited to retained, attributable data. Rows previously marked
+as uploaded after an HTTP rejection need a study-scoped local recovery review;
+they are not automatically replayed. Data never recorded or already deleted
+cannot be reconstructed by this update.
 
 ## Why the three phone-use datasets are retained
 
@@ -133,7 +135,7 @@ follow [Open-Meteo's documentation](https://open-meteo.com/en/docs).
 ## Production deployment
 
 The backend was deployed to Railway production on October 29, 2026, deployment
-`e77c8741-bd98-44fc-8a76-0e5bc2a7882b`. `PUBLIC_BASE_URL` is now
+`43cadaf9-c975-4bd6-8b40-8c73d5ab8524`. `PUBLIC_BASE_URL` is now
 `https://studytrace-production.up.railway.app`.
 
 Read-only production verification returned HTTP 200 for health, status, the

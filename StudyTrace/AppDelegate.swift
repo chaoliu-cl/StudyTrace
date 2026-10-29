@@ -622,16 +622,9 @@ enum StudyParticipationController {
         // IOSESM and the questionnaire UI share EntityESMAnswer. Keep the
         // relaunch uploader on the same photo-safe transport as the UI.
         manager.getSensor(SENSOR_PLUGIN_IOS_ESM)?.storage?.syncMode = .quick
-        if !createRemoteTables, let url = study.getURL(), !url.isEmpty {
-            let replayKey = "studytrace.replay-local-sensors.v2." + url
-            if !UserDefaults.standard.bool(forKey: replayKey) {
-                // Older executors acknowledged HTTP failures. Replay retained
-                // local rows once; server deduplication makes retries harmless.
-                for sensor in manager.getAllSensors() { sensor.storage?.resetMark() }
-                study.setCleanOldDataType(cleanOldDataTypeNever)
-                UserDefaults.standard.set(true, forKey: replayKey)
-            }
-        }
+        // Local AWARE rows have no study id. Keep pending uploads, but never
+        // rewind old cursors automatically: rows could belong to an earlier study.
+        study.setCleanOldDataType(cleanOldDataTypeNever)
         core.activate()
         manager.startAllSensors()
         if study.isAutoDBSync() { manager.startAutoSyncTimer() }
