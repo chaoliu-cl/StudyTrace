@@ -75,6 +75,13 @@ class StudyApi(private val context: Context) {
         return runCatching { JSONArray(response.body) }.getOrNull()
     }
 
+    fun fetchEnvironmentConfig(): JSONObject? {
+        val study = currentContext() ?: return null
+        val response = request("${study.baseUrl}/api/v1/studies/${encodePath(study.studyId)}/environment-config", "GET", null, null, study.password)
+        if (response.code !in 200..299) return null
+        return runCatching { JSONObject(response.body) }.getOrNull()
+    }
+
     /** Sends a stored withdrawal request; uses its own credentials since study settings are already cleared. */
     fun postWithdrawal(request: PendingWithdrawal): Int {
         val payload = JSONObject()

@@ -53,8 +53,8 @@ enum UsageScreenshotKind: String {
 
     var instructionTitle: String {
         switch self {
-        case .battery: return loc("shot_battery_title", "Take one Battery Usage screenshot")
-        case .screenTimeActivity: return loc("shot_activity_title", "Take one Screen Time screenshot")
+        case .battery: return loc("shot_battery_title", "Take Battery Usage screenshots")
+        case .screenTimeActivity: return loc("shot_activity_title", "Take Screen Time screenshots")
         case .appUsageToday: return loc("shot_today_title", "Take a fresh screenshot of today's app usage")
         }
     }
@@ -78,7 +78,7 @@ enum UsageScreenshotKind: String {
                 loc("shot_battery_step2", "2. Tap Battery."),
                 loc("shot_battery_step3", "3. Keep Last 24 Hours selected and tap View All Battery Usage so app rows are visible."),
                 loc("shot_battery_step4", "4. Take a screenshot."),
-                loc("shot_battery_step5", "5. Return here and choose that screenshot.")
+                loc("shot_battery_step5", "5. Return here and choose one or more screenshots.")
             ]
         case .screenTimeActivity:
             return [
@@ -86,14 +86,14 @@ enum UsageScreenshotKind: String {
                 loc("shot_activity_step2", "2. Tap Screen Time, then See All App & Website Activity."),
                 loc("shot_activity_step3", "3. Choose Day and tap yesterday's bar."),
                 loc("shot_activity_step4", "4. Take a screenshot showing the total, Most Used, Pickups, and Notifications (scroll and take a second one if needed)."),
-                loc("shot_activity_step5", "5. Return here and choose that screenshot.")
+                loc("shot_activity_step5", "5. Return here and choose one or more screenshots.")
             ]
         case .appUsageToday:
             return [
                 "1. Open iPhone Settings > Screen Time > See All App & Website Activity.",
                 "2. Choose Day and select Today. Select this iPhone if a device selector is shown.",
                 "3. Show today's total and the Most Used app list, then take a fresh screenshot.",
-                "4. Return to StudyTrace and choose that screenshot."
+                "4. Return to StudyTrace and choose one or more screenshots."
             ]
         }
     }
@@ -434,6 +434,9 @@ struct UsageScreenshotSubmission {
     var capturedAt: Date?
     var ocrText = ""
     var prompt: UsageScreenshotPrompt?
+    var uploadGroupId = ""
+    var imageIndex = 0
+    var imageCount = 1
 
     init(kind: UsageScreenshotKind) {
         self.kind = kind
@@ -453,6 +456,11 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
     private var progress: UIViewController?
     private var prompt: UsageScreenshotPrompt?
     private var validatePrompt: (() -> Bool)?
+    private var providers: [NSItemProvider] = []
+    private var currentImageIndex = 0
+    private var uploadGroupId = ""
+    private var anyQueued = false
+    private var reviewFeedback: UsageScreenshotUploader.Feedback?
 
     func start(kind: UsageScreenshotKind,
                from presenter: UIViewController,
@@ -511,7 +519,7 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
         guard let presenter = presenter else { return }
         var configuration = PHPickerConfiguration(photoLibrary: .shared())
         configuration.filter = .images
-        configuration.selectionLimit = 1
+        configuration.selectionLimit = 10
         configuration.preferredAssetRepresentationMode = .current
         let picker = PHPickerViewController(configuration: configuration)
         picker.delegate = self
@@ -519,15 +527,20 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
     }
 
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        guard let provider = results.first?.itemProvider else {
+        guard !results.isEmpty else {
             // Cancelled, possibly after "Choose another screenshot".
             isBusy = false
             picker.dismiss(animated: true)
             return
         }
+        providers = results.map { $0.itemProvider }
+        currentImageIndex = 0
+        uploadGroupId = UUID().uuidString
+        anyQueued = false
+        reviewFeedback = nil
         isBusy = true
         picker.dismiss(animated: true) { [weak self] in
-            self?.showProgress { self?.read(provider) }
+            self?.showProgress { if let self = self { self.read(self.providers[0]) } }
         }
     }
 
@@ -535,7 +548,7 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
         provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { [weak self] data, _ in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                guard let data = data, let image = UIImage(data: data) else {
+                guard let data = data, let image = Self.downsampledImage(data) else {
                     self.end(.failed(title: loc("shot_failed_title", "Upload Failed"),
                                      message: loc("shot_unreadable", "StudyTrace could not read the selected screenshot.")))
                     return
@@ -553,6 +566,9 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
         submission.capturedAt = capturedAt
         submission.ocrText = text
         submission.prompt = prompt
+        submission.uploadGroupId = uploadGroupId
+        submission.imageIndex = currentImageIndex
+        submission.imageCount = providers.count
         if kind == .appUsageToday {
             submission.usageWindow = "today_so_far"
             submission.activityDate = capturedAt ?? Date()
@@ -603,7 +619,19 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
             return
         }
         UsageScreenshotUploader.upload(image, submission: submission) { [weak self] outcome in
-            self?.end(outcome)
+            guard let self = self else { return }
+            switch outcome {
+            case .failed: self.end(outcome); return
+            case .queued: self.anyQueued = true
+            case .uploaded(let feedback):
+                if feedback?.needsReview == true { self.reviewFeedback = feedback }
+            }
+            self.currentImageIndex += 1
+            if self.currentImageIndex < self.providers.count {
+                self.read(self.providers[self.currentImageIndex])
+            } else {
+                self.end(self.anyQueued ? .queued : .uploaded(self.reviewFeedback))
+            }
         }
     }
 
@@ -613,6 +641,16 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
             self.isBusy = false
             self.completion?(self.kind, outcome)
         }
+    }
+
+    private static func downsampledImage(_ data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 2800
+              ] as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg)
     }
 
     // MARK: Progress

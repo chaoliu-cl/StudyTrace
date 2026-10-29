@@ -9,6 +9,9 @@
 		<string>group.com.liuchao.studytrace</string>
 	</array>
 	<key>com.apple.developer.associated-domains</key>
-	<array/>
+	<array>
+		<string>applinks:studytrace-production.up.railway.app</string>
+		<string>applinks:studytrace.liu-chao.site</string>
+	</array>
 </dict>
 </plist>

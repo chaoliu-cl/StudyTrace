@@ -37,7 +37,8 @@ fun normalizeStudyUrl(rawUrl: String): String? {
     val trimmed = rawUrl.trim()
     if (trimmed.isBlank()) return null
     return when {
-        trimmed.startsWith("studytrace://", ignoreCase = true) -> {
+        (trimmed.startsWith("studytrace://", ignoreCase = true) ||
+            (trimmed.startsWith("https://", ignoreCase = true) && Uri.parse(trimmed).path == "/join")) -> {
             val inner = runCatching { Uri.parse(trimmed).getQueryParameter("url") }.getOrNull()
             // Only one level of wrapping, and the wrapped URL must itself be https.
             inner?.trim()?.takeIf { it.startsWith("https://", ignoreCase = true) }

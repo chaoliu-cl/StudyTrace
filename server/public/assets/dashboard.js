@@ -11,7 +11,9 @@ function escapeHtml(value) {
 
 function fmtDate(value) {
   if (!value) return '—';
-  const date = new Date(value);
+  const numeric = Number(value);
+  const epoch = Number.isFinite(numeric) && numeric > 0 ? (numeric < 1e11 ? numeric * 1000 : numeric) : value;
+  const date = new Date(epoch);
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
 }
 
@@ -98,7 +100,7 @@ function renderJoinLink(container, payload) {
           <button class="button" type="button" data-join-svg>Download QR (SVG)</button>
           <button class="button" type="button" data-join-png>Download QR (PNG)</button>
         </div>
-        <p class="section-note">Participants scan the QR code from the StudyTrace app's join screen or paste the URL there. The link contains the participant study password, so share it only with enrolled participants.</p>
+        <p class="section-note">Scan with the iPhone Camera to open StudyTrace and fill the Study URL, or use the app’s QR reader. Updated apps are required; the browser fallback has an Open StudyTrace button. The link contains the participant study password, so share it only with enrolled participants.</p>
       </div>
     </div>
   `;
@@ -182,15 +184,16 @@ function looksLikeImageAnswer(answer) {
 
 function renderEsmAnswer(row, studyId) {
   const answer = row?.data?.esm_user_answer;
-  if ((isPictureEsmRow(row) || looksLikeImageAnswer(answer)) && typeof answer === 'string' && answer.trim()) {
+  let images = [];
+  try { images = Array.isArray(answer) ? answer : JSON.parse(answer); } catch { /* Single-image legacy answer. */ }
+  if (!Array.isArray(images)) images = [];
+  if (isPictureEsmRow(row) || looksLikeImageAnswer(answer)) {
+    const count = images.length || (looksLikeImageAnswer(answer) ? 1 : 0);
     const sensor = row.sensor || 'esms';
-    const imageUrl = `/api/v1/studies/${encodeURIComponent(studyId)}/media/${encodeURIComponent(sensor)}/${encodeURIComponent(row.id)}/image`;
-    return `
-      <div class="photo-answer">
-        <img data-src="${imageUrl}" alt="Photo response" loading="lazy" data-auth-image>
-        <a href="${imageUrl}" data-download-image data-filename="studytrace-esm-${escapeHtml(row.id)}.png">Download image</a>
-      </div>
-    `;
+    return Array.from({ length: count }, (_, index) => {
+      const imageUrl = `/api/v1/studies/${encodeURIComponent(studyId)}/media/${encodeURIComponent(sensor)}/${encodeURIComponent(row.media_row_id || row.id)}/image?image=${row.image_index ?? index}`;
+      return `<div class="photo-answer"><img data-src="${imageUrl}" alt="Photo response ${index + 1}" loading="lazy" data-auth-image><a href="${imageUrl}" data-download-image data-filename="studytrace-esm-${escapeHtml(row.id)}-${index + 1}.png">Download image ${index + 1}</a></div>`;
+    }).join('') || '—';
   }
   if (answer === null || answer === undefined || answer === '') return '—';
   const text = typeof answer === 'object' ? JSON.stringify(answer) : String(answer);
@@ -206,7 +209,7 @@ async function loadEsmResponses({ studyId, password, sensors, table, message }) 
   }
 
   renderTable(table, [
-    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
+    { label: 'Time', render: (row) => fmtDate(row.timestamp || row.created_at) },
     { label: 'Question', render: (row) => escapeHtml(parseEsmJson(row).esm_title || row.data?.esm_trigger || '—') },
     { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
     { label: 'Sensor', render: (row) => escapeHtml(row.sensor || '—') },
@@ -233,11 +236,11 @@ async function loadBatteryUsageDiagnostics({ studyId, password, appTable, screen
     { label: 'QA reason', render: (row) => escapeHtml(row.qa_reason || '—') },
     { label: 'Method', render: (row) => escapeHtml(row.extraction_method || '—') },
     { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
-    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
+    { label: 'Time', render: (row) => fmtDate(row.timestamp || row.created_at) },
   ], payload.appRows || []);
 
   renderTable(screenshotTable, [
-    { label: 'Time', render: (row) => fmtDate((row.timestamp || 0) * 1000 || row.created_at) },
+    { label: 'Time', render: (row) => fmtDate(row.timestamp || row.created_at) },
     { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
     { label: 'Sensor', render: (row) => escapeHtml(row.sensor || '—') },
     { label: 'Question', render: (row) => escapeHtml(parseEsmJson(row).esm_title || row.data?.esm_trigger || 'Battery screenshot') },
@@ -345,7 +348,7 @@ async function loadSurveyQuality({ studyId, password, table, message }) {
   }
 
   renderTable(table, [
-    { label: 'Submitted', render: (row) => fmtDate(row.submitted_at || ((row.timestamp || 0) * 1000 || row.created_at)) },
+    { label: 'Submitted', render: (row) => fmtDate(row.submitted_at || row.timestamp || row.created_at) },
     { label: 'Participant', render: (row) => escapeHtml(row.device_id || '—') },
     { label: 'Question', render: (row) => escapeHtml(row.question_title || row.question_trigger || '—') },
     { label: 'Answered', render: (row) => row.answered ? 'Yes' : 'No' },
@@ -565,8 +568,8 @@ function initResearcher() {
   const withdrawals = document.querySelector('#researcher-withdrawals');
   const participantHealth = document.querySelector('#researcher-participant-health');
   const sensors = document.querySelector('#researcher-sensors');
-  const esmResponses = document.querySelector('#researcher-esm-responses');
-  const surveyQuality = document.querySelector('#researcher-survey-quality');
+
+
   const locationDailySummary = document.querySelector('#researcher-location-daily-summary');
   const phoneUseDaily = document.querySelector('#researcher-phone-use-daily');
   const batteryUsageCleaned = document.querySelector('#researcher-battery-usage-cleaned');
@@ -664,6 +667,7 @@ function initResearcher() {
     }
 
     dashboard.classList.remove('hidden');
+    environmentForm.elements.enabled.value = String(payload.study.config?.environment_collection?.enabled === true);
     await loadScheduleSection({
       studyId,
       password,
@@ -703,12 +707,28 @@ function initResearcher() {
       screenshotTable: batteryUsageScreenshots,
       message,
     });
-    await loadEsmResponses({ studyId, password, sensors: payload.sensors, table: esmResponses, message });
+
     await loadParticipantHealth({ studyId, password, table: participantHealth, message });
-    await loadSurveyQuality({ studyId, password, table: surveyQuality, message });
+
     await loadLocationDailySummary({ studyId, password, table: locationDailySummary, message });
     await loadPhoneUseDaily({ studyId, password, table: phoneUseDaily, message });
     setMessage(message, `Loaded study ${payload.study.study_id}.`);
+  });
+
+  const environmentForm = document.querySelector('#researcher-environment');
+  environmentForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const status = document.querySelector('#researcher-environment-message');
+    if (!currentStudyId) return setMessage(status, 'Load a study first.', true);
+    try {
+      const response = await fetch(`/api/v1/studies/${encodeURIComponent(currentStudyId)}/environment-settings`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-researcher-password': currentPassword },
+        body: JSON.stringify({ enabled: environmentForm.elements.enabled.value === 'true' }),
+      });
+      const payload = await readJson(response);
+      if (!response.ok) throw new Error(payload.error || 'Could not save environment collection.');
+      setMessage(status, payload.enabled ? 'Environment collection enabled. Refresh Android phones to update light collection.' : 'Environment collection stopped. Existing records remain available.');
+    } catch (error) { setMessage(status, error.message, true); }
   });
 
   joinLinkForm.addEventListener('submit', async (event) => {

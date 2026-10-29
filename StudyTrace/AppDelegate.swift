@@ -164,6 +164,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         StudyTraceNotificationAudit.reportDeliveredNotifications()
         StudyTraceUploadQueue.shared.drain()
         refreshRemoteESMScheduleIfNeeded(force: true)
+        if StudyParticipationController.hasConsent() { AWARESensorManager.shared().syncAllSensors() }
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationWillEnterForeground:"]);
     }
@@ -221,6 +222,24 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         StudyTraceTelemetry.recordEvent("esm_schedule_refresh_requested", metadata: ["force": force])
     }
     
+    func application(_ application: UIApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL else { return false }
+        return receiveStudyInvitation(url)
+    }
+
+    @discardableResult private func receiveStudyInvitation(_ url: URL) -> Bool {
+        guard let secure = UIViewController().normalizedSecureStudyURL(url.absoluteString) else { return false }
+        StudyInvitation.pendingURL = secure
+        guard let tabs = window?.rootViewController as? UITabBarController else { return true }
+        if let index = tabs.viewControllers?.firstIndex(where: { (($0 as? UINavigationController)?.viewControllers.first ?? $0) is ViewController }) {
+            tabs.selectedIndex = index
+            let controller = (tabs.selectedViewController as? UINavigationController)?.viewControllers.first as? ViewController
+            DispatchQueue.main.async { controller?.presentPendingStudyInvitation() }
+        }
+        return true
+    }
+
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
         
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
@@ -231,45 +250,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             if let fitbit = manager.getSensor(SENSOR_PLUGIN_FITBIT) as? Fitbit {
                 fitbit.handle(url, sourceApplication: nil, annotation: options)
             }
-        } else if url.scheme == "aware-ssl" || url.scheme == "aware" {
-            var studyURL = url.absoluteString
-            if studyURL.prefix(9) == "aware-ssl" {
-                let range = studyURL.range(of: "aware-ssl")
-                if let range = range {
-                    studyURL = studyURL.replacingCharacters(in: range, with: "https")
-                }
-            } else if studyURL.prefix(5) == "aware" {
-                let range = studyURL.range(of: "aware")
-                if let range = range {
-                    // Enforce HTTPS: the plain "aware" scheme is mapped to https,
-                    // never http, so study joins always use a secure connection.
-                    studyURL = studyURL.replacingCharacters(in: range, with: "https")
-                }
-            }
-            let study = AWAREStudy.shared()
-            study.join(withURL: studyURL) { (settings, status, error) in
-                if status == AwareStudyStateUpdate || status == AwareStudyStateNew {
-                    StudyTraceTelemetry.recordEvent("study_joined", metadata: ["status": "\(status)"])
-                    let core = AWARECore.shared()
-                    guard StudyParticipationController.hasConsent() else { return }
-                    core.requestPermissionForPushNotification { (_, _) in
-                        core.requestPermissionForBackgroundSensing { _ in
-                            StudyParticipationController.refreshCollectionState(
-                                fitbitPresenter: self.window?.rootViewController,
-                                createRemoteTables: true
-                            )
-                            self.refreshRemoteESMScheduleIfNeeded(force: true)
-                            StudyTraceTelemetry.uploadDeviceState(reason: "study_joined")
-                        }
-                    }
-                }else {
-                    StudyTraceTelemetry.recordEvent("study_join_failed", metadata: [
-                        "status": "\(status)",
-                        "error": error?.localizedDescription ?? ""
-                    ])
-                    // print("Error: ")
-                }
-            }
+        } else {
+            return receiveStudyInvitation(url)
         }
         
         return true
@@ -483,6 +465,7 @@ enum StudyParticipationController {
         let context = notifyServer ? StudyTraceTelemetry.studyContext() : nil
         UserDefaults.standard.set(false, forKey: consentKey)
         UserDefaults.standard.removeObject(forKey: consentTimestampKey)
+        StudyInvitation.pendingURL = nil
         OnboardingManager.recordConsentDecision()
 
         let manager = AWARESensorManager.shared()
@@ -605,6 +588,28 @@ enum StudyParticipationController {
 
         guard hasConsent() else { return }
 
+        if let current = study.getURL(), !current.isEmpty,
+           let secure = UIViewController().normalizedSecureStudyURL(QRCodeReaderViewController.normalizedURLCandidate(current)) {
+            study.setStudyURL(secure)
+            if let parts = URLComponents(string: secure), parts.path.contains("/index.php/webservice/index/") {
+                var canonical = parts
+                canonical.query = nil
+                canonical.fragment = nil
+                if let url = canonical.url?.absoluteString {
+                    study.setSetting(AWARE_PREFERENCES_PLUGIN_IOS_ESM_CONFIG_URL, value: (url + "/esm/config") as NSObject)
+                }
+            }
+        }
+        // Migrate the old framework's Wi-Fi + charging-only defaults once.
+        // Subsequent participant changes to these settings are respected.
+        let migration = "studytrace.sync-policy.v2"
+        if !UserDefaults.standard.bool(forKey: migration) {
+            study.setAutoDBSync(true)
+            study.setAutoDBSyncOnlyWifi(false)
+            study.setAutoDBSyncOnlyBatterChargning(false)
+            study.setAutoDBSyncIntervalWithMinutue(15)
+            UserDefaults.standard.set(true, forKey: migration)
+        }
         AWARESlimConfiguration.apply()
         manager.addSensors(with: study)
         guard manager.getAllSensors().count > 0 else { return }
@@ -614,8 +619,19 @@ enum StudyParticipationController {
             fitbit.viewController = fitbitPresenter
         }
         manager.add(AWAREEventLogger.shared())
+        // IOSESM and the questionnaire UI share EntityESMAnswer. Keep the
+        // relaunch uploader on the same photo-safe transport as the UI.
+        manager.getSensor(SENSOR_PLUGIN_IOS_ESM)?.storage?.syncMode = .quick
+        // Local AWARE rows have no study id. Keep pending uploads, but never
+        // rewind old cursors automatically: rows could belong to an earlier study.
+        study.setCleanOldDataType(cleanOldDataTypeNever)
         core.activate()
         manager.startAllSensors()
+        if study.isAutoDBSync() { manager.startAutoSyncTimer() }
+        // Do not wait an entire timer interval after enrollment or relaunch.
+        if !(study.getURL() ?? "").isEmpty { manager.syncAllSensors() }
+        StudyTraceTelemetry.uploadDeviceState(reason: "collection_started")
+        StudyTraceTelemetry.flush()
 
         if createRemoteTables, let studyURL = study.getURL(), !studyURL.isEmpty {
             manager.createDBTablesOnAwareServer()
@@ -789,6 +805,12 @@ enum StudyTraceTelemetry {
         row["battery_level"] = UIDevice.current.batteryLevel >= 0 ? Double(UIDevice.current.batteryLevel) as Any : NSNull()
         row["battery_state"] = UIDevice.current.batteryState.studytraceTelemetryValue
         row["low_power_mode_enabled"] = ProcessInfo.processInfo.isLowPowerModeEnabled
+        row["auto_sync_enabled"] = AWAREStudy.shared().isAutoDBSync()
+        row["sync_wifi_only"] = AWAREStudy.shared().isAutoDBSyncOnlyWifi()
+        row["sync_charging_only"] = AWAREStudy.shared().isAutoDBSyncOnlyBatterChargning()
+        row["sync_interval_seconds"] = AWAREStudy.shared().getAutoDBSyncIntervalSecond()
+        row["pending_uploads"] = StudyTraceUploadQueue.shared.pendingCount
+        row["sensor_count"] = AWARESensorManager.shared().getAllSensors().count
         row["system_name"] = UIDevice.current.systemName
         row["system_version"] = UIDevice.current.systemVersion
         row["device_model"] = UIDevice.current.model
@@ -808,6 +830,7 @@ enum StudyTraceTelemetry {
             row["notification_badge"] = settings.badgeSetting.studytraceTelemetryValue
             recordPermissionChanges(row)
             StudyTraceUploadQueue.shared.addTelemetry(sensor: deviceStateSensor, row: row)
+            StudyTraceTelemetry.flush()
         }
     }
 
@@ -846,7 +869,7 @@ enum StudyTraceTelemetry {
               !host.isEmpty else {
             return nil
         }
-        let parts = components.path.split(separator: "/").map(String.init)
+        let parts = components.percentEncodedPath.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
         guard let indexPosition = parts.lastIndex(of: "index"),
               parts.count > indexPosition + 2 else {
             return nil

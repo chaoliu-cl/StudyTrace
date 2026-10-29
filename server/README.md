@@ -97,6 +97,58 @@ refresh each phone's schedule (Android: **Refresh surveys**; iOS: reopen while
 online). QR-based ESM import remains available as a fallback/debug workflow.
 See [survey timing](../docs/SURVEY_TIMING.md) for delivery and OS limitations.
 
+## Mobile collection upgrade (October 29, 2026)
+
+New QR codes encode an HTTPS `/join?url=...` Universal Link. On updated iPhones,
+scanning with Camera opens StudyTrace and fills the **Study URL** in its
+StudyTrace tab. Enrollment still requires review and the Update action. The
+fallback page offers **Open StudyTrace**, and the in-app readers on both
+platforms unwrap the same link. iOS registers `studytrace://join`, the two
+AWARE schemes, and associated domains for both production hosts. Existing HTTPS
+study QR codes on those hosts are also associated with the updated app. Other hosts
+can use the fallback button or in-app scanner. Set `IOS_APP_IDS` if distributing
+an iOS build under a different Apple team/bundle id; the default is
+`2F9Z668JPM.com.liuchao.studytrace`.
+
+Survey photo questions (`esm_type: 14`) now offer existing-photo selection,
+camera capture, removal, and up to ten photos. The researcher template picker
+includes a photo-question template. One image remains a legacy image string;
+multiple images are serialized as a JSON array of image data URLs in
+`esm_user_answer`. Media access uses the existing authenticated URL with
+`?image=0`, `?image=1`, etc. CSV responses contain those links, and the full ZIP
+with images enabled contains every attachment. iOS screenshot activities upload
+each selected screenshot separately with `upload_group_id`, `image_index`, and
+`image_count`. Overlapping screenshot totals must not be summed.
+
+The researcher dashboard now places enrollment, schedules, and environment
+settings before stored data. Recent responses and survey quality are CSV
+exports in **Sensor coverage** (`survey_responses` and `survey_quality`) instead
+of large page panels. The response CSV includes the iOS `esm` table as well as
+`plugin_ios_esm` and other supported answer tables.
+
+Environment collection is **off by default**. Save On in its dashboard section
+or `PUT /api/v1/studies/{id}/environment-settings` with researcher credentials
+and `{"enabled":true}`. Both mobile platforms' incoming GPS locations can be
+enriched with an hourly Open-Meteo outdoor weather estimate: temperature in °C,
+cloud cover in %, WMO weather code, and shortwave radiation in W/m². Coordinates
+are rounded to 0.01° before provider lookup. Updated Android phones additionally
+sample a real ambient-light sensor in lux at most every 15 minutes while the
+location service runs. Refresh surveys to fetch the Android setting. iOS has no
+public ambient-light API, so lux remains missing; modeled outdoor sunlight is
+never converted into a purported indoor light measurement.
+
+Rows appear as `environment_measures` with source, units, timestamps, precision,
+and attribution. Weather uses the newest fix in each incoming batch, at most
+one observation per device/UTC hour; fixes over 48 hours old are skipped. Weather
+provider failure leaves the original location upload intact and retries on the
+next location batch. Paused/terminated collection and missing location
+permissions therefore leave gaps rather than invented observations. Describe
+this optional processing in study consent. Provider fields and units follow the
+[Open-Meteo documentation](https://open-meteo.com/en/docs).
+
+See [the collection audit and rollout checklist](../docs/COLLECTION_UPGRADE.md)
+for iPhone failure modes, evidence, recovery, and physical-device checks.
+
 ## Storage model
 
 Each sensor gets its own Postgres table (`aware_<sensor>`), storing the

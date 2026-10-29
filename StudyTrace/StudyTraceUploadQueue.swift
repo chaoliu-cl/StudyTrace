@@ -341,6 +341,9 @@ enum UsageScreenshotUploader {
             "device_id": context.deviceId,
             "timestamp": Date().timeIntervalSince1970 * 1000,
             "upload_id": uploadId,
+            "upload_group_id": submission.uploadGroupId,
+            "image_index": submission.imageIndex,
+            "image_count": submission.imageCount,
             "screenshot_kind": submission.kind.uploadKind,
             "screenshot_base64": imageData.base64EncodedString(),
             "timezone": TimeZone.current.identifier

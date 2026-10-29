@@ -118,6 +118,7 @@ class ViewController: UIViewController {
                                                 self.login()
         }
         self.login()
+        presentPendingStudyInvitation()
 
         contactUpdateRequestObserver = NotificationCenter.default.addObserver(forName: Notification.Name(ACTION_AWARE_CONTACT_REQUEST),
                                                object: nil, queue: .main) { (notification) in
@@ -316,7 +317,7 @@ class ViewController: UIViewController {
 
          return [TableRowContent(type: .setting,
                          title: "Study URL",
-                         details: AWAREStudy.shared().getURL() ?? "",
+                         details: StudyInvitation.pendingURL ?? AWAREStudy.shared().getURL() ?? "",
                          identifier: TableRowIdentifier.studyId.rawValue),
          TableRowContent(type: .setting,
                          title: NSLocalizedString("device_id", comment: ""),
@@ -367,7 +368,7 @@ class ViewController: UIViewController {
         }
     }
 
-    private func refreshStudySection() {
+    fileprivate func refreshStudySection() {
         settings = getSettings()
 
         guard isViewLoaded else { return }
@@ -709,6 +710,12 @@ extension UIViewController {
     /// fully supported.
     func normalizedSecureStudyURL(_ urlString: String) -> String? {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let wrapper = URLComponents(string: trimmed),
+           wrapper.scheme?.lowercased() == "studytrace" || (wrapper.scheme?.lowercased() == "https" && wrapper.path == "/join") {
+            guard let inner = wrapper.queryItems?.first(where: { $0.name == "url" })?.value,
+                  inner.lowercased().hasPrefix("https://") else { return nil }
+            return normalizedSecureStudyURL(inner)
+        }
         guard let url = URL(string: trimmed), let scheme = url.scheme?.lowercased() else {
             return nil
         }
@@ -730,7 +737,8 @@ extension UIViewController {
         // Confirm the result is a well-formed https URL with a host.
         guard let secureURL = URL(string: normalized),
               secureURL.scheme?.lowercased() == "https",
-              secureURL.host?.isEmpty == false else {
+              secureURL.host?.isEmpty == false,
+              secureURL.user == nil, secureURL.password == nil else {
             return nil
         }
         return normalized
@@ -752,12 +760,19 @@ extension UIViewController {
         self.present(alert, animated: true, completion: nil)
     }
 
-    func showAlertForSettingStudyId(){
+    func presentPendingStudyInvitation() {
+        guard isViewLoaded, view.window != nil, presentedViewController == nil,
+              !OnboardingManager.needsOnboarding(), let draft = StudyInvitation.pendingURL else { return }
+        (self as? ViewController)?.refreshStudySection()
+        showAlertForSettingStudyId(prefill: draft)
+    }
+
+    func showAlertForSettingStudyId(prefill: String? = nil){
         let alert = UIAlertController(title:"Study URL", message:nil, preferredStyle: .alert)
         alert.addTextField(configurationHandler: { textField in
             textField.placeholder = "https://url.for.studytrace.server"
             textField.clearButtonMode = .whileEditing
-            textField.text = AWAREStudy.shared().getURL()
+            textField.text = prefill ?? StudyInvitation.pendingURL ?? AWAREStudy.shared().getURL()
         })
         alert.addAction(UIAlertAction(title: NSLocalizedString("Update", comment: "") , style: .default, handler: { (action) in
             if let textFields = alert.textFields {
@@ -769,13 +784,22 @@ extension UIViewController {
                                 return
                             }
                             let study = AWAREStudy.shared()
-                            study.setStudyURL(secureURL)
-                            study.join(withURL: secureURL, completion: { (settings, study, error) in
+                            study.join(withURL: secureURL, completion: { (settings, status, error) in
                                 DispatchQueue.main.async {
+                                    guard status == AwareStudyStateNew || status == AwareStudyStateUpdate || status == AwareStudyStateNoChange else {
+                                        let errorAlert = UIAlertController(title: "Could not join study", message: "Check your study link and network connection, then try again.", preferredStyle: .alert)
+                                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                                        self.present(errorAlert, animated: true)
+                                        return
+                                    }
+                                    StudyInvitation.pendingURL = nil
                                     StudyParticipationController.refreshCollectionState(
                                         fitbitPresenter: self,
                                         createRemoteTables: true
                                     )
+                                    StudyTraceTelemetry.recordEvent("study_joined")
+                                    StudyTraceTelemetry.flush()
+                                    (self as? ViewController)?.refreshStudySection()
                                 }
                             })
                         }

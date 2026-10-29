@@ -1,3 +1,4 @@
+import { collectEnvironment } from './environment.js';
 // AWARE-protocol front-end.
 //
 // Implements the subset of the AWARE REST protocol that the bundled
@@ -66,7 +67,7 @@ export function createAwareRouter(getPublicBaseUrl) {
   // ---- Join / configuration -------------------------------------------------
   router.post(STUDY_PREFIX, requireStudy, async (req, res, next) => {
     try {
-      const deviceId = req.body.device_id;
+      const deviceId = normalizeAwareBody(req.body).device_id;
       const participant = req.query.participant;
       if (deviceId) {
         await upsertDevice(deviceId, req.params.studyId, participant, { joined: true });
@@ -115,11 +116,15 @@ export function createAwareRouter(getPublicBaseUrl) {
           if (body.data) {
             try {
               rows = JSON.parse(body.data);
+              if (!Array.isArray(rows) || rows.some((row) => !row || typeof row !== 'object' || Array.isArray(row))) throw new Error('expected row array');
             } catch {
               return res.status(400).json({ error: 'data is not valid JSON' });
             }
           }
           const n = await insertRows(table, req.params.studyId, deviceId, rows);
+          if (['aware_locations', 'aware_fused_locations', 'aware_google_fused_location'].includes(table)) {
+            await collectEnvironment(req.study, deviceId, rows);
+          }
           if (deviceId) await upsertDevice(deviceId, req.params.studyId, req.query.participant);
           return res.json({ status: true, inserted: n, duplicates: rows.length - n });
         }
@@ -145,13 +150,19 @@ export function createAwareRouter(getPublicBaseUrl) {
   return router;
 }
 
-function normalizeAwareBody(body) {
+export function normalizeAwareBody(body) {
   if (!body) return {};
   if (typeof body === 'string') {
+    // AWARE appends literal JSON after &data=, without URL encoding it.
+    // Parsing it as a normal form would change '+' to spaces and split '&'.
+    const marker = body.indexOf('&data=');
+    if (marker >= 0 && /^\s*[\[{]/.test(body.slice(marker + 6))) {
+      return { ...parseQueryString(body.slice(0, marker)), data: body.slice(marker + 6) };
+    }
     return parseQueryString(body);
   }
   if (Buffer.isBuffer(body)) {
-    return parseQueryString(body.toString('utf8'));
+    return normalizeAwareBody(body.toString('utf8'));
   }
   return body;
 }

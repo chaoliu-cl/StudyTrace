@@ -16,6 +16,7 @@
 
     <!-- Lets app usage rows carry app labels for launchable apps (Android 11+ package visibility). -->
     <queries>
+        <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
@@ -31,6 +32,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/StudyTraceTheme"
         android:usesCleartextTraffic="false">
+
+        <provider android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.survey-photos"
+            android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/survey_camera_paths" />
+        </provider>
 
         <!-- Preload the Google Play services QR scanner when installed from Play. -->
         <meta-data

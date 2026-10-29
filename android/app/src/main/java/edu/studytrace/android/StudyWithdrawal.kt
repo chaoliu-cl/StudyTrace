@@ -81,6 +81,8 @@ object StudyWithdrawal {
         SyncWorker.cancel(context)
         UploadQueue.purge(context)
         SurveyRepository.clear(context)
+        SurveyDrafts.clear(context)
+        EnvironmentCollector.clear(context)
         NotificationHelper.cancelAll(context)
         prefs.clearStudy()
         // The caller sends right away (sendPending). The delayed worker is the
