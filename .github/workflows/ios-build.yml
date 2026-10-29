@@ -13,6 +13,7 @@ on:
       - "Podfile.lock"
       - "patches/aware-esm/**"
       - "scripts/apply_aware_timing_patch.rb"
+      - "scripts/apply_aware_client_patch.rb"
       - "en.lproj/**"
       - "ja.lproj/**"
       - ".github/workflows/ios-build.yml"
@@ -28,6 +29,7 @@ on:
       - "Podfile.lock"
       - "patches/aware-esm/**"
       - "scripts/apply_aware_timing_patch.rb"
+      - "scripts/apply_aware_client_patch.rb"
       - "en.lproj/**"
       - "ja.lproj/**"
       - ".github/workflows/ios-build.yml"
@@ -65,10 +67,11 @@ jobs:
           fi
 
       # Pods are committed, so no `pod install` is needed.
-      - name: Verify maintained AWARE timing patch
+      - name: Verify maintained AWARE patches
         run: |
           ruby scripts/apply_aware_timing_patch.rb
-          git diff --exit-code -- Pods/AWAREFramework/AWAREFramework/Classes/ESM/
+          ruby scripts/apply_aware_client_patch.rb
+          git diff --exit-code -- Pods/AWAREFramework/AWAREFramework/Classes/
 
       - name: Build app and unit tests
         run: |
