@@ -16,8 +16,8 @@
     self = [super initWithFrame:frame esm:esm viewController:viewController];
     if (!self) return nil;
     self.studytraceImages = [NSMutableArray array];
-    self.mainView.frame = CGRectMake(self.mainView.frame.origin.x, self.mainView.frame.origin.y, frame.size.width, 310);
-    UIStackView *stack = [[UIStackView alloc] initWithFrame:CGRectMake(20, 8, frame.size.width - 40, 290)];
+    self.mainView.frame = CGRectMake(self.mainView.frame.origin.x, self.mainView.frame.origin.y, frame.size.width, 360);
+    UIStackView *stack = [[UIStackView alloc] initWithFrame:CGRectMake(20, 8, frame.size.width - 40, 340)];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.spacing = 10;
     stack.autoresizingMask = UIViewAutoresizingFlexibleWidth;

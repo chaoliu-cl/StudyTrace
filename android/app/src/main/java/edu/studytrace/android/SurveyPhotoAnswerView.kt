@@ -1,6 +1,9 @@
 package edu.studytrace.android
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.util.Base64
+import android.widget.ImageView
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -37,6 +40,21 @@ class SurveyPhotoAnswerView(context: Context, initialAnswer: String, choose: () 
         fun refresh() {
             photos.removeAllViews()
             for (index in 0 until images.length()) {
+                val thumbnail = runCatching {
+                    val bytes = Base64.decode(images.getString(index).substringAfter(','), Base64.DEFAULT)
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    val options = BitmapFactory.Options().apply { inSampleSize = 1 }
+                    while (maxOf(bounds.outWidth, bounds.outHeight) / options.inSampleSize > 320) options.inSampleSize *= 2
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                }.getOrNull()
+                if (thumbnail != null) photos.addView(ImageView(context).apply {
+                    setImageBitmap(thumbnail)
+                    contentDescription = "Attached photo ${index + 1}"
+                    adjustViewBounds = true
+                    maxHeight = (160 * resources.displayMetrics.density).toInt()
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                })
                 photos.addView(Button(context).apply {
                     text = "Photo ${index + 1} attached · Remove"
                     contentDescription = "Remove attached photo ${index + 1}"
