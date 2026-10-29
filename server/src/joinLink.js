@@ -39,10 +39,13 @@ export function qrCodeSvg(text) {
 export function buildJoinLink(base, studyId, password, participant) {
   const label = normalizeParticipantLabel(participant);
   const studyUrl = studyJoinUrl(base, studyId, password, label);
+  const joinUrl = `${base}/join?${new URLSearchParams({ url: studyUrl })}`;
   return {
+    join_url: joinUrl,
+    app_url: `studytrace://join?${new URLSearchParams({ url: studyUrl })}`,
     study_id: studyId,
     participant: label || null,
     study_url: studyUrl,
-    qr_svg: qrCodeSvg(studyUrl),
+    qr_svg: qrCodeSvg(joinUrl),
   };
 }

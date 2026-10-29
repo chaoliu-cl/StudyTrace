@@ -17,6 +17,7 @@ import java.util.UUID
 
 class LocationTrackingService : Service(), LocationListener {
     private lateinit var locationManager: LocationManager
+    private lateinit var environment: EnvironmentCollector
 
     override fun onCreate() {
         super.onCreate()
@@ -25,6 +26,7 @@ class LocationTrackingService : Service(), LocationListener {
             NotificationHelper.LOCATION_NOTIFICATION_ID,
             NotificationHelper.locationNotification(this),
         )
+        environment = EnvironmentCollector(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
     }
 
@@ -34,6 +36,7 @@ class LocationTrackingService : Service(), LocationListener {
             stopSelf()
             return START_NOT_STICKY
         }
+        environment.start()
         requestUpdates(LocationManager.GPS_PROVIDER)
         requestUpdates(LocationManager.NETWORK_PROVIDER)
         uploadDeviceState("location_service_started")
@@ -41,6 +44,7 @@ class LocationTrackingService : Service(), LocationListener {
     }
 
     override fun onDestroy() {
+        environment.stop()
         runCatching { locationManager.removeUpdates(this) }
         super.onDestroy()
     }
@@ -48,6 +52,7 @@ class LocationTrackingService : Service(), LocationListener {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onLocationChanged(location: Location) {
+        environment.start()
         val now = System.currentTimeMillis()
         // Fix time, unless the provider's clock is clearly wrong (e.g. GPS week rollover).
         val fixTime = location.time.takeIf { it > 0 && kotlin.math.abs(now - it) < MAX_CLOCK_SKEW_MILLIS } ?: now

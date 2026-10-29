@@ -29,6 +29,7 @@
 #import "ESMClockTimePickerView.h"
 #import "ESMWebView.h"
 #import "ESMPictureView.h"
+#import <objc/runtime.h>
 
 //////// ESM sensor //////////
 #import "ESM.h"
@@ -128,7 +129,10 @@
     for (AWARESensor * sensor in manager.getAllSensors ) {
         NSLog(@"%@", sensor.getSensorName);
     }
-    if ([manager getSensor:SENSOR_ESMS] == nil ) {
+// StudyTrace: one canonical survey uploader for the shared answer store.
+if ([manager getSensor:SENSOR_PLUGIN_IOS_ESM] != nil) {
+    esmSensor = (ESM *)[manager getSensor:SENSOR_PLUGIN_IOS_ESM];
+} else if ([manager getSensor:SENSOR_ESMS] == nil ) {
         esmSensor = [[ESM alloc] initWithAwareStudy:study dbType:AwareDBTypeSQLite];
         [manager addSensor:esmSensor];
     }else{
@@ -157,6 +161,12 @@
 
 - (void)viewDidAppear:(BOOL)animated{
     [super viewDidAppear:animated];
+if ([objc_getAssociatedObject(self, NSSelectorFromString(@"studytraceMediaPickerActive")) boolValue]) {
+    objc_setAssociatedObject(self, NSSelectorFromString(@"studytraceMediaPickerActive"), nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [self studytraceValidateSession];
+    return;
+}
+
     if (![self studytraceValidateSession]) return;
     esmCells = [[NSMutableArray alloc] init];
     // Remove all UIView contents from super view (_mainScrollView).

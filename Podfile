@@ -48,6 +48,8 @@ post_install do |installer|
   # Keep the vendored AWARE timing fix after CocoaPods replaces its sources.
   system('ruby', File.join(__dir__, 'scripts', 'apply_aware_timing_patch.rb')) ||
     raise('Could not apply the StudyTrace AWARE timing patch')
+  system('ruby', File.join(__dir__, 'scripts', 'apply_aware_client_patch.rb')) ||
+    raise('Could not apply the StudyTrace AWARE client patch')
 
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|

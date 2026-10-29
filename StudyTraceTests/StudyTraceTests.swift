@@ -102,6 +102,73 @@ class StudyTraceTests: XCTestCase {
         XCTAssertFalse(ESMScheduleManager.studytraceIsOpen(delivery: delivered, expirationMinutes: 60, now: delivered.addingTimeInterval(60 * 60)))
     }
 
+    func testInvitationWrappersPopulateTheSecureStudyURL() {
+        let controller = UIViewController()
+        let invitation = "https://studytrace-production.up.railway.app/index.php/webservice/index/pilot/p%2Bass?participant=P%20001"
+        var wrapped = URLComponents(string: "studytrace://join")!
+        wrapped.queryItems = [URLQueryItem(name: "url", value: invitation)]
+        XCTAssertEqual(controller.normalizedSecureStudyURL(wrapped.string!), invitation)
+        wrapped = URLComponents(string: "https://studytrace-production.up.railway.app/join")!
+        wrapped.queryItems = [URLQueryItem(name: "url", value: invitation)]
+        XCTAssertEqual(controller.normalizedSecureStudyURL(wrapped.string!), invitation)
+        wrapped.queryItems = [URLQueryItem(name: "url", value: "http://example.com/study")]
+        XCTAssertNil(controller.normalizedSecureStudyURL(wrapped.string!))
+        XCTAssertNil(controller.normalizedSecureStudyURL("studytrace://join"))
+    }
+
+    func testReplayCursorSurvivesStorageRecreation() {
+        let sensor = "studytrace_test_replay"
+        let key = "uploader_coredata_timestamp_marker_" + sensor
+        let previous = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let previous = previous { UserDefaults.standard.set(previous, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+        UserDefaults.standard.set(0, forKey: key)
+        let storage = SQLiteStorage(study: AWAREStudy.shared(), sensorName: sensor, entityName: "EntityESMAnswer")
+        XCTAssertNotNil(storage)
+        XCTAssertEqual(UserDefaults.standard.double(forKey: key), 0, "relaunch must not skip retained offline rows")
+    }
+
+    func testPhotoUploaderRequiresEveryHTTPAcknowledgement() throws {
+        let study = AWAREStudy.shared()
+        let previousURL = study.getURL() ?? ""
+        defer { study.setStudyURL(previousURL); StudyTraceURLProtocol.handler = nil }
+        study.setStudyURL("https://studytrace-test.invalid/index.php/webservice/index/test/secret?participant=P001")
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StudyTraceURLProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let uploader = QuickSyncExecutor(awareStudy: study, sensorName: "plugin_ios_esm")
+        uploader.setValue(session, forKey: "session")
+        var requests = 0
+        StudyTraceURLProtocol.handler = { request in
+            requests += 1
+            XCTAssertEqual(request.url?.path, "/index.php/webservice/index/test/secret/plugin_ios_esm/insert")
+            XCTAssertNil(request.url?.query, "participant query must not swallow the sensor path")
+            return requests == 2 ? 503 : 200
+        }
+        // Each answer fits the request limit; together they require two requests.
+        let largeAnswer = String(repeating: "a", count: 11 * 1024 * 1024)
+        let body = try JSONSerialization.data(withJSONObject: [["timestamp": 1, "esm_user_answer": largeAnswer], ["timestamp": 2, "esm_user_answer": largeAnswer]])
+        let rejected = expectation(description: "rejected second photo batch")
+        uploader.sync(with: body) { result in
+            XCTAssertEqual(result?["result"] as? Bool, false, "SQLite must not advance after a partial upload")
+            XCTAssertEqual(requests, 2)
+            rejected.fulfill()
+        }
+        wait(for: [rejected], timeout: 30)
+        requests = 0
+        StudyTraceURLProtocol.handler = { _ in requests += 1; return 201 }
+        let retried = expectation(description: "both photo batches acknowledged on retry")
+        uploader.sync(with: body) { result in
+            XCTAssertEqual(result?["result"] as? Bool, true)
+            XCTAssertEqual(requests, 2)
+            retried.fulfill()
+        }
+        wait(for: [retried], timeout: 30)
+    }
+
     override func setUp() {
         // Put setup code here. This method is called before the invocation of each test method in the class.
     }
@@ -259,4 +326,18 @@ class StudyTraceTests: XCTestCase {
         XCTAssertTrue(UsageScreenshotParser.isLikelyScreenshot(of: .screenTimeActivity, text: text))
     }
 
+}
+
+private final class StudyTraceURLProtocol: URLProtocol {
+    static var handler: ((URLRequest) -> Int)?
+    override class func canInit(with request: URLRequest) -> Bool { return request.url?.host == "studytrace-test.invalid" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { return request }
+    override func startLoading() {
+        let status = Self.handler?(request) ?? 500
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("{\"status\":true}".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }

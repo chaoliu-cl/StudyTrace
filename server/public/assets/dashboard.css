@@ -426,3 +426,6 @@ pre {
   background: #f6e7e2;
   color: #8a3a24;
 }
+
+/* Keep researcher setup close to the top on laptop screens. */
+body[data-page="researcher"] .hero h1 { font-size: clamp(1.8rem, 4vw, 2.75rem); max-width: none; }

@@ -118,7 +118,13 @@
           "esm_type": 2,
           "esm_title": "Sleep quality",
           "esm_instructions": "How would you rate the quality of your sleep last night?",
-          "esm_radios": ["Very poor", "Poor", "Fair", "Good", "Very good"],
+          "esm_radios": [
+            "Very poor",
+            "Poor",
+            "Fair",
+            "Good",
+            "Very good"
+          ],
           "esm_trigger": "sleep_quality",
           "esm_submit": "Next",
           "esm_na": true
@@ -127,10 +133,31 @@
           "esm_type": 2,
           "esm_title": "Phone in bed",
           "esm_instructions": "Did you use your phone in bed before falling asleep last night?",
-          "esm_radios": ["No", "Yes, less than 15 minutes", "Yes, 15 to 60 minutes", "Yes, more than an hour"],
+          "esm_radios": [
+            "No",
+            "Yes, less than 15 minutes",
+            "Yes, 15 to 60 minutes",
+            "Yes, more than an hour"
+          ],
           "esm_trigger": "phone_use_in_bed",
           "esm_submit": "Submit",
           "esm_na": true
+        }
+      ]
+    },
+    {
+      "id": "photo_attachment",
+      "label": "Photo question (choose photos or use camera)",
+      "source": "StudyTrace photo attachment; customize the request to your study protocol.",
+      "questions": [
+        {
+          "esm_type": 14,
+          "esm_title": "Study photos",
+          "esm_instructions": "Choose one or more photos from your library, or take a photo with your camera. You can add more photos before submitting.",
+          "esm_trigger": "study_photos",
+          "esm_submit": "Submit",
+          "esm_na": true,
+          "studytrace_required": true
         }
       ]
     }

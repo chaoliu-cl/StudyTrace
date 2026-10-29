@@ -1,3 +1,4 @@
+import { collectEnvironment } from './environment.js';
 // Generic, protocol-neutral ingestion API.
 //
 // This router exposes the same underlying storage as the AWARE-compatible
@@ -115,6 +116,9 @@ export function createGenericApiRouter() {
     try {
       await createSensorTable(table);
       const n = await insertRows(table, req.params.studyId, deviceId, rows);
+      if (['aware_locations', 'aware_fused_locations', 'aware_google_fused_location'].includes(table)) {
+        await collectEnvironment(req.study, deviceId, rows);
+      }
       if (deviceId) await upsertDevice(deviceId, req.params.studyId, req.query.participant);
       return res.status(201).json({ ok: true, inserted: n, duplicates: rows.length - n });
     } catch (err) {

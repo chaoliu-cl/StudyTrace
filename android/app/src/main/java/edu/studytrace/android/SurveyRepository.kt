@@ -34,6 +34,7 @@ object SurveyRepository {
 
     /** Fetches and caches the participant config; falls back to the cache when offline. Network call. */
     fun refreshConfig(context: Context): JSONArray {
+        EnvironmentCollector.refreshSettings(context)
         val fetched = StudyApi(context).fetchSurveyConfig()
         if (fetched != null) {
             prefs(context).edit().putString(KEY_CONFIG, fetched.toString()).apply()

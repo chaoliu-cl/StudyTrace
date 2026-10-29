@@ -8,6 +8,13 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.provider.MediaStore
+import android.content.ClipData
+import androidx.core.content.FileProvider
+import org.json.JSONArray
+import java.io.File
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -69,6 +76,11 @@ class MainActivity : Activity() {
     private var initialIntentHandled = false
     private var screenshotOccurrenceId: String? = null
     private val screenshotRequestCode = 3107
+    private val photoRequestCode = 3108
+    private val cameraRequestCode = 3109
+    private var photoQuestionIndex = 0
+    private var cameraOutputUri: Uri? = null
+    private var surveyDialog: AlertDialog? = null
     private val handler = Handler(Looper.getMainLooper())
 
     private enum class MainTab { SURVEY, DASHBOARD, SETTINGS }
@@ -77,6 +89,8 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = StudyPrefs(this)
         screenshotOccurrenceId = savedInstanceState?.getString("screenshot_occurrence_id")
+        photoQuestionIndex = savedInstanceState?.getInt("photo_question_index") ?: 0
+        cameraOutputUri = savedInstanceState?.getString("camera_output_uri")?.let(Uri::parse)
         NotificationHelper.ensureChannels(this)
         if (isJoined()) SyncWorker.schedule(this)
         if (StudyWithdrawal.hasPending(this)) WithdrawalWorker.enqueue(this)
@@ -747,6 +761,8 @@ class MainActivity : Activity() {
                     UploadQueue.purge(this)
                     SurveyRepository.clear(this)
                     NotificationHelper.cancelAll(this)
+                    SurveyDrafts.clear(this)
+                    EnvironmentCollector.clear(this)
                     prefs.clearStudy()
                     prefs.studyUrl = normalized
                     prefs.joinedAtMillis = System.currentTimeMillis()
@@ -952,10 +968,7 @@ class MainActivity : Activity() {
     private fun showSurvey(prompt: SurveyRepository.OpenPrompt) {
         val schedule = prompt.schedule
         val questions = SurveyRepository.allQuestions(schedule)
-        if (schedule.optString("studytrace_prompt_type") == "app_usage_screenshot") {
-            showUsageScreenshot(prompt)
-            return
-        }
+
         if (questions.isEmpty()) {
             toast(getString(R.string.survey_no_questions))
             return
@@ -966,20 +979,32 @@ class MainActivity : Activity() {
         }
         val answerViews = mutableListOf<Pair<JSONObject, View>>()
 
-        questions.forEach { question ->
+        val draft = SurveyDrafts.read(this, prompt.record.id)
+        questions.forEachIndexed { index, question ->
             container.addView(label(question.optString("esm_title", "Question")))
             val instructions = question.optString("esm_instructions")
             if (instructions.isNotBlank()) container.addView(body(instructions))
             val radios = question.optJSONArray("esm_radios")
-            if (radios != null && radios.length() > 0) {
+            if (question.optInt("esm_type") == 14) {
+                val photo = SurveyPhotoAnswerView(this, draft.optString(index),
+                    choose = { saveDraftAndPick(prompt, index, answerViews, false) },
+                    camera = { saveDraftAndPick(prompt, index, answerViews, true) })
+                container.addView(photo)
+                answerViews += question to photo
+            } else if (radios != null && radios.length() > 0) {
                 val group = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
                 for (i in 0 until radios.length()) {
-                    group.addView(RadioButton(this).apply { text = radios.optString(i) })
+                    group.addView(RadioButton(this).apply {
+                        id = View.generateViewId()
+                        text = radios.optString(i)
+                        isChecked = text.toString() == draft.optString(index)
+                    })
                 }
                 container.addView(group)
                 answerViews += question to group
             } else {
                 val edit = EditText(this).apply {
+                    setText(draft.optString(index))
                     minLines = 2
                     inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 }
@@ -989,90 +1014,141 @@ class MainActivity : Activity() {
             container.addView(Space(this).apply { minimumHeight = 18 })
         }
 
-        AlertDialog.Builder(this)
+        surveyDialog?.dismiss()
+        surveyDialog = AlertDialog.Builder(this)
             .setTitle(schedule.optString("notification_title", "StudyTrace survey"))
             .setView(ScrollView(this).apply { addView(container) })
             // "Later" keeps the prompt open until it expires; "Dismiss" records esm_status 1.
-            .setNeutralButton(getString(R.string.survey_later), null)
+            .setNeutralButton(getString(R.string.survey_later)) { _, _ -> SurveyDrafts.save(this, prompt.record.id, answerViews.map { answerFromView(it.second) }) }
             .setNegativeButton(getString(R.string.survey_dismiss)) { _, _ -> dismissSurvey(prompt) }
             .setPositiveButton(getString(R.string.survey_submit)) { _, _ ->
                 val answers = answerViews.map { (question, view) ->
                     question to answerFromView(view)
                 }
-                submitSurvey(prompt, answers)
+                SurveyDrafts.save(this, prompt.record.id, answers.map { it.second })
+                if (answers.any { (question, answer) -> question.optInt("esm_type") == 14 && question.optBoolean("studytrace_required", true) && answer.isBlank() }) {
+                    toast("Please attach a photo to each required photo question.")
+                    showSurvey(prompt)
+                } else submitSurvey(prompt, answers)
             }
             .show()
     }
 
-    private fun showUsageScreenshot(prompt: SurveyRepository.OpenPrompt) {
-        AlertDialog.Builder(this)
-            .setTitle("Today's app usage screenshot")
-            .setMessage("1. Open Settings > Digital Wellbeing & parental controls > Dashboard (or your phone's app usage screen).\n\n2. Select Today and take a fresh screenshot showing today's total and the app list.\n\n3. Return to StudyTrace and choose that screenshot.\n\nComplete this within 60 minutes of the notification, or the duration set by your research team.")
-            .setNeutralButton(getString(R.string.survey_later), null)
-            .setNegativeButton(getString(R.string.survey_dismiss)) { _, _ -> dismissSurvey(prompt) }
-            .setPositiveButton("Choose screenshot") { _, _ ->
-                screenshotOccurrenceId = prompt.record.id
-                @Suppress("DEPRECATION")
-                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                    type = "image/*"
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }, screenshotRequestCode)
+    private fun saveDraftAndPick(prompt: SurveyRepository.OpenPrompt, index: Int, views: List<Pair<JSONObject, View>>, camera: Boolean) {
+        SurveyDrafts.save(this, prompt.record.id, views.map { answerFromView(it.second) })
+        val existing = runCatching { JSONArray(answerFromView(views[index].second)) }.getOrDefault(JSONArray())
+        if (existing.length() >= 10) { toast("Up to 10 photos can be attached to each question."); return }
+        screenshotOccurrenceId = prompt.record.id
+        photoQuestionIndex = index
+        val intent = if (camera) {
+            val directory = File(cacheDir, "survey_camera").apply { mkdirs() }
+            val file = File.createTempFile("capture-", ".jpg", directory)
+            cameraOutputUri = FileProvider.getUriForFile(this, "$packageName.survey-photos", file)
+            Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, cameraOutputUri)
+                clipData = ClipData.newRawUri("Survey photo", cameraOutputUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             }
-            .show()
+        } else Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            type = "image/*"
+            addCategory(Intent.CATEGORY_OPENABLE)
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, if (camera) cameraRequestCode else photoRequestCode)
+            surveyDialog?.dismiss()
+        }.onFailure { toast("No camera or photo picker is available. Please choose photos using another source.") }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("screenshot_occurrence_id", screenshotOccurrenceId)
+        outState.putInt("photo_question_index", photoQuestionIndex)
+        outState.putString("camera_output_uri", cameraOutputUri?.toString())
         super.onSaveInstanceState(outState)
     }
 
-    @Deprecated("Uses the system document picker without broad photo permissions")
+    @Deprecated("Uses system document and camera pickers without broad photo permissions")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != screenshotRequestCode) return
+        if (requestCode !in listOf(photoRequestCode, cameraRequestCode, screenshotRequestCode)) return
         val occurrenceId = screenshotOccurrenceId ?: return
         screenshotOccurrenceId = null
-        val uri = data?.data
-        if (resultCode != RESULT_OK || uri == null) return
-        background("Preparing screenshot...") {
-            val prompt = SurveyRepository.openPrompt(this, occurrenceId)
-                ?: return@background null
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Choose a readable screenshot image." }
-            val options = BitmapFactory.Options().apply { inSampleSize = 1 }
-            while (maxOf(bounds.outWidth, bounds.outHeight) / options.inSampleSize > 2800) {
-                options.inSampleSize *= 2
-            }
-            val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-                ?: error("StudyTrace could not read this image.")
-            val bytes = ByteArrayOutputStream().use { output ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
-                if (output.size() > 6 * 1024 * 1024) {
-                    output.reset()
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
-                    "data:image/jpeg;base64," to output.toByteArray()
-                } else "data:image/png;base64," to output.toByteArray()
-            }
-            bitmap.recycle()
-            require(bytes.second.size <= 8 * 1024 * 1024) { "Choose a smaller screenshot." }
-            prompt to (bytes.first + Base64.encodeToString(bytes.second, Base64.NO_WRAP))
-        }.onResult { prepared ->
-            if (prepared == null) {
+        val cameraUri = cameraOutputUri
+        cameraOutputUri = null
+        val uris = mutableListOf<Uri>()
+        if (resultCode == RESULT_OK) {
+            if (requestCode == cameraRequestCode) cameraUri?.let(uris::add)
+            else if (data?.clipData != null) {
+                val clip = data.clipData!!
+                for (i in 0 until clip.itemCount) uris += clip.getItemAt(i).uri
+            } else data?.data?.let(uris::add)
+        }
+        val questionIndex = photoQuestionIndex
+        background("Preparing photos...") {
+            val prompt = SurveyRepository.openPrompt(this, occurrenceId) ?: return@background null
+            val answers = SurveyDrafts.read(this, occurrenceId)
+            val images = runCatching { JSONArray(answers.optString(questionIndex)) }.getOrDefault(JSONArray())
+            require(images.length() + uris.size <= 10) { "Choose at most ${10 - images.length()} more photos." }
+            uris.forEach { uri -> images.put(preparePhoto(uri)) }
+            val value = if (images.length() == 0) "" else images.toString()
+            val updated = (0 until maxOf(answers.length(), questionIndex + 1)).map { if (it == questionIndex) value else answers.optString(it) }
+            require(updated.sumOf { it.toByteArray(Charsets.UTF_8).size.toLong() } <= 16L * 1024 * 1024) { "These photos exceed 12 MiB combined. Choose fewer or smaller photos." }
+            if (isJoined()) SurveyDrafts.save(this, occurrenceId, updated)
+            prompt
+        }.onResult { prompt ->
+            cameraUri?.let { runCatching { contentResolver.delete(it, null, null) } }
+            if (prompt == null || !isJoined()) {
                 toast(getString(R.string.survey_no_longer_available))
+                SurveyDrafts.delete(this, occurrenceId)
                 renderOpenPrompts()
-            } else {
-                val (prompt, answer) = prepared
-                // submitAnswers rechecks the original deadline after image preparation.
-                submitSurvey(prompt, SurveyRepository.allQuestions(prompt.schedule).map { it to answer })
+            } else showSurvey(prompt)
+        }
+    }
+
+    private fun preparePhoto(uri: Uri): String {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Choose a readable image." }
+        val options = BitmapFactory.Options().apply { inSampleSize = 1 }
+        while (maxOf(bounds.outWidth, bounds.outHeight) / options.inSampleSize > 2800) options.inSampleSize *= 2
+        val decoded = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+            ?: error("StudyTrace could not read this image.")
+        val orientation = runCatching { contentResolver.openInputStream(uri)?.use {
+            ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        } }.getOrNull() ?: ExifInterface.ORIENTATION_NORMAL
+        val matrix = Matrix().apply {
+            when (orientation) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> postRotate(90f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> postRotate(180f)
+                ExifInterface.ORIENTATION_ROTATE_270 -> postRotate(270f)
+                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> postScale(-1f, 1f)
+                ExifInterface.ORIENTATION_FLIP_VERTICAL -> postScale(1f, -1f)
+                ExifInterface.ORIENTATION_TRANSPOSE -> { postRotate(90f); postScale(-1f, 1f) }
+                ExifInterface.ORIENTATION_TRANSVERSE -> { postRotate(270f); postScale(-1f, 1f) }
             }
         }
+        val bitmap = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+        if (bitmap !== decoded) decoded.recycle()
+        // Re-encoding strips EXIF/GPS metadata; screenshots remain PNG where practical.
+        val result = ByteArrayOutputStream().use { output ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+            val prefix = if (output.size() > 2 * 1024 * 1024) {
+                output.reset(); bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output)
+                "data:image/jpeg;base64,"
+            } else "data:image/png;base64,"
+            require(output.size() <= 8 * 1024 * 1024) { "Choose a smaller image." }
+            prefix + Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+        }
+        bitmap.recycle()
+        return result
     }
 
     private fun submitSurvey(prompt: SurveyRepository.OpenPrompt, answers: List<Pair<JSONObject, String>>) {
         background("Submitting survey...") {
             if (SurveyRepository.submitAnswers(this, prompt.record.id, answers)) {
+                SurveyDrafts.delete(this, prompt.record.id)
                 UploadQueue.drain(this) == UploadQueue.DrainResult.COMPLETE
             } else {
                 null
@@ -1091,6 +1167,7 @@ class MainActivity : Activity() {
 
     private fun dismissSurvey(prompt: SurveyRepository.OpenPrompt) {
         background(null) {
+            SurveyDrafts.delete(this, prompt.record.id)
             SurveyRepository.dismiss(this, prompt.record.id)
         }.onResult { dismissed ->
             if (dismissed) toast(getString(R.string.survey_dismissed))
@@ -1214,6 +1291,7 @@ class MainActivity : Activity() {
 
     private fun answerFromView(view: View): String =
         when (view) {
+            is SurveyPhotoAnswerView -> view.answer
             is EditText -> view.text.toString()
             is RadioGroup -> {
                 val selected = view.findViewById<RadioButton>(view.checkedRadioButtonId)

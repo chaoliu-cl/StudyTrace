@@ -72,10 +72,7 @@
         self.mainQueueManagedObjectContext = [[NSManagedObjectContext alloc] initWithConcurrencyType:NSMainQueueConcurrencyType];
         [self.mainQueueManagedObjectContext setPersistentStoreCoordinator:dbHandler.persistentStoreCoordinator];
         previousUploadingProcessFinishUnixTime = [self getTimeMark];
-        if([previousUploadingProcessFinishUnixTime isEqualToNumber:@0]){
-            NSDate * now = [NSDate new];
-            [self setTimeMark:now];
-        }
+        // StudyTrace: preserve a zero replay cursor across relaunches.
         coreDataHandler = dbHandler;
         self.syncMode = AwareSyncModeBackground;
     }
@@ -335,7 +332,8 @@
             }
             
             //Set sort option
-            NSSortDescriptor *sortDescriptor = [[NSSortDescriptor alloc] initWithKey:@"timestamp" ascending:YES];
+            NSString *studytraceTimeKey = [self->entityName isEqualToString:@"EntityESMAnswer"] ? @"double_esm_user_answer_timestamp" : @"timestamp";
+            NSSortDescriptor *sortDescriptor = [[NSSortDescriptor alloc] initWithKey:studytraceTimeKey ascending:YES];
             NSArray *sortDescriptors = [[NSArray alloc] initWithObjects:sortDescriptor, nil];
             [fetchRequest setSortDescriptors:sortDescriptors];
             
@@ -343,6 +341,22 @@
             
             NSDate * s = [NSDate new];
             NSArray *results = [private executeFetchRequest:fetchRequest error:nil] ;
+// StudyTrace: include the complete final timestamp group so a
+// row-count boundary cannot permanently skip sibling answers.
+if (results.count > 0 && results.count == fetchRequest.fetchLimit) {
+    NSNumber *lastTime = results.lastObject[studytraceTimeKey];
+    NSFetchRequest *ties = [fetchRequest copy];
+    ties.fetchLimit = 0;
+    ties.predicate = [NSPredicate predicateWithFormat:@"%K == %@", studytraceTimeKey, lastTime];
+    NSArray *tail = [private executeFetchRequest:ties error:nil];
+    if (tail.count) {
+        NSMutableArray *complete = [NSMutableArray array];
+        for (NSDictionary *row in results) if (![row[studytraceTimeKey] isEqual:lastTime]) [complete addObject:row];
+        [complete addObjectsFromArray:tail];
+        results = complete;
+    }
+}
+
             if (self.isDebug) NSLog(@"[%@] SQLite ---> %f", self.sensorName, [[NSDate new] timeIntervalSinceDate:s] );
             
             if (results != nil) {
@@ -707,7 +721,8 @@
         [fetchRequest setFetchLimit:limit];
 
         //Set sort option
-        NSSortDescriptor *sortDescriptor = [[NSSortDescriptor alloc] initWithKey:@"timestamp" ascending:YES];
+        NSString *studytraceTimeKey = [self->entityName isEqualToString:@"EntityESMAnswer"] ? @"double_esm_user_answer_timestamp" : @"timestamp";
+            NSSortDescriptor *sortDescriptor = [[NSSortDescriptor alloc] initWithKey:studytraceTimeKey ascending:YES];
         NSArray *sortDescriptors = [[NSArray alloc] initWithObjects:sortDescriptor, nil];
         [fetchRequest setSortDescriptors:sortDescriptors];
         

@@ -42,7 +42,6 @@
     </section>
 
     <section id="researcher-dashboard" class="dashboard hidden">
-      <div class="metric-grid" id="researcher-metrics"></div>
       <section class="panel">
         <div class="section-head">
           <div>
@@ -57,59 +56,6 @@
         </form>
         <p id="researcher-join-link-message" class="status-line"></p>
         <div id="researcher-join-link-result" class="hidden"></div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Devices</h2>
-            <p class="section-note" id="researcher-devices-updated"></p>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table id="researcher-devices"></table>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Withdrawals and deletions</h2>
-            <p class="section-note">Audit log of participant withdrawals from the app and data deletions made from this dashboard.</p>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table id="researcher-withdrawals"></table>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Participant health</h2>
-            <p class="section-note">Operational data-quality checks from client events, device state, uploads, permissions, and recent study rows. Compliance is answered survey sessions divided by survey prompts the phone reported as delivered over the last 7 days (prompts swiped away before the app next opened may be missed).</p>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table id="researcher-participant-health"></table>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Sensor coverage</h2>
-            <p class="section-note"><code>battery_usage_apps</code>, <code>screen_time_activity</code>, <code>app_usage_combined</code>, <code>phone_use_daily</code>, <code>location_daily_summary</code>, <code>survey_quality</code>, and <code>participant_health</code> are derived research exports.</p>
-          </div>
-        </div>
-        <div class="export-bar">
-          <button class="button button-primary" type="button" id="researcher-export-zip">Download full study export (ZIP)</button>
-          <label class="inline-check"><input type="checkbox" id="researcher-export-images"> Include screenshot and photo images</label>
-          <p class="section-note">Every raw table and derived export as CSV, plus devices, withdrawals, a codebook describing every column, and a README. Images can make the file large.</p>
-        </div>
-        <div class="table-wrap">
-          <table id="researcher-sensors"></table>
-        </div>
       </section>
 
       <section class="panel">
@@ -152,7 +98,7 @@
             <span>Survey questions JSON</span>
             <textarea name="esms_json" rows="16" spellcheck="false"></textarea>
           </label>
-          <p class="section-note">Optional quality fields such as <code>studytrace_required</code>, <code>studytrace_branching</code>, and <code>studytrace_randomize_options</code> are preserved in the schedule JSON for analysis and future client support.</p>
+          <p class="section-note">Photo questions use <code>esm_type: 14</code>; participants can choose multiple existing photos or take pictures. Up to 10 images per question (12 MiB combined). Optional quality fields such as <code>studytrace_required</code>, <code>studytrace_branching</code>, and <code>studytrace_randomize_options</code> are preserved in the schedule JSON for analysis and future client support.</p>
           <button class="button button-primary" type="submit">Save ESM survey schedule</button>
         </form>
         <pre id="researcher-esm-schedule-result" class="result-box"></pre>
@@ -243,26 +189,65 @@
       </section>
 
       <section class="panel">
+        <h2>Environment collection</h2>
+        <p class="section-note">Optional hourly weather, temperature (°C), cloud cover (%), and outdoor solar radiation (W/m²) at consented GPS locations on iPhone and Android. Enabling sends coordinates rounded to 0.01° to Open-Meteo. These are outdoor model estimates, not indoor measurements. Android can also record ambient light (lux) when its sensor is available and collection is running. iOS has no public ambient-light sensor API. Include this collection and provider in your study consent.</p>
+        <form id="researcher-environment" class="stack"><label><span>Environment measures</span><select name="enabled"><option value="false">Off</option><option value="true">On</option></select></label><button class="button button-primary" type="submit">Save environment collection</button></form>
+        <p id="researcher-environment-message" class="status-line"></p>
+        <p class="section-note">Records appear under Sensor coverage as <code>environment_measures</code>. Requires location uploads; missing light readings remain missing. Weather data by Open-Meteo.com, CC BY 4.0.</p>
+      </section>
+
+      <div class="metric-grid" id="researcher-metrics"></div>
+
+      <section class="panel">
         <div class="section-head">
           <div>
-            <h2>Recent survey responses</h2>
-            <p class="section-note">Photo ESM answers are rendered as images when the survey question uses <code>esm_type: 14</code>.</p>
+            <h2>Sensor coverage</h2>
+            <p class="section-note"><code>battery_usage_apps</code>, <code>screen_time_activity</code>, <code>app_usage_combined</code>, <code>phone_use_daily</code>, <code>location_daily_summary</code>, <code>survey_responses</code>, <code>survey_quality</code>, <code>environment_measures</code>, and <code>participant_health</code> are research exports. Survey responses and quality are available as CSV here; photo CSVs link to authenticated images. Include images in the full ZIP to download the originals.</p>
           </div>
         </div>
+        <div class="export-bar">
+          <button class="button button-primary" type="button" id="researcher-export-zip">Download full study export (ZIP)</button>
+          <label class="inline-check"><input type="checkbox" id="researcher-export-images"> Include screenshot and photo images</label>
+          <p class="section-note">Every raw table and derived export as CSV, plus devices, withdrawals, a codebook describing every column, and a README. Images can make the file large.</p>
+        </div>
         <div class="table-wrap">
-          <table id="researcher-esm-responses"></table>
+          <table id="researcher-sensors"></table>
         </div>
       </section>
 
       <section class="panel">
         <div class="section-head">
           <div>
-            <h2>Survey quality</h2>
-            <p class="section-note">Derived response metadata for missing answers, photo answers, latency, and required-question gaps.</p>
+            <h2>Participant health</h2>
+            <p class="section-note">Operational data-quality checks from client events, device state, uploads, permissions, and recent study rows. Compliance is answered survey sessions divided by survey prompts the phone reported as delivered over the last 7 days (prompts swiped away before the app next opened may be missed).</p>
           </div>
         </div>
         <div class="table-wrap">
-          <table id="researcher-survey-quality"></table>
+          <table id="researcher-participant-health"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Devices</h2>
+            <p class="section-note" id="researcher-devices-updated"></p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-devices"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Withdrawals and deletions</h2>
+            <p class="section-note">Audit log of participant withdrawals from the app and data deletions made from this dashboard.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="researcher-withdrawals"></table>
         </div>
       </section>
 
@@ -270,7 +255,7 @@
         <div class="section-head">
           <div>
             <h2>Daily phone use</h2>
-            <p class="section-note"><code>phone_use_daily</code>, derived from lock/unlock events (iOS <code>plugin_device_usage</code>, Android <code>android_screen_events</code>) and split at the participant's local midnight. Night use is 00:00–05:00 local. On iOS these events are only recorded while StudyTrace is running, so check participant health for gaps.</p>
+            <p class="section-note"><code>phone_use_daily</code>, derived from lock/unlock events (iOS <code>plugin_device_usage</code>, Android <code>android_screen_events</code>) and split at the participant's local midnight. Counts observed unlock sessions and session lengths; it does not identify apps or notifications. Night use is 00:00–05:00 local. On iOS these events are only recorded while StudyTrace is running, so check participant health for gaps.</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -294,7 +279,7 @@
         <div class="section-head">
           <div>
             <h2>Battery screenshot app usage</h2>
-            <p class="section-note">Participants upload screenshots from Settings → Battery → View All Battery Usage. The OCR pipeline extracts app rows and flags screenshots that need review.</p>
+            <p class="section-note">Participants upload screenshots from Settings → Battery → View All Battery Usage. Extracts per-app on-screen time and battery percentage over the selected Battery window (often a rolling 24 hours), which differs from calendar-day Screen Time. Each screenshot is kept separately; overlapping captures must not be summed.</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -309,7 +294,7 @@
         <div class="section-head">
           <div>
             <h2>Screen Time activity</h2>
-            <p class="section-note"><code>screen_time_activity</code>: one daily-total row (screen time, pickups, notifications) plus one row per most-used app for each screenshot.</p>
+            <p class="section-note"><code>screen_time_activity</code>: one daily-total row (screen time, pickups, notifications) plus one row per most-used app for each screenshot. These calendar-day or today-so-far snapshots differ from observed unlock sessions and rolling Battery windows. Multiple screenshots can cover different parts of one screen; do not sum repeated totals.</p>
           </div>
         </div>
         <div class="table-wrap">

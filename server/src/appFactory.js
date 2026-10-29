@@ -25,6 +25,7 @@ import {
   createSensorTable,
   insertRows,
   safeTableName,
+  dedupeKeyForRow,
   listStudies,
   getStudyOverview,
   getStudy,
@@ -64,6 +65,8 @@ import {
 import { createAwareRouter } from './awareApi.js';
 import { createGenericApiRouter } from './genericApi.js';
 import { buildJoinLink } from './joinLink.js';
+import { imageAnswers, imageUrl, expandPhotoRows } from './media.js';
+import { createEnvironmentRouter } from './environment.js';
 
 const BATTERY_USAGE_EXPORT_SENSOR = 'battery_usage_apps';
 const SCREEN_TIME_ACTIVITY_SENSOR = 'screen_time_activity';
@@ -109,6 +112,7 @@ const ACTIVITY_PROMPT = 'screen_time_activity_screenshot';
 const APP_USAGE_PROMPT = 'app_usage_screenshot';
 const LOCATION_DAILY_SUMMARY_SENSOR = 'location_daily_summary';
 const SURVEY_QUALITY_SENSOR = 'survey_quality';
+const SURVEY_RESPONSES_SENSOR = 'survey_responses';
 const PARTICIPANT_HEALTH_SENSOR = 'participant_health';
 const CLIENT_EVENTS_SENSOR = 'client_events';
 const DEVICE_STATE_SENSOR = 'device_state';
@@ -231,6 +235,8 @@ export function createApp() {
 
   // AWARE posts application/x-www-form-urlencoded ("device_id=..&data=<json>");
   // the generic API uses JSON. Accept both. Payloads can be large.
+  // Preserve the literal JSON sent by existing iPhones before form decoding.
+  app.use('/index.php/webservice', express.text({ type: (req) => !req.is('application/json'), limit: '25mb' }));
   app.use(express.urlencoded({ extended: false, limit: '25mb' }));
   app.use(express.json({ limit: '25mb' }));
   app.use(express.text({ type: '*/*', limit: '25mb' }));
@@ -248,9 +254,14 @@ export function createApp() {
     res.setHeader('X-Frame-Options', 'DENY');
     next();
   });
+  app.get('/.well-known/apple-app-site-association', (_req, res) => {
+    res.json({ applinks: { details: [{ appIDs: (process.env.IOS_APP_IDS || '2F9Z668JPM.com.liuchao.studytrace').split(','), components: [{ '/': '/join' }] }] } });
+  });
+  app.get('/join', (_req, res) => res.sendFile(path.join(publicDir, 'join.html')));
   app.use(express.static(publicDir));
 
-  let publicBaseUrl = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+  const configuredBase = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
+  let publicBaseUrl = configuredBase && !configuredBase.includes('://') ? `https://${configuredBase}` : configuredBase;
   const getPublicBaseUrl = () => publicBaseUrl;
 
   // ---- Health check (Railway) -----------------------------------------------
@@ -800,7 +811,7 @@ export function createApp() {
 
   app.get('/api/v1/studies/:studyId/media/:sensor/:rowId/image', requireResearcher, async (req, res) => {
     try {
-      const image = await imageFromEsmRow(req.params.studyId, req.params.sensor, req.params.rowId);
+      const image = await imageFromEsmRow(req.params.studyId, req.params.sensor, req.params.rowId, req.query.image);
       if (!image) return res.status(404).json({ error: 'image not found' });
       res.setHeader('Content-Type', image.contentType);
       res.setHeader('Content-Disposition', `inline; filename="studytrace-esm-${req.params.rowId}.${image.extension}"`);
@@ -813,7 +824,7 @@ export function createApp() {
 
   app.get('/api/v1/studies/:studyId/media/esms/:rowId/image', requireResearcher, async (req, res) => {
     try {
-      const image = await imageFromEsmRow(req.params.studyId, 'esms', req.params.rowId);
+      const image = await imageFromEsmRow(req.params.studyId, 'esms', req.params.rowId, req.query.image);
       if (!image) return res.status(404).json({ error: 'image not found' });
       res.setHeader('Content-Type', image.contentType);
       res.setHeader('Content-Disposition', `inline; filename="studytrace-esm-${req.params.rowId}.${image.extension}"`);
@@ -837,6 +848,7 @@ export function createApp() {
   });
 
   // ---- Ingestion front-ends (shared storage) --------------------------------
+  app.use('/api/v1', createEnvironmentRouter({ requireResearcher, requireParticipant }));
   app.use('/', createAwareRouter(getPublicBaseUrl));
   app.use('/api/v1', createGenericApiRouter());
 
@@ -870,6 +882,7 @@ async function listAdminSensorsForDashboard() {
   upsertVirtualSensor(sensors, APP_USAGE_COMBINED_SENSOR, (await deriveAppUsageCombined({})).length, 'virtual_derived_sensor');
   upsertVirtualSensor(sensors, SCREEN_TIME_ACTIVITY_SENSOR, await countDerivedActivityRows({}), 'derived_from_screen_time_screenshot_esm');
   upsertVirtualSensor(sensors, LOCATION_DAILY_SUMMARY_SENSOR, locationRows.length, 'virtual_derived_sensor');
+  upsertVirtualSensor(sensors, SURVEY_RESPONSES_SENSOR, (await surveyResponsePage({})).length, 'virtual_derived_sensor');
   upsertVirtualSensor(sensors, SURVEY_QUALITY_SENSOR, surveyRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(sensors, PARTICIPANT_HEALTH_SENSOR, healthRows.length, 'virtual_derived_sensor');
   return sensors.sort((a, b) => String(a.sensor).localeCompare(String(b.sensor)));
@@ -887,6 +900,7 @@ async function attachStudyDerivedSensors(overview, studyId) {
   upsertVirtualSensor(overview.sensors, PHONE_USE_DAILY_SENSOR, (await derivePhoneUseDaily({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT })).length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, APP_USAGE_COMBINED_SENSOR, (await deriveAppUsageCombined({ studyId })).length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, LOCATION_DAILY_SUMMARY_SENSOR, locationRows.length, 'virtual_derived_sensor');
+  upsertVirtualSensor(overview.sensors, SURVEY_RESPONSES_SENSOR, (await surveyResponsePage({ studyId })).length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, SURVEY_QUALITY_SENSOR, surveyRows.length, 'virtual_derived_sensor');
   upsertVirtualSensor(overview.sensors, PARTICIPANT_HEALTH_SENSOR, healthRows.length, 'virtual_derived_sensor');
   overview.sensors.sort((a, b) => Number(b.rows || 0) - Number(a.rows || 0) || String(a.sensor).localeCompare(String(b.sensor)));
@@ -961,6 +975,10 @@ async function exportDashboardSensorRows(sensor, { studyId, deviceId, limit, off
 
   if (sensor === LOCATION_DAILY_SUMMARY_SENSOR) {
     return derivedRowsForExport(await deriveLocationDailySummaries({ studyId, deviceId, limit }), { studyId, deviceId, offset });
+  }
+
+  if (sensor === SURVEY_RESPONSES_SENSOR) {
+    return surveyResponseExportRows(await surveyResponsePage({ studyId, deviceId, limit, offset }));
   }
 
   if (sensor === SURVEY_QUALITY_SENSOR) {
@@ -1155,6 +1173,12 @@ async function deriveParticipantHealthRows({ studyId, deviceId } = {}) {
           location_authorization: state.location_authorization || '',
           location_accuracy_authorization: state.location_accuracy_authorization || '',
           background_refresh_status: state.background_refresh_status || '',
+          auto_sync_enabled: state.auto_sync_enabled ?? '',
+          sync_wifi_only: state.sync_wifi_only ?? '',
+          sync_charging_only: state.sync_charging_only ?? '',
+          sync_interval_seconds: state.sync_interval_seconds ?? '',
+          pending_uploads: state.pending_uploads ?? '',
+          sensor_count: state.sensor_count ?? '',
           battery_level: state.battery_level ?? '',
           low_power_mode_enabled: state.low_power_mode_enabled ?? '',
           prompts_delivered_7d: compliance.promptsDelivered,
@@ -1268,10 +1292,11 @@ const DERIVED_EXPORTS = [
   PHONE_USE_DAILY_SENSOR,
   LOCATION_DAILY_SUMMARY_SENSOR,
   SURVEY_QUALITY_SENSOR,
+  SURVEY_RESPONSES_SENSOR,
   PARTICIPANT_HEALTH_SENSOR,
 ];
 const EXPORT_PAGE = 10000;
-const PAGED_DERIVED_EXPORTS = new Set([BATTERY_USAGE_EXPORT_SENSOR, SCREEN_TIME_ACTIVITY_SENSOR]);
+const PAGED_DERIVED_EXPORTS = new Set([BATTERY_USAGE_EXPORT_SENSOR, SCREEN_TIME_ACTIVITY_SENSOR, SURVEY_RESPONSES_SENSOR]);
 
 async function writeStudyExportZip(res, studyId, { includeImages = false } = {}) {
   const generatedAt = new Date();
@@ -1298,14 +1323,15 @@ async function writeStudyExportZip(res, studyId, { includeImages = false } = {})
       if (page.length < EXPORT_PAGE) break;
     }
     for (const row of rows) {
-      const image = decodeImageAnswer(row.data?.esm_user_answer);
-      if (!image) continue;
-      const file = `media/${sensor.sensor}-${row.id}.${image.extension}`;
-      row.data = { ...row.data, esm_user_answer: `image:${file}` };
-      if (includeImages) {
-        await zip.addFile(file, image.buffer);
-        imageCount += 1;
+      const images = imageAnswers(row.data?.esm_user_answer);
+      if (!images.length) continue;
+      const references = [];
+      for (const [index, image] of images.entries()) {
+        const file = `media/${sensor.sensor}-${row.id}${images.length > 1 ? `-${index + 1}` : ''}.${image.extension}`;
+        references.push(`image:${file}`);
+        if (includeImages) { await zip.addFile(file, image.buffer); imageCount += 1; }
       }
+      row.data = { ...row.data, esm_user_answer: references.length === 1 ? references[0] : JSON.stringify(references) };
     }
     await addCsv(`raw/${sensor.sensor}.csv`, rowsToCsv(rows));
   }
@@ -1527,7 +1553,7 @@ async function allEsmResponseRows(limit) {
       if (isEsmDataRow(row.data)) rows.push({ ...row, sensor: sensor.sensor });
     }
   }
-  return rows;
+  return deduplicateSurveyRows(rows);
 }
 
 function locationPointFromRow(row, resolveZone = () => 'UTC') {
@@ -1673,6 +1699,10 @@ function healthNotes({ device, state, platform = 'ios', locationCount, esmCount,
   const notes = [];
   const lastSeen = toEpochMs(device.last_seen);
   if (!lastSeen || Date.now() - lastSeen > 48 * 60 * 60 * 1000) notes.push('device not seen in 48h');
+  if (!state || !Object.keys(state).length) notes.push('no device-state upload; reopen StudyTrace, check the Study URL, and sync');
+  if (state.auto_sync_enabled === false) notes.push('automatic sensor upload disabled');
+  if (state.sync_wifi_only === true) notes.push('sensor upload requires Wi-Fi');
+  if (state.sync_charging_only === true) notes.push('sensor upload requires charging');
   if (state.notification_authorization && !['authorized', 'provisional', 'ephemeral'].includes(state.notification_authorization)) notes.push('notifications not authorized');
   if (state.location_authorization && state.location_authorization !== 'authorized_always') notes.push('location not always authorized');
   if (locationCount === 0) notes.push('no location rows');
@@ -2209,6 +2239,11 @@ async function handleUsageScreenshotUpload(req, res, studyId, forcedKind) {
       if (Number.isFinite(Number(payload[field])) && Number(payload[field]) > 0) row[field] = Number(payload[field]);
     }
   }
+  if (typeof payload.upload_group_id === 'string') row.upload_group_id = payload.upload_group_id.slice(0, 128);
+  for (const field of ['image_index', 'image_count']) {
+    const value = Number(payload[field]);
+    if (Number.isInteger(value) && value >= 0 && value <= 10) row[field] = value;
+  }
   if (payload.battery_usage_ocr_text || payload.ocr_text) {
     row.battery_usage_ocr_text = String(payload.battery_usage_ocr_text || payload.ocr_text);
   }
@@ -2359,13 +2394,69 @@ async function findEsmResponseRows(studyId, rawLimit) {
     }
   }
 
-  return rows
+  return deduplicateSurveyRows(rows)
     .sort((a, b) => Number(b.timestamp || b.id || 0) - Number(a.timestamp || a.id || 0))
     .slice(0, limit);
 }
 
+function surveyIdentity(row) {
+  return JSON.stringify([row.study_id, row.device_id, dedupeKeyForRow(row.data)]);
+}
+
+function deduplicateSurveyRows(rows) {
+  const seen = new Set();
+  return rows.filter((row) => {
+    const key = surveyIdentity(row);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function surveyResponsePage({ studyId, deviceId, limit, offset } = {}) {
+  const start = Math.max(Number(offset) || 0, 0);
+  const pageSize = limit === undefined ? Infinity : Math.min(Math.max(Number(limit) || 1000, 1), EXPORT_PAGE);
+  const sources = studyId ? await listStudySensorTables(studyId) : await listSensorTables();
+  const output = [];
+  const seen = new Set();
+  let skipped = 0;
+  for (const sensor of sources.sort((a, b) => a.sensor.localeCompare(b.sensor))) {
+    let relevant = isKnownEsmSensor(sensor.sensor);
+    if (!relevant) relevant = (await exportRows(sensor.table, { studyId, deviceId, limit: 5 })).some((r) => isEsmDataRow(r.data));
+    if (!relevant) continue;
+    for (let cursor = 0; ; cursor += EXPORT_PAGE) {
+      const rows = await exportRows(sensor.table, { studyId, deviceId, limit: EXPORT_PAGE, offset: cursor });
+      for (const row of rows) {
+        if (!isEsmDataRow(row.data)) continue;
+        const identity = surveyIdentity(row);
+        if (seen.has(identity)) continue;
+        seen.add(identity);
+        if (skipped++ < start) continue;
+        output.push({ ...row, sensor: sensor.sensor });
+        if (output.length >= pageSize) return output;
+      }
+      if (rows.length < EXPORT_PAGE) break;
+    }
+  }
+  return output;
+}
+
+function surveyResponseExportRows(rows) {
+  return rows.map((row) => {
+    const question = parseEsmJson(row.data?.esm_json);
+    const images = imageAnswers(row.data?.esm_user_answer);
+    const links = images.map((_, index) => imageUrl(row.study_id, row.sensor, row.id, index));
+    return { ...row, data: { ...row.data,
+      source_sensor: row.sensor, source_row_id: String(row.id),
+      question_title: question.esm_title || '', question_type: question.esm_type || '',
+      image_count: images.length,
+      esm_user_answer: images.length ? JSON.stringify(links) : row.data?.esm_user_answer,
+    } };
+  });
+}
+
 function isKnownEsmSensor(sensor) {
-  return ['esms', 'plugin_ios_esm', 'ios_esm'].includes(String(sensor || '').toLowerCase());
+  return ['esm', 'esms', 'plugin_ios_esm', 'ios_esm'].includes(String(sensor || '').toLowerCase());
 }
 
 function isEsmDataRow(data) {
@@ -2401,13 +2492,13 @@ async function processBatteryScreenshotUploads({ studyId, limit: rawLimit } = {}
 
   let inserted = 0;
   let skipped = 0;
-  for (const source of screenshotRows) {
+  for (const source of expandPhotoRows(screenshotRows)) {
     if (await batteryUsageSourceAlreadyProcessed(table, source)) {
       skipped += 1;
       continue;
     }
 
-    const sourceImageUrl = `/api/v1/studies/${encodeURIComponent(source.study_id)}/media/${encodeURIComponent(source.sensor)}/${encodeURIComponent(source.id)}/image`;
+    const sourceImageUrl = imageUrl(source.study_id, source.sensor, source.media_row_id || source.id, source.image_index || 0);
     if (Array.isArray(source.data?.confirmed_rows)) {
       // Participant reviewed the on-device OCR result; store what they
       // confirmed instead of re-running server OCR.
@@ -2546,7 +2637,6 @@ async function findScreenTimeActivityRows({ studyId, limit: rawLimit } = {}) {
 
 async function countDerivedActivityRows({ studyId } = {}) {
   const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
-  if (!(await tableExists(table))) return 0;
   await processScreenTimeActivityUploads({ studyId, limit: BATTERY_USAGE_EXPORT_LIMIT });
   const { rows } = await getPool().query(
     `SELECT count(*)::int AS n FROM ${table}${studyId ? ' WHERE study_id = $1' : ''}`,
@@ -2560,10 +2650,10 @@ async function processScreenTimeActivityUploads({ studyId, limit } = {}) {
   const table = safeTableName(SCREEN_TIME_ACTIVITY_SENSOR);
   await createSensorTable(table);
   let inserted = 0;
-  for (const source of sources) {
+  for (const source of expandPhotoRows(sources)) {
     if (await batteryUsageSourceAlreadyProcessed(table, source)) continue;
     const data = source.data || {};
-    const sourceImageUrl = `/api/v1/studies/${encodeURIComponent(source.study_id)}/media/${encodeURIComponent(source.sensor)}/${encodeURIComponent(source.id)}/image`;
+    const sourceImageUrl = imageUrl(source.study_id, source.sensor, source.media_row_id || source.id, source.image_index || 0);
     let parsed;
     let method;
     if (Array.isArray(data.confirmed_rows)) {
@@ -2994,7 +3084,7 @@ function batteryUsageAppRowFromExport(row) {
   };
 }
 
-async function imageFromEsmRow(studyId, sensor, rowId) {
+async function imageFromEsmRow(studyId, sensor, rowId, imageIndex = 0) {
   const id = Number(rowId);
   if (!Number.isSafeInteger(id) || id < 1) return null;
   const table = safeTableName(sensor);
@@ -3010,8 +3100,9 @@ async function imageFromEsmRow(studyId, sensor, rowId) {
   if (!rows.length) return null;
 
   const data = rows[0].data || {};
-  if (!isPictureEsmRow(data) && !decodeImageAnswer(data.esm_user_answer)) return null;
-  return decodeImageAnswer(data.esm_user_answer);
+  const index = Number(imageIndex);
+  if (!Number.isSafeInteger(index) || index < 0) return null;
+  return imageAnswers(data.esm_user_answer)[index] || null;
 }
 
 function isPictureEsmRow(data) {
@@ -3026,22 +3117,7 @@ function isPictureEsmRow(data) {
 }
 
 function decodeImageAnswer(answer) {
-  if (typeof answer !== 'string' || !answer.trim()) return null;
-  const trimmed = answer.trim();
-  const match = trimmed.match(/^data:(image\/(?:png|jpeg));base64,(.+)$/i);
-  const contentType = match?.[1]?.toLowerCase() || 'image/png';
-  const base64 = match?.[2] || trimmed;
-  if (!/^[A-Za-z0-9+/=\r\n]+$/.test(base64)) return null;
-  const buffer = Buffer.from(base64, 'base64');
-  if (!buffer.length) return null;
-
-  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
-    return { buffer, contentType: 'image/png', extension: 'png' };
-  }
-  if (buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
-    return { buffer, contentType: 'image/jpeg', extension: 'jpg' };
-  }
-  return { buffer, contentType, extension: contentType === 'image/jpeg' ? 'jpg' : 'png' };
+  return imageAnswers(answer)[0] || null;
 }
 
 function normalizeBase64Image(answer) {

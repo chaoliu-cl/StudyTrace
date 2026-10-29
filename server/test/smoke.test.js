@@ -9,7 +9,8 @@ import { newDb } from 'pg-mem';
 import * as db from '../src/db.js';
 
 process.env.ADMIN_TOKEN = 'test-admin-token';
-process.env.PUBLIC_BASE_URL = 'https://example.up.railway.app';
+// Regression for the production Railway value that previously omitted https://.
+process.env.PUBLIC_BASE_URL = 'example.up.railway.app';
 
 // Wire pg-mem in as the pool before importing the app.
 const mem = newDb();
@@ -1399,6 +1400,96 @@ try {
   const pilotBattery = await request('GET', `${pilotRoot}/dashboard/battery-usage`, { headers: researcherAuth });
   assert.strictEqual(pilotBattery.json.screenshotRows.length, 0, 'Digital Wellbeing images are not interpreted as iOS Battery data');
   console.log('✓ six daily pilot prompts, separate configuration, Android/iOS images, retry deduplication, and cumulative usage metadata');
+
+  // Mobile regression: raw legacy AWARE form bodies must preserve JSON literally.
+  const rawPhoto = [{ timestamp: Date.now(), esm_trigger: 'photos', esm_json: JSON.stringify({ esm_type: 14, esm_title: 'Photos & camera + 日本語' }),
+    esm_user_answer: JSON.stringify([`data:image/png;base64,${tinyPngBase64}`, `data:image/png;base64,${tinyPngBase64}`]), esm_status: 2 }];
+  const legacyPhoto = await post('/index.php/webservice/index/enroll/enroll-pw/esm/insert',
+    `device_id=multi-phone&data=${JSON.stringify(rawPhoto)}`, formHeaders);
+  assert.strictEqual(legacyPhoto.status, 200);
+  const mirroredPhoto = await post('/index.php/webservice/index/enroll/enroll-pw/plugin_ios_esm/insert',
+    `device_id=multi-phone&data=${JSON.stringify(rawPhoto)}`, formHeaders);
+  assert.strictEqual(mirroredPhoto.status, 200);
+  const mobileRoot = '/api/v1/studies/enroll';
+  const mobileAuth = { 'x-researcher-password': 'enroll-researcher-pw' };
+  const multiResponses = await request('GET', `${mobileRoot}/export/survey_responses?format=json&device_id=multi-phone`, { headers: mobileAuth });
+  assert.strictEqual(multiResponses.status, 200);
+  assert.strictEqual(multiResponses.json.rows.length, 1, 'multiple photos and mirrored legacy iOS tables remain one question answer');
+  const multiResponse = multiResponses.json.rows[0];
+  assert.strictEqual(multiResponse.data.question_title, 'Photos & camera + 日本語');
+  assert.strictEqual(multiResponse.data.image_count, 2);
+  assert.ok(!multiResponse.data.esm_user_answer.includes(tinyPngBase64), 'CSV exports use media references');
+  const photoLinks = JSON.parse(multiResponse.data.esm_user_answer);
+  for (const link of photoLinks) {
+    const photo = await fetch(base + link, { headers: mobileAuth });
+    assert.strictEqual(photo.status, 200);
+    assert.deepStrictEqual(Buffer.from(await photo.arrayBuffer()), Buffer.from(tinyPngBase64, 'base64'), 'base64 + survives legacy form transport');
+    assert.ok([401, 403].includes((await fetch(base + link)).status), 'media stays researcher-only');
+  }
+  assert.strictEqual((await fetch(base + photoLinks[0] + '?image=-1', { headers: mobileAuth })).status, 404);
+  const multiZip = await fetch(base + mobileRoot + '/export.zip?images=1', { headers: mobileAuth });
+  const multiFiles = readZip(Buffer.from(await multiZip.arrayBuffer()));
+  assert.ok(multiFiles.has('survey_responses.csv'));
+  assert.ok(multiFiles.has(`media/esm-${multiResponse.id}-1.png`));
+  assert.ok(multiFiles.has(`media/esm-${multiResponse.id}-2.png`));
+  const surveyPage = await request('GET', `${mobileRoot}/export/survey_responses?limit=1&offset=1&device_id=multi-phone`, { headers: mobileAuth });
+  assert.strictEqual(surveyPage.json.rows.length, 0, 'survey export paging is stable');
+
+  const association = await request('GET', '/.well-known/apple-app-site-association');
+  assert.strictEqual(association.status, 200);
+  assert.deepStrictEqual(association.json.applinks.details[0].appIDs, ['2F9Z668JPM.com.liuchao.studytrace']);
+  assert.ok(researcherLink.json.join_url.startsWith('https://example.up.railway.app/join?'));
+  assert.ok(researcherLink.json.app_url.startsWith('studytrace://join?'));
+  assert.strictEqual(new URL(researcherLink.json.join_url).searchParams.get('url'), researcherLink.json.study_url);
+  const researcherHtml = await (await fetch(base + '/researcher/')).text();
+  assert.ok(researcherHtml.indexOf('Participant join link') < researcherHtml.indexOf('ESM survey notifications'));
+  assert.ok(researcherHtml.indexOf('ESM survey notifications') < researcherHtml.indexOf('Sensor coverage'));
+  assert.ok(!researcherHtml.includes('<h2>Recent survey responses</h2>'));
+  assert.ok(!researcherHtml.includes('<h2>Survey quality</h2>'));
+
+  const envConfig = await request('GET', `${mobileRoot}/environment-config`, { headers: { Authorization: 'Bearer enroll-pw' } });
+  assert.strictEqual(envConfig.status, 200);
+  assert.strictEqual(envConfig.json.enabled, false, 'weather is opt-in');
+  const deniedEnv = await request('PUT', `${mobileRoot}/environment-settings`, {
+    headers: { Authorization: 'Bearer enroll-pw', 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }),
+  });
+  assert.strictEqual(deniedEnv.status, 403, 'participants cannot enable a provider lookup for the study');
+  const enabledEnv = await request('PUT', `${mobileRoot}/environment-settings`, {
+    headers: { ...mobileAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }),
+  });
+  assert.strictEqual(enabledEnv.status, 200);
+  assert.strictEqual(enabledEnv.json.enabled, true);
+  const originalFetch = globalThis.fetch;
+  let weatherLookups = 0;
+  const weatherNow = Date.now();
+  const weatherHour = Math.floor(weatherNow / 3600000) * 3600000;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).startsWith('https://api.open-meteo.com/')) {
+      weatherLookups += 1;
+      const target = new URL(url);
+      assert.strictEqual(target.searchParams.get('latitude'), '40.71');
+      assert.strictEqual(target.searchParams.get('longitude'), '-74.01');
+      return new Response(JSON.stringify({ hourly: { time: [weatherHour / 1000], temperature_2m: [19.5], cloud_cover: [32], weather_code: [2], shortwave_radiation: [300] } }), { status: 200 });
+    }
+    return originalFetch(url, options);
+  };
+  try {
+    const weatherBody = { device_id: 'weather-phone', rows: [{ timestamp: weatherNow, double_latitude: 40.7128, double_longitude: -74.006, timezone: 'America/New_York' }] };
+    for (let i = 0; i < 2; i += 1) {
+      const result = await request('POST', `${mobileRoot}/sensors/locations/data`, { headers: { Authorization: 'Bearer enroll-pw', 'Content-Type': 'application/json' }, body: JSON.stringify(weatherBody) });
+      assert.strictEqual(result.status, 201);
+    }
+    const weatherRows = await request('GET', `${mobileRoot}/export/environment_measures`, { headers: mobileAuth });
+    assert.strictEqual(weatherRows.json.rows.length, 1, 'one weather observation per device-hour despite retries');
+    assert.strictEqual(weatherRows.json.rows[0].data.temperature_c, 19.5);
+    assert.strictEqual(weatherRows.json.rows[0].data.light_lux, null, 'modeled sunshine is never reported as measured lux');
+    assert.strictEqual(weatherLookups, 1);
+  } finally { globalThis.fetch = originalFetch; }
+  const envOff = await request('PUT', `${mobileRoot}/environment-settings`, {
+    headers: { ...mobileAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false }),
+  });
+  assert.strictEqual(envOff.status, 200);
+  console.log('✓ legacy iPhone photo transport, all photo attachments, esm survey export, join links, dashboard order, and environment opt-in/deduplication');
 
   // 28. Repeated failed logins are throttled (run last: it blocks this IP).
   let limited = null;

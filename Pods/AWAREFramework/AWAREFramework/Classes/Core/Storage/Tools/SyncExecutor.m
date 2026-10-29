@@ -35,7 +35,7 @@
         
         // Set session configuration
         NSURLSessionConfiguration *sessionConfig = nil;
-        sessionConfig = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:baseSyncDataQueryIdentifier];
+        sessionConfig = [NSURLSessionConfiguration defaultSessionConfiguration];
         sessionConfig.sharedContainerIdentifier     = @"com.awareframework.sync.task.identifier";
         sessionConfig.timeoutIntervalForRequest     = _timeoutIntervalForRequest;
         sessionConfig.HTTPMaximumConnectionsPerHost = _maximumConnectionsPerHost;
@@ -77,11 +77,15 @@
     NSString* post = [NSString stringWithFormat:@"device_id=%@&data=", deviceId];
     NSData* postData = [post dataUsingEncoding:NSASCIIStringEncoding allowLossyConversion:YES];
     NSMutableData * mutablePostData = [[NSMutableData alloc] initWithData:postData];
-    [mutablePostData appendData:data]; // <-- this data should be JSON format
+    // StudyTrace: encode literal JSON so +, &, %, and Unicode survive form transport.
+    NSString *json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    NSString *encoded = [json stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"]];
+    [mutablePostData appendData:[encoded dataUsingEncoding:NSUTF8StringEncoding]];
     NSString* postLength = [NSString stringWithFormat:@"%tu", [mutablePostData length]];
     NSMutableURLRequest* request = [[NSMutableURLRequest alloc] init];
     [request setURL:[NSURL URLWithString:url]];
     [request setHTTPMethod:@"POST"];
+    [request setValue:@"application/x-www-form-urlencoded" forHTTPHeaderField:@"Content-Type"];
     [request setValue:postLength forHTTPHeaderField:@"Content-Length"];
     [request setHTTPBody:mutablePostData];
     
@@ -179,6 +183,9 @@ totalBytesExpectedToSend:(int64_t)totalBytesExpectedToSend{
 - (void)URLSession:(NSURLSession *)session
               task:(NSURLSessionTask *)task
 didCompleteWithError:(nullable NSError *)error {
+// StudyTrace HTTP acknowledgement: keep SQLite rows pending after a rejected upload.
+    NSInteger status = [(NSHTTPURLResponse *)task.response statusCode];
+    if (error == nil && (status < 200 || status >= 300)) error = [NSError errorWithDomain:@"StudyTraceHTTP" code:status userInfo:nil];
     if (debug) {
         if (error!=nil) {
             NSLog(@"[%@] URLSession:task:didCompleteWithError: %@", sensorName, error.debugDescription);
@@ -216,7 +223,7 @@ didCompleteWithError:(nullable NSError *)error {
  * AWARE URL makers
  */
 - (NSString *)getWebserviceUrl{
-    NSString* url = [awareStudy getStudyURL];
+    NSString* url = [[[awareStudy getStudyURL] componentsSeparatedByString:@"?"] firstObject];
     if (url == NULL || [url isEqualToString:@""]) {
         NSLog(@"[SyncExecutor] Error: You don't have a StudyURL.");
         return @"";

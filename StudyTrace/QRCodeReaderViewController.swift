@@ -45,7 +45,7 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
         }
 
         switch scheme {
-        case "https", "aware", "aware-ssl":
+        case "https", "aware", "aware-ssl", "studytrace":
             return .url
         default:
             return .unknown
@@ -186,7 +186,7 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                         scannedContent = QRCodeReaderViewController.classifyScannedContent(str)
                         switch scannedContent {
                         case .url:
-                            configureActionButton(title: "Join Study", enabled: true)
+                            configureActionButton(title: "Use Study URL", enabled: true)
                         case .json:
                             configureActionButton(title: "Import ESM Settings", enabled: true)
                         case .unknown:
@@ -216,42 +216,15 @@ class QRCodeReaderViewController: UIViewController, AVCaptureMetadataOutputObjec
                     showInsecureURLAlert()
                     return
                 }
-                startIndicator()
-                study.join(withURL: secureURL, completion: { (settings, status, error) in
-                    DispatchQueue.main.async {
-                        
-                        switch status {
-                        case AwareStudyStateNetworkConnectionError, AwareStudyStateDataFormatError:
-                            let alert = UIAlertController(title: "Error", message: "Could not join this study \"\(qr)\" due to a network connection error. Please join this study again.", preferredStyle: .alert)
-                            alert.addAction(UIAlertAction.init(title: NSLocalizedString("Cancel", comment: ""), style: .cancel, handler: { (action) in
-                                self.dismissIndicator()
-                            }))
-                            self.present(alert, animated: true) { }
-                            return
-                        default:
-                            break
-                        }
-
-                        if StudyParticipationController.hasConsent() {
-                            let core = AWARECore.shared()
-                            core.requestPermissionForPushNotification { (_, _) in
-                                core.requestPermissionForBackgroundSensing { _ in
-                                    StudyParticipationController.refreshCollectionState(
-                                        fitbitPresenter: self,
-                                        createRemoteTables: true
-                                    )
-                                    self.dismiss(animated: true) {
-                                        self.dismissIndicator()
-                                    }
-                                }
-                            }
-                        } else {
-                            self.dismiss(animated: true) {
-                                self.dismissIndicator()
-                            }
-                        }
+                StudyInvitation.pendingURL = secureURL
+                dismiss(animated: true) {
+                    if let tabs = (UIApplication.shared.delegate as? AppDelegate)?.window?.rootViewController as? UITabBarController,
+                       let index = tabs.viewControllers?.firstIndex(where: { (($0 as? UINavigationController)?.viewControllers.first ?? $0) is ViewController }) {
+                        tabs.selectedIndex = index
+                        let controller = (tabs.selectedViewController as? UINavigationController)?.viewControllers.first as? ViewController
+                        controller?.presentPendingStudyInvitation()
                     }
-                })
+                }
                 break
             case .json:
                 
@@ -344,4 +317,13 @@ extension UIViewController {
         }
     }
 
+}
+
+/// Invitations stage a draft; scanning never enrolls or switches a study silently.
+enum StudyInvitation {
+    private static let key = "studytrace.pending-study-url"
+    static var pendingURL: String? {
+        get { UserDefaults.standard.string(forKey: key) }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
 }

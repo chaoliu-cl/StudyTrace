@@ -28,7 +28,7 @@
         baseCreateTableQueryIdentifier = [NSString stringWithFormat:@"create_table_query_identifier_%@",  sensorName];
         
         NSURLSessionConfiguration *sessionConfig = nil;
-        sessionConfig = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:baseCreateTableQueryIdentifier];
+        sessionConfig = [NSURLSessionConfiguration defaultSessionConfiguration];
         sessionConfig.sharedContainerIdentifier= @"com.awareframework.table.create.task.identifier";
         sessionConfig.timeoutIntervalForRequest = 10;
         sessionConfig.HTTPMaximumConnectionsPerHost = 10;
@@ -88,7 +88,7 @@
 }
 
 - (NSString *)getWebserviceUrl{
-    NSString* url = [awareStudy getStudyURL];
+    NSString* url = [[[awareStudy getStudyURL] componentsSeparatedByString:@"?"] firstObject];
     if (url == NULL || [url isEqualToString:@""]) {
         if (awareStudy.isDebug ) NSLog(@"[Error] You did not have a StudyID. Please check your study configuration.");
         return @"";
