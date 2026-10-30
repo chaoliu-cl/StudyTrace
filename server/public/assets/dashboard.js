@@ -669,6 +669,8 @@ function initResearcher() {
     dashboard.classList.remove('hidden');
     environmentForm.elements.enabled.value = String(payload.study.config?.environment_collection?.enabled === true);
     environmentForm.elements.air_quality_enabled.checked = payload.study.config?.environment_collection?.air_quality_enabled === true;
+    environmentForm.elements.context_questions_enabled.checked = payload.study.config?.environment_collection?.context_questions_enabled === true;
+    environmentForm.elements.green_space_enabled.checked = payload.study.config?.environment_collection?.green_space_enabled === true;
     await loadScheduleSection({
       studyId,
       password,
@@ -724,11 +726,12 @@ function initResearcher() {
     try {
       const response = await fetch(`/api/v1/studies/${encodeURIComponent(currentStudyId)}/environment-settings`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-researcher-password': currentPassword },
-        body: JSON.stringify({ enabled: environmentForm.elements.enabled.value === 'true', air_quality_enabled: environmentForm.elements.air_quality_enabled.checked }),
+        body: JSON.stringify({ enabled: environmentForm.elements.enabled.value === 'true', air_quality_enabled: environmentForm.elements.air_quality_enabled.checked,
+          context_questions_enabled: environmentForm.elements.context_questions_enabled.checked, green_space_enabled: environmentForm.elements.green_space_enabled.checked }),
       });
       const payload = await readJson(response);
       if (!response.ok) throw new Error(payload.error || 'Could not save environment collection.');
-      setMessage(status, payload.enabled ? `Environment collection enabled; air pollution ${payload.air_quality_enabled ? 'on' : 'off'}. Refresh Android phones to update light collection.` : 'Environment collection stopped. Existing records remain available.');
+      setMessage(status, payload.enabled ? `Environment collection enabled; air pollution ${payload.air_quality_enabled ? 'on' : 'off'}, context questions ${payload.context_questions_enabled ? 'on' : 'off'}, green-space maps ${payload.green_space_enabled ? 'on' : 'off'}. Refresh surveys on phones. Personal light collection stays off.` : 'Environment collection stopped. Existing records remain available. Refresh phones to remove context questions and stop device light collection.');
     } catch (error) { setMessage(status, error.message, true); }
   });
 

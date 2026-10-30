@@ -131,11 +131,12 @@ or `PUT /api/v1/studies/{id}/environment-settings` with researcher credentials
 and `{"enabled":true}`. Both mobile platforms' incoming GPS locations can be
 enriched with an hourly Open-Meteo outdoor weather estimate: temperature in °C,
 cloud cover in %, WMO weather code, and shortwave radiation in W/m². Coordinates
-are rounded to 0.01° before provider lookup. Updated Android phones additionally
-sample a real ambient-light sensor in lux at most every 15 minutes while the
-location service runs. Refresh surveys to fetch the Android setting. iOS has no
-public ambient-light API, so lux remains missing; modeled outdoor sunlight is
-never converted into a purported indoor light measurement.
+are rounded to 0.01° before provider lookup. Weather now also includes relative
+humidity, apparent temperature, wind speed in m/s, and precipitation in mm.
+Sunrise/sunset/day length are separate local-date daylight observations.
+Personal light and indoor exposure sensing are disabled for this protocol.
+Refresh existing Android phones so their cached light setting is turned off;
+older queued light records may still arrive and remain identifiable by source.
 
 Air pollution has a **separate opt-in**: check **Include air pollution
 (Open-Meteo/CAMS)** and save with Environment measures On, or send
@@ -157,6 +158,14 @@ this optional processing in study consent. Provider fields and units follow the
 
 See [weather and air-pollution setup](../docs/ENVIRONMENT_SETUP.md) for dashboard
 steps, fields/units, model resolution, provider attribution, and verification.
+
+The Environment collection form also has separate opt-ins for five context
+questions on each ordinary questionnaire and GPS-based green-space map context.
+Context items add no notifications and preserve the original instrument wording
+and response choices. They are study-specific items, not validated scale scores.
+Map context uses ESA WorldCover 2021 v200, a 300 m buffer and 100 m GPS accuracy
+cutoff, with explicit missing/coverage flags. It is historical land cover, not a
+park-visit detector. See the [complete Railway pilot deployment guide](../docs/RAILWAY_PILOT_DEPLOYMENT.md).
 
 See [the collection audit and rollout checklist](../docs/COLLECTION_UPGRADE.md)
 for iPhone failure modes, evidence, recovery, and physical-device checks.

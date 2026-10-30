@@ -190,15 +190,24 @@
 
       <section class="panel">
         <h2>Environment collection</h2>
-        <p class="section-note">Optional hourly weather, temperature (°C), cloud cover (%), and outdoor solar radiation (W/m²) at consented GPS locations on iPhone and Android. Enabling sends coordinates rounded to 0.01° to Open-Meteo. These are outdoor model estimates, not indoor measurements. Android can also record ambient light (lux) when its sensor is available and collection is running. iOS has no public ambient-light sensor API. Include this collection and provider in your study consent.</p>
-        <p class="section-note">Optional air pollution adds PM2.5, PM10, ozone, nitrogen dioxide, sulfur dioxide, carbon monoxide (µg/m³), and US/EU AQI from Open-Meteo/CAMS. These are outdoor area model estimates; global model resolution is approximately 45 km, and hourly output may interpolate coarser model times. Air pollution requires Environment measures On and the separate checkbox below.</p>
+        <p class="section-note">GPS-linked outdoor weather and daylight timing, with optional air pollution, map context, and brief survey context questions. Personal light and indoor exposure sensing are off. The master control must be On for the selected options.</p>
         <form id="researcher-environment" class="stack">
           <label><span>Environment measures</span><select name="enabled"><option value="false">Off</option><option value="true">On</option></select></label>
           <label class="inline-check"><input type="checkbox" name="air_quality_enabled"> Include air pollution (Open-Meteo/CAMS)</label>
+          <label class="inline-check"><input type="checkbox" name="context_questions_enabled"> Add five environment context questions to each questionnaire</label>
+          <label class="inline-check"><input type="checkbox" name="green_space_enabled"> Include GPS-based green-space map context (ESA WorldCover 2021)</label>
+          <p class="section-note">Context adds no notifications. Three questionnaires per day add 15 study-specific items; original instrument wording and choices stay unchanged. Map context is historical land cover, not proof of a current park visit.</p>
           <button class="button button-primary" type="submit">Save environment collection</button>
         </form>
         <p id="researcher-environment-message" class="status-line"></p>
-        <p class="section-note">Records appear under Sensor coverage as <code>environment_measures</code>, with separate sources for weather, air pollution, and device light. Requires location uploads; missing readings remain missing. Weather data by Open-Meteo.com, CC BY 4.0. Air quality: <a href="https://confluence.ecmwf.int/display/CKB/CAMS+Regional%3A+European+air+quality+analysis+and+forecast+data+documentation">CAMS ENSEMBLE data providers</a> / Copernicus Atmosphere Monitoring Service via <a href="https://open-meteo.com/en/docs/air-quality-api">Open-Meteo</a>. Include these provider lookups in your study consent.</p>
+        <details>
+          <summary>Measures, accuracy, and participant information</summary>
+          <p class="section-note">Weather includes temperature (°C), humidity (%), apparent temperature (°C), wind (m/s), precipitation (mm), cloud cover (%), weather code, and solar radiation (W/m²), hourly after location uploads. Sunrise, sunset, and day length use the phone's local date, or study time zone if unavailable. Open-Meteo receives coordinates rounded to 0.01°.</p>
+          <p class="section-note">Air pollution adds PM2.5, PM10, ozone, nitrogen dioxide, sulfur dioxide, carbon monoxide (µg/m³), and US/EU AQI. These are outdoor model estimates; global model resolution is approximately 45 km and hourly values can interpolate coarser model times.</p>
+          <p class="section-note">Context questions ask about current setting, perceived noise, temperature sensation, recent outdoor time, and green-space contact. They are optional participant reports, not validated scale scores. No microphone audio or decibels are collected.</p>
+          <p class="section-note">Maps provide land-cover percentages within 300 m, at most once per 15-minute period after uploads. The map's reference year is 2021 and nominal resolution is 10 m. GPS accuracy must be 100 m or better; poor/missing accuracy and map gaps are flagged instead of zero greenery. The server reads map tiles and calculates the buffer. Include provider processing and new items in participant information/consent.</p>
+        </details>
+        <p class="section-note">Weather, daylight, air quality, and maps appear in <code>environment_measures</code>; context answers appear in <code>survey_responses</code>. Missing data stay missing. Weather: Open-Meteo.com, CC BY 4.0. Air quality: <a href="https://confluence.ecmwf.int/display/CKB/CAMS+Regional%3A+European+air+quality+analysis+and+forecast+data+documentation">CAMS ENSEMBLE providers</a> via <a href="https://open-meteo.com/en/docs/air-quality-api">Open-Meteo</a>. Maps: © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021), <a href="https://doi.org/10.5281/zenodo.7254221">CC BY 4.0</a>. Include this collection in study consent.</p>
       </section>
 
       <div class="metric-grid" id="researcher-metrics"></div>

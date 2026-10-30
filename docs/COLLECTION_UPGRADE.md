@@ -95,6 +95,14 @@ totals or the pilot's cumulative morning/afternoon/evening snapshots together.
 
 ## Environment settings and interpretation
 
+The subsequent October 30 context update adds humidity, apparent temperature,
+wind, precipitation, and local-date daylight timing, plus separate opt-ins for
+five brief context questions and ESA WorldCover 2021 map context. Personal light
+and indoor exposure sensing are disabled for the selected protocol. Existing
+Android phones must refresh their environment setting to stop ambient-light
+collection; historical rows are retained. See the
+[complete Railway deployment and pilot guide](RAILWAY_PILOT_DEPLOYMENT.md).
+
 The October 30 air-quality extension adds a separate **Include air pollution
 (Open-Meteo/CAMS)** opt-in beside the weather master control. It collects PM2.5,
 PM10, CO, NO2, SO2, ozone (µg/m³), and provider US/EU AQI, as separate
@@ -112,8 +120,8 @@ whose consent describes environment processing and the provider lookup.
 incoming batch, at most once per device/UTC hour. Fixes older than 48 hours are
 skipped. A failed provider request does not reject the GPS upload; a subsequent
 location batch retries. Phone/location downtime leaves missing observations.
-Android light is sampled at most every 15 minutes while its location service
-runs; a missing light sensor produces an unavailable status.
+The earlier Android implementation sampled light at most every 15 minutes;
+the current participant configuration disables that stream after refresh.
 
 Open-Meteo hourly solar radiation is in W/m² and represents modeled outdoor
 sunlight, not lux at the participant's phone. Provider units and attribution
@@ -191,7 +199,8 @@ pilot as repaired:
    test foreground, screen lock, background, relaunch, and network recovery.
    iOS controls background execution; force-quitting prevents continuous
    sensing until the app is reopened. Heartbeat gaps must remain visible.
-7. If enabled in the consented test study, check one weather row after a GPS
-   upload and an Android lux reading on hardware with a light sensor. Confirm
-   iOS lux stays missing and disabling environment collection stops new
-   lookups after phone settings refresh.
+7. In a consented test study, verify weather, local-date daylight, optional air
+   quality, and usable map rows after GPS upload. Verify five context items on
+   each ordinary questionnaire. Refresh Android and confirm new personal light
+   collection stops; historical queued records may still arrive. Disabling the
+   master stops lookups and removes context from freshly downloaded schedules.
