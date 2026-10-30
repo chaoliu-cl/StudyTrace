@@ -1447,35 +1447,76 @@ try {
   assert.ok(researcherHtml.indexOf('ESM survey notifications') < researcherHtml.indexOf('Sensor coverage'));
   assert.ok(!researcherHtml.includes('<h2>Recent survey responses</h2>'));
   assert.ok(!researcherHtml.includes('<h2>Survey quality</h2>'));
+  assert.ok(researcherHtml.includes('name="air_quality_enabled"'), 'dashboard exposes air pollution opt-in');
 
   const envConfig = await request('GET', `${mobileRoot}/environment-config`, { headers: { Authorization: 'Bearer enroll-pw' } });
   assert.strictEqual(envConfig.status, 200);
   assert.strictEqual(envConfig.json.enabled, false, 'weather is opt-in');
+  assert.strictEqual(envConfig.json.air_quality_enabled, false, 'air pollution has a separate opt-in');
   const deniedEnv = await request('PUT', `${mobileRoot}/environment-settings`, {
-    headers: { Authorization: 'Bearer enroll-pw', 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }),
+    headers: { Authorization: 'Bearer enroll-pw', 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true, air_quality_enabled: true }),
   });
   assert.strictEqual(deniedEnv.status, 403, 'participants cannot enable a provider lookup for the study');
+  const invalidAir = await request('PUT', `${mobileRoot}/environment-settings`, {
+    headers: { ...mobileAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true, air_quality_enabled: 'true' }),
+  });
+  assert.strictEqual(invalidAir.status, 400, 'air pollution opt-in must be a boolean');
   const enabledEnv = await request('PUT', `${mobileRoot}/environment-settings`, {
     headers: { ...mobileAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }),
   });
   assert.strictEqual(enabledEnv.status, 200);
   assert.strictEqual(enabledEnv.json.enabled, true);
+  assert.strictEqual(enabledEnv.json.air_quality_enabled, false, 'enabling weather does not implicitly enable pollution');
   const originalFetch = globalThis.fetch;
   let weatherLookups = 0;
+  let airLookups = 0;
+  let failAir = false;
+  let failWeather = false;
+  let pauseAir;
   const weatherNow = Date.now();
   const weatherHour = Math.floor(weatherNow / 3600000) * 3600000;
+  const weatherPayload = { hourly: { time: [weatherHour / 1000], temperature_2m: [19.5], cloud_cover: [32], weather_code: [2], shortwave_radiation: [300] } };
+  const airPayload = { latitude: 40.8, longitude: -74,
+    hourly: { time: [weatherHour / 1000], pm2_5: [0], pm10: [17.2], carbon_monoxide: [200], nitrogen_dioxide: [null], sulphur_dioxide: [-2], ozone: ['8'], us_aqi: [45], european_aqi: [10] } };
   globalThis.fetch = async (url, options) => {
-    if (String(url).startsWith('https://api.open-meteo.com/')) {
+    const target = new URL(url);
+    if (target.hostname === 'air-quality-api.open-meteo.com') {
+      airLookups += 1;
+      if (airLookups === 1) {
+        assert.strictEqual(target.searchParams.get('latitude'), '40.71');
+        assert.strictEqual(target.searchParams.get('longitude'), '-74.01');
+      }
+      assert.strictEqual(target.pathname, '/v1/air-quality');
+      assert.strictEqual(target.searchParams.get('timeformat'), 'unixtime');
+      assert.strictEqual(target.searchParams.get('timezone'), 'GMT');
+      assert.strictEqual(target.searchParams.get('start_date'), new Date(weatherHour).toISOString().slice(0, 10));
+      assert.strictEqual(target.searchParams.get('hourly'), 'pm2_5,pm10,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone,us_aqi,european_aqi');
+      if (pauseAir) await pauseAir();
+      if (failAir) return new Response('{}', { status: 503 });
+      return new Response(JSON.stringify(airPayload), { status: 200 });
+    }
+    if (target.hostname === 'api.open-meteo.com') {
       weatherLookups += 1;
-      const target = new URL(url);
-      assert.strictEqual(target.searchParams.get('latitude'), '40.71');
-      assert.strictEqual(target.searchParams.get('longitude'), '-74.01');
-      return new Response(JSON.stringify({ hourly: { time: [weatherHour / 1000], temperature_2m: [19.5], cloud_cover: [32], weather_code: [2], shortwave_radiation: [300] } }), { status: 200 });
+      if (failWeather) return new Response('{}', { status: 503 });
+      return new Response(JSON.stringify(weatherPayload), { status: 200 });
     }
     return originalFetch(url, options);
   };
   try {
     const weatherBody = { device_id: 'weather-phone', rows: [{ timestamp: weatherNow, double_latitude: 40.7128, double_longitude: -74.006, timezone: 'America/New_York' }] };
+    async function uploadPoint(device, latitude = 40.7128, useAware = false) {
+      const body = { ...weatherBody, device_id: device, rows: [{ ...weatherBody.rows[0], double_latitude: latitude }] };
+      return useAware
+        ? request('POST', '/index.php/webservice/index/enroll/enroll-pw/locations/insert', {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ device_id: device, data: JSON.stringify(body.rows) }).toString(),
+        })
+        : request('POST', `${mobileRoot}/sensors/locations/data`, { headers: { Authorization: 'Bearer enroll-pw', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    }
+    async function environmentRows(device) {
+      const result = await request('GET', `${mobileRoot}/export/environment_measures`, { headers: mobileAuth });
+      assert.strictEqual(result.status, 200);
+      return device ? result.json.rows.filter(row => row.device_id === device) : result.json.rows;
+    }
     for (let i = 0; i < 2; i += 1) {
       const result = await request('POST', `${mobileRoot}/sensors/locations/data`, { headers: { Authorization: 'Bearer enroll-pw', 'Content-Type': 'application/json' }, body: JSON.stringify(weatherBody) });
       assert.strictEqual(result.status, 201);
@@ -1484,7 +1525,106 @@ try {
     assert.strictEqual(weatherRows.json.rows.length, 1, 'one weather observation per device-hour despite retries');
     assert.strictEqual(weatherRows.json.rows[0].data.temperature_c, 19.5);
     assert.strictEqual(weatherRows.json.rows[0].data.light_lux, null, 'modeled sunshine is never reported as measured lux');
+    assert.strictEqual(weatherRows.json.rows[0].data.latitude_rounded, 40.71);
+    assert.strictEqual(weatherRows.json.rows[0].data.longitude_rounded, -74.01);
     assert.strictEqual(weatherLookups, 1);
+    assert.strictEqual(airLookups, 0, 'weather-only opt-in makes no pollution requests');
+
+    const configBeforeAir = (await db.getStudy('enroll')).config;
+    const enabledAir = await request('PUT', `${mobileRoot}/environment-settings`, {
+      headers: { ...mobileAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true, air_quality_enabled: true }),
+    });
+    assert.strictEqual(enabledAir.status, 200);
+    assert.strictEqual(enabledAir.json.air_quality_enabled, true);
+    assert.deepStrictEqual((await db.getStudy('enroll')).config.esm_schedule, configBeforeAir.esm_schedule, 'environment controls preserve survey schedules');
+    const legacyEnvSave = await request('PUT', `${mobileRoot}/environment-settings`, {
+      headers: { ...mobileAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }),
+    });
+    assert.strictEqual(legacyEnvSave.json.air_quality_enabled, true, 'old clients preserve the explicit pollution setting');
+
+    // Weather from this hour already exists. Air pollution can still be added,
+    // retried independently after failure, and exported as its own source row.
+    failAir = true;
+    assert.strictEqual((await uploadPoint('weather-phone')).status, 201, 'provider outage does not reject GPS');
+    assert.strictEqual((await environmentRows('weather-phone')).length, 1);
+    failAir = false;
+    await uploadPoint('weather-phone');
+    const pollutedRows = await environmentRows('weather-phone');
+    assert.strictEqual(pollutedRows.length, 2);
+    const air = pollutedRows.find(row => row.data.source === 'open_meteo_air_quality').data;
+    assert.strictEqual(air.pm2_5_ug_m3, 0, 'valid zero is retained');
+    assert.strictEqual(air.pm10_ug_m3, 17.2);
+    assert.strictEqual(air.carbon_monoxide_ug_m3, 200);
+    assert.strictEqual(air.nitrogen_dioxide_ug_m3, null, 'missing is not zero');
+    assert.strictEqual(air.sulphur_dioxide_ug_m3, null, 'negative values are missing');
+    assert.strictEqual(air.ozone_ug_m3, null, 'malformed strings are missing');
+    assert.strictEqual(air.us_aqi, 45);
+    assert.strictEqual(air.european_aqi, 10);
+    assert.strictEqual(air.air_quality_observed_at, weatherHour);
+    assert.strictEqual(air.air_quality_grid_latitude, 40.8);
+    assert.ok(air.attribution.includes('CAMS'));
+    const airCsv = await request('GET', `${mobileRoot}/export/environment_measures?format=csv`, { headers: mobileAuth });
+    assert.strictEqual(airCsv.status, 200);
+    assert.ok(airCsv.json.includes('pm2_5_ug_m3') && airCsv.json.includes('open_meteo_air_quality'), 'CSV includes pollutants and source');
+    const { describeColumn } = await import('../src/codebook.js');
+    assert.ok(describeColumn('raw/environment_measures.csv', 'carbon_monoxide_ug_m3').includes('micrograms'), 'export codebook describes pollutant units');
+
+    // Interleaving light observations and a second ingestion protocol must not
+    // duplicate provider observations.
+    await db.insertRows(db.safeTableName('environment_measures'), 'enroll', 'weather-phone', [{ timestamp: weatherNow + 1, source: 'android_ambient_light', light_lux: 10 }]);
+    await uploadPoint('weather-phone');
+    assert.strictEqual(weatherLookups, 1);
+    assert.strictEqual(airLookups, 2, 'one failed request and one successful retry, no repeat after success');
+    const awareWeather = await uploadPoint('aware-weather-phone', 40.7128, true);
+    assert.strictEqual(awareWeather.status, 200);
+    assert.strictEqual((await environmentRows('aware-weather-phone')).length, 2, 'iOS AWARE ingestion collects both sources');
+    assert.strictEqual(airLookups, 2, 'nearby devices can share a cached provider result, but keep separate records');
+
+    failWeather = true;
+    await uploadPoint('air-only-during-outage', 40.725);
+    const partial = await environmentRows('air-only-during-outage');
+    assert.strictEqual(partial.length, 1);
+    assert.strictEqual(partial[0].data.source, 'open_meteo_air_quality', 'weather outage does not block pollution');
+    failWeather = false;
+    await uploadPoint('air-only-during-outage', 40.725);
+    assert.strictEqual((await environmentRows('air-only-during-outage')).length, 2, 'weather retries without duplicating air');
+
+    const { fetchAirQuality } = await import('../src/environment.js');
+    const point = { latitude: 40.71, longitude: -74.01, hour: weatherHour };
+    await assert.rejects(() => fetchAirQuality(point, async () => new Response(JSON.stringify({ hourly: { time: [weatherHour / 1000] } }))), /values unavailable/);
+    await assert.rejects(() => fetchAirQuality(point, async () => new Response(JSON.stringify({ hourly: { time: [] } }))), /requested hour/);
+
+    // Turning off the opt-in while a provider request is in flight prevents its
+    // later response from being stored.
+    let releaseAir;
+    let startedAir;
+    const started = new Promise(resolve => { startedAir = resolve; });
+    const gate = new Promise(resolve => { releaseAir = resolve; });
+    pauseAir = async () => { startedAir(); await gate; };
+    const inFlight = uploadPoint('inflight-weather-phone', 40.745);
+    await started;
+    const offAir = await request('PUT', `${mobileRoot}/environment-settings`, {
+      headers: { ...mobileAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true, air_quality_enabled: false }),
+    });
+    assert.strictEqual(offAir.json.air_quality_enabled, false);
+    releaseAir();
+    await inFlight;
+    pauseAir = null;
+    assert.ok((await environmentRows('inflight-weather-phone')).every(row => row.data.source !== 'open_meteo_air_quality'));
+    const callsBeforeOff = airLookups;
+    await uploadPoint('weather-only-again', 40.755);
+    assert.strictEqual(airLookups, callsBeforeOff, 'air opt-out stops new pollution requests while weather continues');
+    const { collectEnvironment } = await import('../src/environment.js');
+    const callsBeforeOtherStudy = [weatherLookups, airLookups];
+    await collectEnvironment(await db.getStudy('demo'), 'not-opted-in', weatherBody.rows);
+    assert.deepStrictEqual([weatherLookups, airLookups], callsBeforeOtherStudy, 'opt-in does not affect another study');
+    await request('PUT', `${mobileRoot}/environment-settings`, {
+      headers: { ...mobileAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false, air_quality_enabled: true }),
+    });
+    const callsBeforeMasterOff = [weatherLookups, airLookups];
+    await uploadPoint('master-disabled-phone', 40.765);
+    assert.deepStrictEqual([weatherLookups, airLookups], callsBeforeMasterOff, 'master opt-out stops both providers even with air checkbox retained');
+    assert.strictEqual((await environmentRows('master-disabled-phone')).length, 0);
   } finally { globalThis.fetch = originalFetch; }
   const envOff = await request('PUT', `${mobileRoot}/environment-settings`, {
     headers: { ...mobileAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false }),

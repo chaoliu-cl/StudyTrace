@@ -191,9 +191,14 @@
       <section class="panel">
         <h2>Environment collection</h2>
         <p class="section-note">Optional hourly weather, temperature (°C), cloud cover (%), and outdoor solar radiation (W/m²) at consented GPS locations on iPhone and Android. Enabling sends coordinates rounded to 0.01° to Open-Meteo. These are outdoor model estimates, not indoor measurements. Android can also record ambient light (lux) when its sensor is available and collection is running. iOS has no public ambient-light sensor API. Include this collection and provider in your study consent.</p>
-        <form id="researcher-environment" class="stack"><label><span>Environment measures</span><select name="enabled"><option value="false">Off</option><option value="true">On</option></select></label><button class="button button-primary" type="submit">Save environment collection</button></form>
+        <p class="section-note">Optional air pollution adds PM2.5, PM10, ozone, nitrogen dioxide, sulfur dioxide, carbon monoxide (µg/m³), and US/EU AQI from Open-Meteo/CAMS. These are outdoor area model estimates; global model resolution is approximately 45 km, and hourly output may interpolate coarser model times. Air pollution requires Environment measures On and the separate checkbox below.</p>
+        <form id="researcher-environment" class="stack">
+          <label><span>Environment measures</span><select name="enabled"><option value="false">Off</option><option value="true">On</option></select></label>
+          <label class="inline-check"><input type="checkbox" name="air_quality_enabled"> Include air pollution (Open-Meteo/CAMS)</label>
+          <button class="button button-primary" type="submit">Save environment collection</button>
+        </form>
         <p id="researcher-environment-message" class="status-line"></p>
-        <p class="section-note">Records appear under Sensor coverage as <code>environment_measures</code>. Requires location uploads; missing light readings remain missing. Weather data by Open-Meteo.com, CC BY 4.0.</p>
+        <p class="section-note">Records appear under Sensor coverage as <code>environment_measures</code>, with separate sources for weather, air pollution, and device light. Requires location uploads; missing readings remain missing. Weather data by Open-Meteo.com, CC BY 4.0. Air quality: <a href="https://confluence.ecmwf.int/display/CKB/CAMS+Regional%3A+European+air+quality+analysis+and+forecast+data+documentation">CAMS ENSEMBLE data providers</a> / Copernicus Atmosphere Monitoring Service via <a href="https://open-meteo.com/en/docs/air-quality-api">Open-Meteo</a>. Include these provider lookups in your study consent.</p>
       </section>
 
       <div class="metric-grid" id="researcher-metrics"></div>

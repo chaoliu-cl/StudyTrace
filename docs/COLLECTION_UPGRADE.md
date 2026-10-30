@@ -95,6 +95,14 @@ totals or the pilot's cumulative morning/afternoon/evening snapshots together.
 
 ## Environment settings and interpretation
 
+The October 30 air-quality extension adds a separate **Include air pollution
+(Open-Meteo/CAMS)** opt-in beside the weather master control. It collects PM2.5,
+PM10, CO, NO2, SO2, ozone (µg/m³), and provider US/EU AQI, as separate
+`open_meteo_air_quality` rows in `environment_measures`. Existing studies remain
+opted out of pollution until enabled. Provider failures retry independently,
+and opt-out during an in-flight request prevents its result from being stored.
+See [the setup and interpretation guide](ENVIRONMENT_SETUP.md).
+
 Environment collection is off until a researcher saves On. This avoids changing
 an existing pilot's consented collection automatically. Enable only for a study
 whose consent describes environment processing and the provider lookup.
