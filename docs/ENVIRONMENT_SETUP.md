@@ -24,9 +24,9 @@ features included in the study, and click **Save environment collection**:
 
 Context and map options are off until explicitly enabled. The master control
 must be on for these options to take effect. Changing this form preserves all
-stored survey/screenshot schedules. The special three-instrument/one-photo pilot
-schedule still uses its separate setup helper; avoid resaving the dashboard's
-single-schedule ESM form afterward.
+stored survey/screenshot schedules. Configure the three-instrument/one-photo
+pilot in **Survey and screenshot schedules → Load three-survey pilot preset**.
+Review each row and click **Save all schedules**; Terminal is unnecessary.
 
 ## Exports and interpretation
 

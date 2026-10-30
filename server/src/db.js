@@ -476,18 +476,30 @@ export async function listWithdrawals(studyId) {
   return rows;
 }
 
-export async function updateStudyConfig(studyId, configPatch) {
-  const current = await getStudy(studyId);
-  if (!current) return null;
-  const nextConfig = { ...(current.config || {}), ...(configPatch || {}) };
-  const { rows } = await getPool().query(
-    `UPDATE studies
-     SET config = $2
-     WHERE study_id = $1
-     RETURNING ${STUDY_COLUMNS}`,
-    [studyId, JSON.stringify(nextConfig)]
-  );
-  return rows.length ? rows[0] : null;
+export async function updateStudyConfig(studyId, configPatch, { legacyScheduleWrite = false } = {}) {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(`SELECT ${STUDY_COLUMNS} FROM studies WHERE study_id = $1 FOR UPDATE`, [studyId]);
+    const current = result.rows[0];
+    if (!current) { await client.query('COMMIT'); return null; }
+    const config = current.config || {};
+    const ordinaryCount = (config.esm_schedule || []).filter(s => (!s.studytrace_prompt_type || s.studytrace_prompt_type === 'esm_survey') && !/battery|screen_time_activity|app_usage_screenshot/i.test(s.schedule_id || '')).length;
+    if (legacyScheduleWrite && (config.dashboard_schedules_version === 1 || ordinaryCount > 1 ||
+        (config.app_usage_screenshot_schedule || []).some(s => s.studytrace_delivery_mode === 'random'))) {
+      const error = new Error('Use the researcher dashboard schedule editor for this study; the old single-schedule form cannot preserve this protocol.');
+      error.statusCode = 409;
+      throw error;
+    }
+    const patch = typeof configPatch === 'function' ? configPatch(current) : configPatch;
+    const { rows } = await client.query(`UPDATE studies SET config = $2 WHERE study_id = $1 RETURNING ${STUDY_COLUMNS}`,
+      [studyId, JSON.stringify({ ...config, ...(patch || {}) })]);
+    await client.query('COMMIT');
+    return rows[0] || null;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally { client.release(); }
 }
 
 export async function tableExists(table) {

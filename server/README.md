@@ -126,6 +126,26 @@ exports in **Sensor coverage** (`survey_responses` and `survey_quality`) instead
 of large page panels. The response CSV includes the iOS `esm` table as well as
 `plugin_ios_esm` and other supported answer tables.
 
+The **Survey and screenshot schedules** editor manages all ordinary questionnaires,
+app-usage screenshot tasks, and existing Battery/Screen Time tasks together.
+Researchers can add/duplicate/remove tasks, edit questions and answer choices,
+set independent random windows or fixed times and dates, load the supplied
+three-survey/one-evening-photo preset, and import/export configuration JSON.
+Edits remain drafts until **Save all schedules**. Saves validate all tasks,
+reject stale revisions, preserve other settings/data, and retain one previous
+configuration for download and reimport. Participants must refresh surveys.
+See [the dashboard setup steps](../docs/RAILWAY_PILOT_DEPLOYMENT.md#6-configure-the-three-questionnaires-and-evening-screenshot-in-the-dashboard).
+
+Researcher-authenticated schedule APIs:
+- `GET /api/v1/studies/:id/prompt-schedules`: all four arrays, revision, and previous configuration.
+- `GET /api/v1/studies/:id/prompt-schedule-preset`: supplied pilot draft only; no write.
+- `PUT /api/v1/studies/:id/prompt-schedules`: all four arrays plus `expected_revision` from GET.
+
+The PUT locks the study row and merges only schedule fields. It rejects invalid
+questions/dates/times and limits jitter to the installed iOS client's 180-minute
+maximum. Legacy single-schedule PUTs return 409 for a dashboard-managed or
+multi-questionnaire protocol, preventing an older open form from replacing it.
+
 Environment collection is **off by default**. Save On in its dashboard section
 or `PUT /api/v1/studies/{id}/environment-settings` with researcher credentials
 and `{"enabled":true}`. Both mobile platforms' incoming GPS locations can be

@@ -1443,8 +1443,8 @@ try {
   assert.ok(researcherLink.json.app_url.startsWith('studytrace://join?'));
   assert.strictEqual(new URL(researcherLink.json.join_url).searchParams.get('url'), researcherLink.json.study_url);
   const researcherHtml = await (await fetch(base + '/researcher/')).text();
-  assert.ok(researcherHtml.indexOf('Participant join link') < researcherHtml.indexOf('ESM survey notifications'));
-  assert.ok(researcherHtml.indexOf('ESM survey notifications') < researcherHtml.indexOf('Sensor coverage'));
+  assert.ok(researcherHtml.indexOf('Participant join link') < researcherHtml.indexOf('Survey and screenshot schedules'));
+  assert.ok(researcherHtml.indexOf('Survey and screenshot schedules') < researcherHtml.indexOf('Sensor coverage'));
   assert.ok(!researcherHtml.includes('<h2>Recent survey responses</h2>'));
   assert.ok(!researcherHtml.includes('<h2>Survey quality</h2>'));
   assert.ok(researcherHtml.includes('name="air_quality_enabled"'), 'dashboard exposes air pollution opt-in');
