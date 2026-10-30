@@ -197,6 +197,53 @@ h2 {
   gap: 14px;
 }
 
+.schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.schedule-table { min-width: 760px; }
+.schedule-table .schedule-actions { flex-wrap: nowrap; margin: 0; gap: 4px; }
+.schedule-table .button { min-height: 36px; padding: 0 10px; font-size: 0.8rem; }
+.schedule-table td:nth-child(3) { white-space: nowrap; }
+
+.schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.schedule-editor {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.schedule-selected {
+  background: rgba(108, 126, 97, 0.1);
+}
+
+.question-card {
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.question-card > summary,
+.schedule-advanced > summary {
+  cursor: pointer;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.question-card textarea { min-height: 100px; }
+.is-error { color: #a12424; }
+
 label span {
   display: block;
   margin-bottom: 6px;

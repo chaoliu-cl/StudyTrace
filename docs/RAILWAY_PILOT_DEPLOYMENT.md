@@ -7,7 +7,9 @@ Personal light and indoor exposure sensing are disabled for this protocol.
 
 Deploying the backend makes the features available. Study-specific context and
 map collection remain off until you enable them for the intended study. The
-schedule setup helper is a separate operation, with a dry-run and backup.
+schedule is configured in the researcher dashboard, with an editable draft and
+a previous-configuration backup. Terminal is optional for deployment and is
+not required for questionnaire or screenshot configuration.
 
 ## 1. Understand the participant protocol
 
@@ -126,8 +128,9 @@ curl -fsS https://studytrace-production.up.railway.app/health
 
 Health should return `{"ok":true}`. This confirms the web process, not phone
 collection or a successful database write. Open `/researcher/` and confirm the
-new context and green-space checkboxes are present. If the web page is stale,
-reload it before saving settings.
+**Survey and screenshot schedules** editor, pilot preset button, and context/
+green-space checkboxes are present. If the web page is stale, reload it before
+saving settings.
 
 ## 4. Create a separate test study
 
@@ -181,68 +184,125 @@ reports the backend master. This does not stop server-side weather/maps.
 Android phones must refresh their cached settings. Historical/previously queued
 lux records may remain in exports; identify them by their source.
 
-## 6. Apply the three-questionnaire plus evening-photo schedule
+## 6. Configure the three questionnaires and evening screenshot in the dashboard
 
-The provided **StudyTrace-Pilot-Setup-2026-10-30** folder contains
-`pilot-configuration.json`, three question-only JSON files, a codebook, and
-`apply-pilot-configuration.mjs`. Keep them together.
+No Terminal command, database edit, or new Railway variable is needed for this
+step. Deploy the updated backend once, then use the researcher dashboard for
+ongoing schedule changes.
 
-The dashboard's ordinary ESM form currently saves only one schedule. Its random
-app-usage preset creates three photo reminders per day. Therefore use the
-provided helper for this exact three-instrument/one-photo protocol. Do not save
-those two schedule forms afterward: they would replace this custom setup.
-Viewing/exporting data, generating join links, and saving Environment collection
-are safe. The older mind-body-pilot guides describe a different schedule.
+### Load and review your study
 
-On this Mac:
+1. Open `https://studytrace-production.up.railway.app/researcher/` (or your
+   canonical custom domain). Enter the intended **Study ID** and its
+   **researcher password**, then click **Load dashboard**.
+2. Find **Survey and screenshot schedules**, directly below the participant
+   join-link section. Existing questionnaires and screenshot tasks load into
+   one list. Use **Download configuration JSON** to retain a dated copy before
+   changing an ongoing pilot. These files contain schedules/questions, not
+   participant responses or passwords.
+3. For a new pilot, click **Load three-survey pilot preset**. This loads the
+   supplied document-based PANAS-10, PSS-10, and MWQ, plus one evening screenshot
+   task, into an **unsaved draft**. It replaces the draft list, including any
+   extra Battery or Screen Time tasks; review before saving. If your pilot is
+   already configured, edit its existing rows instead of reloading the preset.
+4. Confirm **4 tasks · 4 intended notifications/day**. The default rows are:
 
-```sh
-cd /Users/chaoliu/Downloads/StudyTrace
-pilot_setup_dir="/Users/chaoliu/Downloads/StudyTrace-Pilot-Setup-2026-10-30"
-pilot_study_id="pilot_schedule_test"
+| Task | Daily delivery mode | Random window | Response window |
+| --- | --- | --- | --- |
+| PANAS-10 | One random time daily within a window | 09:00–12:00 | 60 minutes |
+| Perceived Stress Scale | One random time daily within a window | 13:00–16:00 | 60 minutes |
+| Mind-Wandering Questionnaire | One random time daily within a window | 17:00–19:00 | 60 minutes |
+| App-usage screenshots | One random time daily within a window | 19:15–20:45 | 60 minutes |
 
-# Preview only; no database connection or live change.
-node "$pilot_setup_dir/apply-pilot-configuration.mjs" --study-id "$pilot_study_id"
-```
+Each questionnaire is its own notification and appears once daily. Do not put
+all three instruments into each row. With environment context enabled, the list
+shows **10 + 5**, **10 + 5**, and **5 + 5** questions; the screenshot remains one
+photo task. Do not append context questions manually.
 
-Add your real `--start-date MM-DD-YYYY --end-date MM-DD-YYYY` to preview and apply
-commands, replacing the placeholders. Dates are inclusive. With no bounds, the
-schedule continues until changed. Keep schedule IDs stable during a study.
+### Customize each task
 
-For a quick test, add `--test-times` with four distinct future phone-local times
-from 09:00 through 20:59, at least 20 minutes apart with a 20–30 minute lead.
-The order is PANAS, PSS, MWQ, photo. For example, only if still in the future:
+5. Click **Edit** beside a task. Set its **Task name**, **Delivery mode**,
+   **Response window (minutes)**, **Start date**, **End date**, and notification
+   title/message. Repeat for **all four rows** when setting study dates; dates
+   belong to each task independently. Blank dates mean no date bound. The date
+   picker uses your browser's locale; the saved list shows `MM-DD-YYYY`.
+6. For random delivery, choose **One random time daily within a window**, then
+   enter the start/end times. Windows must remain within one day, be between
+   2 minutes and 6 hours wide, and use each phone's local clock. Keep the
+   screenshot target at **19:15–20:45** for the before-21:00 protocol. Odd-minute
+   widths round the last possible target inward by one minute.
+7. For a test or a fixed protocol, choose **Fixed time(s)** and enter one or
+   more comma-separated 24-hour times, such as `10:15, 11:15`. Each listed time
+   creates a daily notification. **Randomized around listed times** instead
+   draws within plus/minus the entered number of minutes around each time
+   (maximum 180 minutes). The table always shows the resulting target windows
+   and total notification count. No minimum spacing between tasks is enforced.
+8. Expand **Delivery limits and schedule ID** if you need stricter bounds on
+   new notifications. The times plus their randomization must fit those bounds.
+   A delivered response may remain open after the limit. Schedule IDs remain
+   stable when editing an existing row, to preserve occurrence history.
+9. Expand a numbered question to edit its **Question title**, **Question text /
+   instructions**, answer choices (one per line), or **Item ID in exports**.
+   Choice, text, and photo questions are supported; existing advanced question
+   fields are retained. Use **Move up**, **Move down**, or **Remove question**
+   to change item order, or add a choice/text/photo question. **Import questions
+   JSON** replaces only the selected task's questions and accepts the supplied
+   question-only files. Templates append questions to the selected task.
+   Preserve validated instruments' wording, order, recall periods, choices,
+   and item IDs unless you deliberately revise the protocol and codebook.
+10. **Add questionnaire**, **Add app-usage screenshot**, **Duplicate**, and
+    **Remove** change the draft list. Removing a task stops its future schedule
+    after phones refresh; existing responses/images are retained. Duplicate
+    tasks add notifications, so check the total before saving. The app-usage
+    screenshot row retains its native photo workflow; participants can select
+    multiple screenshots on the updated apps. Existing Battery and yesterday's
+    Screen Time tasks are listed separately and can be edited or removed there.
 
-```sh
-node "$pilot_setup_dir/apply-pilot-configuration.mjs" \
-  --study-id "$pilot_study_id" --test-times 12:30,13:00,13:30,14:00
-```
+### Save, verify, and refresh phones
 
-Apply the same options after previewing:
+11. Click **Save all schedules**. This saves the entire displayed protocol
+    together. Look for **All schedules saved**. A validation error leaves the
+    saved configuration intact; correct the field and save again.
+12. Click **Reload saved schedules**, then recheck all four rows, dates, counts,
+    and question wording. Download the saved configuration for your study log.
+    Reload discards unsaved edits, so export a draft first if you want to keep it.
+13. If another browser window changed the schedules, your save is rejected.
+    Download your draft, reload the latest configuration, reconcile the changes,
+    then save. Environment-setting changes do not conflict with schedule saves.
+14. Ask participants to open StudyTrace online and tap **Refresh surveys**.
+    The backend stores configuration; phones download it and schedule local
+    notifications. Railway does not need a cron job for these reminders. Test
+    one iPhone and one Android before changing the real pilot's schedule.
 
-```sh
-railway run --project d66540d4-ee9a-4f5b-b331-5e06f1bb63e5 \
-  --environment production --service Postgres -- \
-  node "$pilot_setup_dir/apply-pilot-configuration.mjs" \
-  --study-id "$pilot_study_id" --apply
-```
+For a short phone test, use a separate test study, set each row to **Fixed
+time(s)**, and give the four tasks distinct future phone-local times with a
+20–30 minute lead and at least 20 minutes between them. Set the screenshot time
+before 21:00. After testing, restore the random preset or your exported intended
+configuration and refresh both phones again. A successful dashboard save does
+not establish that a phone received or uploaded a notification response.
 
-Add the identical `--test-times`/date options when applying a test/bounded
-configuration. Omit `--test-times` to restore normal random targets. The original
-JSON stays unchanged. Context is injected separately by the study setting, so
-the helper correctly still validates 10/10/5 original items.
+### Backup, restore, and optional JSON import
 
-Run from the repository with Node 20+ and installed dependencies (`npm ci` if
-needed). The Postgres service injects its existing `DATABASE_PUBLIC_URL` for this
-local process. A private Railway database hostname is not reachable from this
-Mac. If the public variable is unavailable/sealed, stop and resolve the intended
-database access; the helper does not expose new networking or print secrets.
+Every successful dashboard save keeps **one previous schedule configuration**.
+Click **Download previous saved configuration** to retain it. To restore it,
+expand **Import, restore, and advanced configuration**, choose that downloaded
+file (or paste its JSON), and click **Load JSON into draft** if pasting. Review
+all rows, then **Save all schedules**. This restores schedules only; environment
+settings, credentials, enrollment, and previously collected data are preserved.
+The next save replaces the previous-version slot, so download backups you need
+for longer-term history.
 
-Before updating, the helper locks the exact study row and writes a local backup
-of the four schedule fields in `backups/`. It preserves other settings, credentials,
-enrollment, and collected data. It clears legacy Battery and yesterday's Screen
-Time reminder arrays to avoid extra photo notifications. Keep the backup path.
-The helper does not create studies or turn on environment features by itself.
+The same import area accepts `pilot-configuration.json` from the supplied setup
+folder. It must contain all four schedule arrays, even if the two legacy arrays
+are empty. Importing a file loads a draft automatically; it does not save to the
+study until you click **Save all schedules**. For question-only files, use the
+selected questionnaire's **Import questions JSON** instead.
+
+The setup folder still includes `apply-pilot-configuration.mjs` for optional
+advanced database workflows. Its use is unnecessary for ordinary configuration;
+prefer the dashboard's validation, revision protection, and backup workflow.
+The older `docs/studies/mind-body-pilot` guides describe different historical
+protocols; follow this guide for the current four-notification pilot.
 
 ## 7. Enroll and refresh the phones
 
@@ -352,18 +412,9 @@ To stop the new context or map feature, uncheck it and save; refresh phones to
 remove context from newly fetched questionnaires. Master Off stops provider
 lookups and future injected items. Existing data remain stored.
 
-For schedule rollback, preview the saved schedule backup, then apply it through
-the same Postgres service. Replace the path with the exact printed backup:
-
-```sh
-node "$pilot_setup_dir/apply-pilot-configuration.mjs" \
-  --study-id "$pilot_study_id" --restore-backup /absolute/path/BACKUP.json
-
-railway run --project d66540d4-ee9a-4f5b-b331-5e06f1bb63e5 \
-  --environment production --service Postgres -- \
-  node "$pilot_setup_dir/apply-pilot-configuration.mjs" --study-id "$pilot_study_id" \
-  --restore-backup /absolute/path/BACKUP.json --apply
-```
+For schedule rollback, download the previous saved configuration in the
+dashboard, import it into the draft, review, and **Save all schedules**, as
+described in section 6. Retain dated configuration downloads for longer history.
 
 Schedule rollback preserves other settings and collected data. It does not
 remove an already-shown notification from a phone that has not refreshed.

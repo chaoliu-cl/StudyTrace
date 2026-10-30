@@ -67,6 +67,7 @@ import { createGenericApiRouter } from './genericApi.js';
 import { buildJoinLink } from './joinLink.js';
 import { imageAnswers, imageUrl, expandPhotoRows } from './media.js';
 import { createEnvironmentRouter } from './environment.js';
+import { createPromptScheduleRouter } from './promptSchedules.js';
 
 const BATTERY_USAGE_EXPORT_SENSOR = 'battery_usage_apps';
 const SCREEN_TIME_ACTIVITY_SENSOR = 'screen_time_activity';
@@ -535,7 +536,7 @@ export function createApp() {
       if (!study) return res.status(404).json({ error: 'study not found' });
 
       const esmSchedule = buildEsmScheduleFromRequest(req.body || {}, 'esm_survey');
-      const updated = await updateStudyConfig(req.params.studyId, { esm_schedule: esmSchedule });
+      const updated = await updateStudyConfig(req.params.studyId, { esm_schedule: esmSchedule }, { legacyScheduleWrite: true });
       res.json(scheduleResponse(updated, 'esm_schedule'));
     } catch (err) {
       if (err.statusCode) {
@@ -621,7 +622,7 @@ export function createApp() {
   app.put('/api/v1/studies/:studyId/esm-schedule', requireResearcher, async (req, res) => {
     try {
       const esmSchedule = buildEsmScheduleFromRequest(req.body || {}, 'esm_survey');
-      const updated = await updateStudyConfig(req.params.studyId, { esm_schedule: esmSchedule });
+      const updated = await updateStudyConfig(req.params.studyId, { esm_schedule: esmSchedule }, { legacyScheduleWrite: true });
       res.json(scheduleResponse(updated, 'esm_schedule'));
     } catch (err) {
       if (err.statusCode) {
@@ -644,10 +645,10 @@ export function createApp() {
   app.put('/api/v1/studies/:studyId/battery-screenshot-schedule', requireResearcher, async (req, res) => {
     try {
       const batterySchedule = buildEsmScheduleFromRequest(req.body || {}, 'battery_usage_screenshot');
-      const updated = await updateStudyConfig(req.params.studyId, {
+      const updated = await updateStudyConfig(req.params.studyId, current => ({
         battery_screenshot_schedule: batterySchedule,
-        esm_schedule: scheduleForKey(req.study, 'esm_schedule'),
-      });
+        esm_schedule: (current.config?.esm_schedule || []).filter(s => schedulePromptType(s) !== BATTERY_PROMPT),
+      }), { legacyScheduleWrite: true });
       res.json(scheduleResponse(updated, 'battery_screenshot_schedule'));
     } catch (err) {
       if (err.statusCode) {
@@ -669,7 +670,7 @@ export function createApp() {
   app.put('/api/v1/studies/:studyId/screen-time-activity-schedule', requireResearcher, async (req, res, next) => {
     try {
       const activitySchedule = buildEsmScheduleFromRequest(req.body || {}, ACTIVITY_PROMPT);
-      const updated = await updateStudyConfig(req.params.studyId, { screen_time_activity_schedule: activitySchedule });
+      const updated = await updateStudyConfig(req.params.studyId, { screen_time_activity_schedule: activitySchedule }, { legacyScheduleWrite: true });
       res.json(scheduleResponse(updated, 'screen_time_activity_schedule'));
     } catch (err) {
       next(err);
@@ -683,7 +684,7 @@ export function createApp() {
   app.put('/api/v1/studies/:studyId/app-usage-screenshot-schedule', requireResearcher, async (req, res, next) => {
     try {
       const schedule = buildAppUsageScreenshotSchedule(req.body || {});
-      const updated = await updateStudyConfig(req.params.studyId, { app_usage_screenshot_schedule: schedule });
+      const updated = await updateStudyConfig(req.params.studyId, { app_usage_screenshot_schedule: schedule }, { legacyScheduleWrite: true });
       res.json(scheduleResponse(updated, 'app_usage_screenshot_schedule'));
     } catch (err) {
       next(err);
@@ -849,6 +850,7 @@ export function createApp() {
 
   // ---- Ingestion front-ends (shared storage) --------------------------------
   app.use('/api/v1', createEnvironmentRouter({ requireResearcher, requireParticipant }));
+  app.use('/api/v1', createPromptScheduleRouter({ requireResearcher }));
   app.use('/', createAwareRouter(getPublicBaseUrl));
   app.use('/api/v1', createGenericApiRouter());
 

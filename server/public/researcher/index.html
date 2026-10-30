@@ -58,134 +58,34 @@
         <div id="researcher-join-link-result" class="hidden"></div>
       </section>
 
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>ESM survey notifications</h2>
-            <p class="section-note">Schedule ordinary ESM survey prompts. Fixed mode sends at exact times; random mode jitters around those times by the selected window.</p>
-          </div>
+      <section class="panel" id="researcher-protocol">
+        <div class="section-head"><div>
+          <h2>Survey and screenshot schedules</h2>
+          <p class="section-note">Configure each questionnaire and screenshot task independently. All times follow each phone's local clock. Changes stay in a draft until you save.</p>
+        </div></div>
+        <div class="schedule-actions">
+          <button class="button" type="button" data-protocol-preset>Load three-survey pilot preset</button>
+          <button class="button" type="button" data-add-schedule="esm_schedule">Add questionnaire</button>
+          <button class="button" type="button" data-add-schedule="app_usage_screenshot_schedule">Add app-usage screenshot</button>
         </div>
-        <form id="researcher-esm-schedule" class="stack">
-          <input type="hidden" name="prompt_type" value="esm_survey">
-          <label>
-            <span>Delivery mode</span>
-            <select name="mode">
-              <option value="fixed">Fixed exact times</option>
-              <option value="random">Randomized around listed times</option>
-            </select>
-          </label>
-          <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="09:30, 17:15" required></label>
-          <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
-          <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="120"></label>
-          <label><span>Earliest notification, local time (optional)</span><input name="prompt_window_start" type="time" value="09:00"></label>
-          <label><span>Latest notification, local time (optional)</span><input name="prompt_window_end" type="time" value="21:00"></label>
-          <p class="section-note">Updated apps start the response window at notification delivery. These hours limit new prompts; a delivered survey can stay open afterward. Leave both hours blank for unrestricted delivery.</p>
-          <label><span>Notification title</span><input name="notification_title" value="StudyTrace survey available"></label>
-          <label><span>Notification body</span><input name="notification_body" value="Please complete your scheduled study survey."></label>
-          <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
-          <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
-          <div class="template-picker">
-            <label>
-              <span>Question templates (optional)</span>
-              <select id="researcher-template-select">
-                <option value="">Choose a template…</option>
-              </select>
-            </label>
-            <button class="button" type="button" id="researcher-template-add">Add to survey</button>
-            <p class="section-note" id="researcher-template-source">Templates are appended to the questions below; nothing changes for participants until you save. Confirm wording with your IRB and cite the listed source.</p>
-          </div>
-          <label>
-            <span>Survey questions JSON</span>
-            <textarea name="esms_json" rows="16" spellcheck="false"></textarea>
-          </label>
-          <p class="section-note">Photo questions use <code>esm_type: 14</code>; participants can choose multiple existing photos or take pictures. Up to 10 images per question (12 MiB combined). Optional quality fields such as <code>studytrace_required</code>, <code>studytrace_branching</code>, and <code>studytrace_randomize_options</code> are preserved in the schedule JSON for analysis and future client support.</p>
-          <button class="button button-primary" type="submit">Save ESM survey schedule</button>
-        </form>
-        <pre id="researcher-esm-schedule-result" class="result-box"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>App usage screenshot reminders (iPhone and Android)</h2>
-            <p class="section-note">Adds three reminders per day alongside your surveys: one random time in 09:00–12:00, 12:00–17:00, and 17:00–21:00, in each phone's local time. Participants upload today's usage so far from iPhone Screen Time or Android Digital Wellbeing. These are cumulative snapshots; do not add the three totals together.</p>
-          </div>
+        <p class="section-note">The pilot preset includes PANAS-10, PSS-10, MWQ, and one evening screenshot request. It replaces the draft task list; nothing changes on phones until saved. Existing Battery/Screen Time tasks can also be edited or removed in the list.</p>
+        <p data-protocol-count class="section-note"></p>
+        <div data-protocol-list></div>
+        <div data-protocol-editor class="schedule-editor"></div>
+        <div class="schedule-actions">
+          <button class="button button-primary" type="button" data-protocol-save disabled>Save all schedules</button>
+          <button class="button" type="button" data-protocol-reload>Reload saved schedules</button>
+          <button class="button" type="button" data-protocol-export>Download configuration JSON</button>
+          <button class="button" type="button" data-protocol-previous disabled>Download previous saved configuration</button>
         </div>
-        <form id="researcher-usage-schedule" class="stack">
-          <label><span>Screenshot reminders</span><select name="enabled"><option value="false">Off</option><option value="true">On</option></select></label>
-          <label><span>Delivery mode</span><select name="mode"><option value="periods">Random morning, afternoon, and evening</option><option value="fixed">Fixed times for a phone test (09:00–21:00)</option></select></label>
-          <label><span>Fixed test times, 24-hour HH:MM (used only in test mode)</span><input name="times" placeholder="10:30"></label>
-          <label><span>Minutes to upload after delivery</span><input name="expiration_minutes" type="number" min="1" max="1440" value="60" required></label>
-          <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="10-29-2026"></label>
-          <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="11-05-2026"></label>
-          <p class="section-note">Saving this section preserves the questionnaire schedule. Updated iPhone and Android apps are required. Leave the separate Battery and yesterday's Screen Time schedules unused for this pilot to avoid additional screenshot requests. Save Off to stop these reminders, then refresh the phones.</p>
-          <button class="button button-primary" type="submit">Save app usage screenshot reminders</button>
-        </form>
-        <pre id="researcher-usage-schedule-result" class="result-box"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Battery screenshot notifications</h2>
-            <p class="section-note">Schedule prompts that ask participants to upload Settings → Battery → View All Battery Usage screenshots. This section uses an <code>esm_type: 14</code> photo question.</p>
-          </div>
-        </div>
-        <form id="researcher-battery-schedule" class="stack">
-          <input type="hidden" name="prompt_type" value="battery_usage_screenshot">
-          <label>
-            <span>Delivery mode</span>
-            <select name="mode">
-              <option value="fixed">Fixed exact times</option>
-              <option value="random">Randomized around listed times</option>
-            </select>
-          </label>
-          <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="20:30" required></label>
-          <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
-          <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="120"></label>
-          <label><span>Notification title</span><input name="notification_title" value="StudyTrace Battery screenshot"></label>
-          <label><span>Notification body</span><input name="notification_body" value="Please upload your iOS Battery usage screenshot."></label>
-          <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
-          <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
-          <label>
-            <span>Battery screenshot question JSON</span>
-            <textarea name="esms_json" rows="10" spellcheck="false"></textarea>
-          </label>
-          <button class="button button-primary" type="submit">Save Battery screenshot schedule</button>
-        </form>
-        <pre id="researcher-battery-schedule-result" class="result-box"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Screen Time activity screenshot notifications (optional)</h2>
-            <p class="section-note">Off until you save a schedule. Prompts ask participants to upload Settings → Screen Time → See All App &amp; Website Activity for one day (yesterday by default), which adds pickups and notification counts. The server reads the values from the screenshot; participants do not edit them.</p>
-          </div>
-        </div>
-        <form id="researcher-activity-schedule" class="stack">
-          <input type="hidden" name="prompt_type" value="screen_time_activity_screenshot">
-          <label>
-            <span>Delivery mode</span>
-            <select name="mode">
-              <option value="fixed">Fixed exact times</option>
-              <option value="random">Randomized around listed times</option>
-            </select>
-          </label>
-          <label><span>Prompt times, 24-hour HH:MM</span><input name="times" placeholder="10:00" required></label>
-          <label><span>Randomization window, minutes</span><input name="randomize_minutes" type="number" min="1" max="180" value="30"></label>
-          <label><span>Expiration window, minutes</span><input name="expiration_minutes" type="number" min="0" max="1440" value="720"></label>
-          <label><span>Notification title</span><input name="notification_title" value="StudyTrace Screen Time screenshot"></label>
-          <label><span>Notification body</span><input name="notification_body" value="Please upload yesterday's Screen Time activity screenshot."></label>
-          <label><span>Start date, MM-DD-YYYY optional</span><input name="start_date" placeholder="06-13-2026"></label>
-          <label><span>End date, MM-DD-YYYY optional</span><input name="end_date" placeholder="12-31-2026"></label>
-          <label>
-            <span>Screen Time screenshot question JSON</span>
-            <textarea name="esms_json" rows="10" spellcheck="false"></textarea>
-          </label>
-          <button class="button button-primary" type="submit">Save Screen Time screenshot schedule</button>
-        </form>
-        <pre id="researcher-activity-schedule-result" class="result-box"></pre>
+        <p data-protocol-status class="status-line" role="status" aria-live="polite"></p>
+        <details class="schedule-advanced">
+          <summary>Import, restore, and advanced configuration</summary>
+          <p class="section-note">Import a downloaded configuration or the prepared pilot JSON, review the draft, then save. Unknown supported question settings are preserved. Import a previous saved configuration to restore its schedules; collected data and environment settings stay intact.</p>
+          <label class="button">Import configuration file<input type="file" data-protocol-file accept=".json,application/json" hidden></label>
+          <label><span>Configuration JSON (optional)</span><textarea rows="10" data-protocol-json spellcheck="false"></textarea></label>
+          <div class="schedule-actions"><button type="button" class="button" data-protocol-json-show>Copy draft into JSON editor</button><button type="button" class="button" data-protocol-json-load>Load JSON into draft</button></div>
+        </details>
       </section>
 
       <section class="panel">

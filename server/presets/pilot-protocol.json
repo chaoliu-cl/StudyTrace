@@ -1,0 +1,564 @@
+{
+  "esm_schedule": [
+    {
+      "schedule_id": "studytrace_panas10_daily",
+      "times": [
+        "10:30"
+      ],
+      "hours": [
+        10
+      ],
+      "studytrace_prompt_type": "esm_survey",
+      "studytrace_delivery_mode": "random",
+      "randomize": 90,
+      "expiration": 60,
+      "studytrace_window_start": "09:00",
+      "studytrace_window_end": "12:00",
+      "start_date": "",
+      "end_date": "",
+      "notification_title": "StudyTrace PANAS-10",
+      "notification_body": "Please complete your study questionnaire.",
+      "interface": 0,
+      "esms": [
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "PANAS-10 1/10: Upset",
+            "esm_instructions": "Thinking about yourself and how you feel right now, to what extent do you feel at the present moment:",
+            "esm_radios": [
+              "Very slightly or not at all",
+              "A little",
+              "Moderately",
+              "Quite a bit",
+              "Extremely"
+            ],
+            "esm_trigger": "panas10_01",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "PANAS-10 2/10: Hostile",
+            "esm_instructions": "Thinking about yourself and how you feel right now, to what extent do you feel at the present moment:",
+            "esm_radios": [
+              "Very slightly or not at all",
+              "A little",
+              "Moderately",
+              "Quite a bit",
+              "Extremely"
+            ],
+            "esm_trigger": "panas10_02",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "PANAS-10 3/10: Alert",
+            "esm_instructions": "Thinking about yourself and how you feel right now, to what extent do you feel at the present moment:",
+            "esm_radios": [
+              "Very slightly or not at all",
+              "A little",
+              "Moderately",
+              "Quite a bit",
+              "Extremely"
+            ],
+            "esm_trigger": "panas10_03",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "PANAS-10 4/10: Ashamed",
+            "esm_instructions": "Thinking about yourself and how you feel right now, to what extent do you feel at the present moment:",
+            "esm_radios": [
+              "Very slightly or not at all",
+              "A little",
+              "Moderately",
+              "Quite a bit",
+              "Extremely"
+            ],
+            "esm_trigger": "panas10_04",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "PANAS-10 5/10: Inspired",
+            "esm_instructions": "Thinking about yourself and how you feel right now, to what extent do you feel at the present moment:",
+            "esm_radios": [
+              "Very slightly or not at all",
+              "A little",
+              "Moderately",
+              "Quite a bit",
+              "Extremely"
+            ],
+            "esm_trigger": "panas10_05",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "PANAS-10 6/10: Nervous",
+            "esm_instructions": "Thinking about yourself and how you feel right now, to what extent do you feel at the present moment:",
+            "esm_radios": [
+              "Very slightly or not at all",
+              "A little",
+              "Moderately",
+              "Quite a bit",
+              "Extremely"
+            ],
+            "esm_trigger": "panas10_06",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "PANAS-10 7/10: Determined",
+            "esm_instructions": "Thinking about yourself and how you feel right now, to what extent do you feel at the present moment:",
+            "esm_radios": [
+              "Very slightly or not at all",
+              "A little",
+              "Moderately",
+              "Quite a bit",
+              "Extremely"
+            ],
+            "esm_trigger": "panas10_07",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "PANAS-10 8/10: Attentive",
+            "esm_instructions": "Thinking about yourself and how you feel right now, to what extent do you feel at the present moment:",
+            "esm_radios": [
+              "Very slightly or not at all",
+              "A little",
+              "Moderately",
+              "Quite a bit",
+              "Extremely"
+            ],
+            "esm_trigger": "panas10_08",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "PANAS-10 9/10: Afraid",
+            "esm_instructions": "Thinking about yourself and how you feel right now, to what extent do you feel at the present moment:",
+            "esm_radios": [
+              "Very slightly or not at all",
+              "A little",
+              "Moderately",
+              "Quite a bit",
+              "Extremely"
+            ],
+            "esm_trigger": "panas10_09",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "PANAS-10 10/10: Active",
+            "esm_instructions": "Thinking about yourself and how you feel right now, to what extent do you feel at the present moment:",
+            "esm_radios": [
+              "Very slightly or not at all",
+              "A little",
+              "Moderately",
+              "Quite a bit",
+              "Extremely"
+            ],
+            "esm_trigger": "panas10_10",
+            "esm_submit": "Submit",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        }
+      ]
+    },
+    {
+      "schedule_id": "studytrace_pss10_daily",
+      "times": [
+        "14:30"
+      ],
+      "hours": [
+        14
+      ],
+      "studytrace_prompt_type": "esm_survey",
+      "studytrace_delivery_mode": "random",
+      "randomize": 90,
+      "expiration": 60,
+      "studytrace_window_start": "13:00",
+      "studytrace_window_end": "16:00",
+      "start_date": "",
+      "end_date": "",
+      "notification_title": "StudyTrace Perceived Stress Scale",
+      "notification_body": "Please complete your study questionnaire.",
+      "interface": 0,
+      "esms": [
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Perceived Stress Scale 1/10",
+            "esm_instructions": "In the last month, how often have you been upset because of something that happened unexpectedly?",
+            "esm_radios": [
+              "never",
+              "almost never",
+              "sometimes",
+              "fairly often",
+              "very often"
+            ],
+            "esm_trigger": "pss10_01",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Perceived Stress Scale 2/10",
+            "esm_instructions": "In the last month, how often have you felt that you were unable to control the important things in your life?",
+            "esm_radios": [
+              "never",
+              "almost never",
+              "sometimes",
+              "fairly often",
+              "very often"
+            ],
+            "esm_trigger": "pss10_02",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Perceived Stress Scale 3/10",
+            "esm_instructions": "In the last month, how often have you felt nervous and stressed?",
+            "esm_radios": [
+              "never",
+              "almost never",
+              "sometimes",
+              "fairly often",
+              "very often"
+            ],
+            "esm_trigger": "pss10_03",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Perceived Stress Scale 4/10",
+            "esm_instructions": "In the last month, how often have you felt confident about your ability to handle your personal problems?",
+            "esm_radios": [
+              "never",
+              "almost never",
+              "sometimes",
+              "fairly often",
+              "very often"
+            ],
+            "esm_trigger": "pss10_04",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Perceived Stress Scale 5/10",
+            "esm_instructions": "In the last month, how often have you felt that things were going your way?",
+            "esm_radios": [
+              "never",
+              "almost never",
+              "sometimes",
+              "fairly often",
+              "very often"
+            ],
+            "esm_trigger": "pss10_05",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Perceived Stress Scale 6/10",
+            "esm_instructions": "In the last month, how often have you found that you could not cope with all the things that you had to do?",
+            "esm_radios": [
+              "never",
+              "almost never",
+              "sometimes",
+              "fairly often",
+              "very often"
+            ],
+            "esm_trigger": "pss10_06",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Perceived Stress Scale 7/10",
+            "esm_instructions": "In the last month, how often have you been able to control irritations in your life?",
+            "esm_radios": [
+              "never",
+              "almost never",
+              "sometimes",
+              "fairly often",
+              "very often"
+            ],
+            "esm_trigger": "pss10_07",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Perceived Stress Scale 8/10",
+            "esm_instructions": "In the last month, how often have you felt that you were on top of things?",
+            "esm_radios": [
+              "never",
+              "almost never",
+              "sometimes",
+              "fairly often",
+              "very often"
+            ],
+            "esm_trigger": "pss10_08",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Perceived Stress Scale 9/10",
+            "esm_instructions": "In the last month, how often have you been angered because of things that happened that were outside of your control?",
+            "esm_radios": [
+              "never",
+              "almost never",
+              "sometimes",
+              "fairly often",
+              "very often"
+            ],
+            "esm_trigger": "pss10_09",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Perceived Stress Scale 10/10",
+            "esm_instructions": "In the last month, how often have you felt difficulties were piling up so high that you could not overcome them?",
+            "esm_radios": [
+              "never",
+              "almost never",
+              "sometimes",
+              "fairly often",
+              "very often"
+            ],
+            "esm_trigger": "pss10_10",
+            "esm_submit": "Submit",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        }
+      ]
+    },
+    {
+      "schedule_id": "studytrace_mwq_daily",
+      "times": [
+        "18:00"
+      ],
+      "hours": [
+        18
+      ],
+      "studytrace_prompt_type": "esm_survey",
+      "studytrace_delivery_mode": "random",
+      "randomize": 60,
+      "expiration": 60,
+      "studytrace_window_start": "17:00",
+      "studytrace_window_end": "19:00",
+      "start_date": "",
+      "end_date": "",
+      "notification_title": "StudyTrace Mind-Wandering Questionnaire",
+      "notification_body": "Please complete your study questionnaire.",
+      "interface": 0,
+      "esms": [
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Mind-Wandering Questionnaire 1/5",
+            "esm_instructions": "I have difficulty maintaining focus on simple or repetitive work.",
+            "esm_radios": [
+              "Almost Never",
+              "Very Infrequently",
+              "Somewhat Infrequently",
+              "Somewhat Frequently",
+              "Very Frequently",
+              "Almost Always"
+            ],
+            "esm_trigger": "mwq_01",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Mind-Wandering Questionnaire 2/5",
+            "esm_instructions": "While reading, I find I haven’t been thinking about the text and must therefore read it again",
+            "esm_radios": [
+              "Almost Never",
+              "Very Infrequently",
+              "Somewhat Infrequently",
+              "Somewhat Frequently",
+              "Very Frequently",
+              "Almost Always"
+            ],
+            "esm_trigger": "mwq_02",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Mind-Wandering Questionnaire 3/5",
+            "esm_instructions": "I do things without paying full attention.",
+            "esm_radios": [
+              "Almost Never",
+              "Very Infrequently",
+              "Somewhat Infrequently",
+              "Somewhat Frequently",
+              "Very Frequently",
+              "Almost Always"
+            ],
+            "esm_trigger": "mwq_03",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Mind-Wandering Questionnaire 4/5",
+            "esm_instructions": "I find myself listening with one ear, thinking about something else at the same time.",
+            "esm_radios": [
+              "Almost Never",
+              "Very Infrequently",
+              "Somewhat Infrequently",
+              "Somewhat Frequently",
+              "Very Frequently",
+              "Almost Always"
+            ],
+            "esm_trigger": "mwq_04",
+            "esm_submit": "Next",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        },
+        {
+          "esm": {
+            "esm_type": 2,
+            "esm_title": "Mind-Wandering Questionnaire 5/5",
+            "esm_instructions": "I mind-wander during lectures or presentations.",
+            "esm_radios": [
+              "Almost Never",
+              "Very Infrequently",
+              "Somewhat Infrequently",
+              "Somewhat Frequently",
+              "Very Frequently",
+              "Almost Always"
+            ],
+            "esm_trigger": "mwq_05",
+            "esm_submit": "Submit",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        }
+      ]
+    }
+  ],
+  "app_usage_screenshot_schedule": [
+    {
+      "schedule_id": "studytrace_app_usage_screenshot_evening",
+      "times": [
+        "20:00"
+      ],
+      "hours": [
+        20
+      ],
+      "studytrace_prompt_type": "app_usage_screenshot",
+      "studytrace_delivery_mode": "random",
+      "randomize": 45,
+      "expiration": 60,
+      "studytrace_window_start": "19:00",
+      "studytrace_window_end": "20:59",
+      "start_date": "",
+      "end_date": "",
+      "notification_title": "StudyTrace app usage screenshot",
+      "notification_body": "Please upload screenshots of today's app usage so far.",
+      "interface": 0,
+      "esms": [
+        {
+          "esm": {
+            "esm_type": 14,
+            "esm_title": "Today's app usage screenshots",
+            "esm_instructions": "On iPhone, open Settings > Screen Time > See All App & Website Activity > Day > Today and select this iPhone if a device selector appears. On Android, open Settings > Digital Wellbeing & parental controls > Dashboard and select today. Take screenshots showing today's total and app list. Return to StudyTrace and choose one or more screenshots. These are today's usage so far.",
+            "esm_trigger": "app_usage_screenshot",
+            "esm_submit": "Upload screenshots",
+            "esm_na": false,
+            "studytrace_required": true
+          }
+        }
+      ],
+      "studytrace_period": "evening",
+      "studytrace_usage_day": "today"
+    }
+  ],
+  "battery_screenshot_schedule": [],
+  "screen_time_activity_schedule": []
+}

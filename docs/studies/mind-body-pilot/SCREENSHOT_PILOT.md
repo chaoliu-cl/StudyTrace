@@ -1,5 +1,11 @@
 # Mind-body pilot with surveys and app usage screenshots
 
+> **Historical protocol and older dashboard instructions.** For the current pilot
+> (each questionnaire once daily plus one evening screenshot), use the
+> [complete deployment and dashboard configuration guide](../../RAILWAY_PILOT_DEPLOYMENT.md).
+> The current **Survey and screenshot schedules** editor replaces the separate
+> forms described below. Do not apply this older protocol to the current pilot.
+
 This pilot asks participants to complete PANAS-10, PSS-10, and MWQ together at three random daily prompts, and to upload one fresh app usage screenshot at each of three separate random daily prompts. That is **six intended notifications per day: 75 questionnaire ratings and three screenshots**. A seven-day run requests 525 ratings and 21 screenshots per participant.
 
 Use today's cumulative usage so far for each screenshot. On iPhone, use **Screen Time**; on Android, use **Digital Wellbeing** or the manufacturer's equivalent. These prompts do not capture the screen automatically. Participants take and select each image themselves.

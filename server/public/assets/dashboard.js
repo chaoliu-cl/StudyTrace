@@ -1,3 +1,5 @@
+import { initScheduleEditor } from './schedule-editor.js';
+
 const page = document.body.dataset.page;
 
 function escapeHtml(value) {
@@ -574,14 +576,6 @@ function initResearcher() {
   const phoneUseDaily = document.querySelector('#researcher-phone-use-daily');
   const batteryUsageCleaned = document.querySelector('#researcher-battery-usage-cleaned');
   const batteryUsageScreenshots = document.querySelector('#researcher-battery-usage-screenshots');
-  const esmScheduleForm = document.querySelector('#researcher-esm-schedule');
-  const esmScheduleResult = document.querySelector('#researcher-esm-schedule-result');
-  const batteryScheduleForm = document.querySelector('#researcher-battery-schedule');
-  const batteryScheduleResult = document.querySelector('#researcher-battery-schedule-result');
-  const activityScheduleForm = document.querySelector('#researcher-activity-schedule');
-  const activityScheduleResult = document.querySelector('#researcher-activity-schedule-result');
-  const usageScheduleForm = document.querySelector('#researcher-usage-schedule');
-  const usageScheduleResult = document.querySelector('#researcher-usage-schedule-result');
   const screenTimeActivity = document.querySelector('#researcher-screen-time-activity');
   const devicesUpdated = document.querySelector('#researcher-devices-updated');
   const joinLinkForm = document.querySelector('#researcher-join-link');
@@ -590,6 +584,7 @@ function initResearcher() {
   let currentStudyId = '';
   let currentPassword = '';
   let autoRefreshStarted = false;
+  const scheduleEditor = initScheduleEditor(document.querySelector('#researcher-protocol'));
 
   // Metrics, devices, withdrawals, and sensor coverage. Polled while the page
   // is open so device counts track enrollments and withdrawals.
@@ -671,37 +666,7 @@ function initResearcher() {
     environmentForm.elements.air_quality_enabled.checked = payload.study.config?.environment_collection?.air_quality_enabled === true;
     environmentForm.elements.context_questions_enabled.checked = payload.study.config?.environment_collection?.context_questions_enabled === true;
     environmentForm.elements.green_space_enabled.checked = payload.study.config?.environment_collection?.green_space_enabled === true;
-    await loadScheduleSection({
-      studyId,
-      password,
-      form: esmScheduleForm,
-      result: esmScheduleResult,
-      promptType: 'esm_survey',
-      endpoint: 'esm-schedule',
-      message,
-    });
-    await loadScheduleSection({
-      studyId,
-      password,
-      form: batteryScheduleForm,
-      result: batteryScheduleResult,
-      promptType: 'battery_usage_screenshot',
-      endpoint: 'battery-screenshot-schedule',
-      message,
-    });
-    await loadScheduleSection({
-      studyId,
-      password,
-      form: activityScheduleForm,
-      result: activityScheduleResult,
-      promptType: 'screen_time_activity_screenshot',
-      endpoint: 'screen-time-activity-schedule',
-      message,
-    });
-    await loadScheduleSection({
-      studyId, password, form: usageScheduleForm, result: usageScheduleResult,
-      promptType: 'app_usage_screenshot', endpoint: 'app-usage-screenshot-schedule', message,
-    });
+    await scheduleEditor.load(studyId, password);
     await loadScreenTimeActivity({ studyId, password, table: screenTimeActivity, message });
     await loadBatteryUsageDiagnostics({
       studyId,
@@ -731,6 +696,7 @@ function initResearcher() {
       });
       const payload = await readJson(response);
       if (!response.ok) throw new Error(payload.error || 'Could not save environment collection.');
+      scheduleEditor.setContextEnabled(payload.enabled && payload.context_questions_enabled);
       setMessage(status, payload.enabled ? `Environment collection enabled; air pollution ${payload.air_quality_enabled ? 'on' : 'off'}, context questions ${payload.context_questions_enabled ? 'on' : 'off'}, green-space maps ${payload.green_space_enabled ? 'on' : 'off'}. Refresh surveys on phones. Personal light collection stays off.` : 'Environment collection stopped. Existing records remain available. Refresh phones to remove context questions and stop device light collection.');
     } catch (error) { setMessage(status, error.message, true); }
   });
@@ -752,77 +718,6 @@ function initResearcher() {
     }
     setMessage(joinLinkMessage, '');
     renderJoinLink(joinLinkResult, payload);
-  });
-
-  setupTemplatePicker({
-    select: document.querySelector('#researcher-template-select'),
-    button: document.querySelector('#researcher-template-add'),
-    source: document.querySelector('#researcher-template-source'),
-    textarea: esmScheduleForm.elements.esms_json,
-    message,
-  });
-
-  esmScheduleForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!currentStudyId || !currentPassword) {
-      return setMessage(message, 'Load a study before saving the ESM survey schedule.', true);
-    }
-    await saveScheduleSection({
-      studyId: currentStudyId,
-      password: currentPassword,
-      form: esmScheduleForm,
-      result: esmScheduleResult,
-      message,
-      promptType: 'esm_survey',
-      label: 'ESM survey',
-      endpoint: 'esm-schedule',
-    });
-  });
-
-  batteryScheduleForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!currentStudyId || !currentPassword) {
-      return setMessage(message, 'Load a study before saving the Battery screenshot schedule.', true);
-    }
-    await saveScheduleSection({
-      studyId: currentStudyId,
-      password: currentPassword,
-      form: batteryScheduleForm,
-      result: batteryScheduleResult,
-      message,
-      promptType: 'battery_usage_screenshot',
-      label: 'Battery screenshot',
-      endpoint: 'battery-screenshot-schedule',
-    });
-  });
-
-  usageScheduleForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!currentStudyId || !currentPassword) {
-      return setMessage(message, 'Load a study before saving screenshot reminders.', true);
-    }
-    await saveScheduleSection({
-      studyId: currentStudyId, password: currentPassword,
-      form: usageScheduleForm, result: usageScheduleResult, message,
-      promptType: 'app_usage_screenshot', label: 'App usage screenshot', endpoint: 'app-usage-screenshot-schedule',
-    });
-  });
-
-  activityScheduleForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!currentStudyId || !currentPassword) {
-      return setMessage(message, 'Load a study before saving the Screen Time screenshot schedule.', true);
-    }
-    await saveScheduleSection({
-      studyId: currentStudyId,
-      password: currentPassword,
-      form: activityScheduleForm,
-      result: activityScheduleResult,
-      message,
-      promptType: 'screen_time_activity_screenshot',
-      label: 'Screen Time screenshot',
-      endpoint: 'screen-time-activity-schedule',
-    });
   });
 
   document.querySelector('#researcher-export-zip').addEventListener('click', async (event) => {

@@ -1,5 +1,11 @@
 # Mind body pilot setup in Railway and StudyTrace
 
+> **Historical protocol and older dashboard instructions.** For the current pilot
+> (each questionnaire once daily plus one evening screenshot), use the
+> [complete deployment and dashboard configuration guide](../../RAILWAY_PILOT_DEPLOYMENT.md).
+> The current **Survey and screenshot schedules** editor replaces the separate
+> forms described below. Do not apply this older protocol to the current pilot.
+
 This guide configures one survey containing your PANAS-10, Perceived Stress Scale, and Mind-Wandering Questionnaire, in that order. Participants receive the same 25 items at each of three daily prompts: 75 ratings per day. Your requested prompt hours are 09:00–21:00 in each participant's local time, with 60 minutes to respond.
 
 Railway hosts the server and PostgreSQL database. You create the study and survey in the StudyTrace web dashboards. The phone downloads the schedule and creates its notifications; a Railway cron job is unnecessary.
