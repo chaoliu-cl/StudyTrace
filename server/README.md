@@ -137,6 +137,15 @@ location service runs. Refresh surveys to fetch the Android setting. iOS has no
 public ambient-light API, so lux remains missing; modeled outdoor sunlight is
 never converted into a purported indoor light measurement.
 
+Air pollution has a **separate opt-in**: check **Include air pollution
+(Open-Meteo/CAMS)** and save with Environment measures On, or send
+`{"enabled":true,"air_quality_enabled":true}` to the same researcher endpoint.
+Existing studies remain opted out until this is explicitly enabled. Air-quality
+rows use `source=open_meteo_air_quality` in the same export, with PM2.5, PM10,
+CO, NO2, SO2, and ozone in µg/m³, plus separate US and European AQI indices.
+These are CAMS outdoor area model estimates, not personal/indoor measurements.
+Weather and air-quality failures retry independently without rejecting GPS.
+
 Rows appear as `environment_measures` with source, units, timestamps, precision,
 and attribution. Weather uses the newest fix in each incoming batch, at most
 one observation per device/UTC hour; fixes over 48 hours old are skipped. Weather
@@ -145,6 +154,9 @@ next location batch. Paused/terminated collection and missing location
 permissions therefore leave gaps rather than invented observations. Describe
 this optional processing in study consent. Provider fields and units follow the
 [Open-Meteo documentation](https://open-meteo.com/en/docs).
+
+See [weather and air-pollution setup](../docs/ENVIRONMENT_SETUP.md) for dashboard
+steps, fields/units, model resolution, provider attribution, and verification.
 
 See [the collection audit and rollout checklist](../docs/COLLECTION_UPGRADE.md)
 for iPhone failure modes, evidence, recovery, and physical-device checks.
