@@ -1469,13 +1469,14 @@ try {
   assert.strictEqual(enabledEnv.json.air_quality_enabled, false, 'enabling weather does not implicitly enable pollution');
   const originalFetch = globalThis.fetch;
   let weatherLookups = 0;
+  let daylightLookups = 0;
   let airLookups = 0;
   let failAir = false;
   let failWeather = false;
   let pauseAir;
   const weatherNow = Date.now();
   const weatherHour = Math.floor(weatherNow / 3600000) * 3600000;
-  const weatherPayload = { hourly: { time: [weatherHour / 1000], temperature_2m: [19.5], cloud_cover: [32], weather_code: [2], shortwave_radiation: [300] } };
+  const weatherPayload = { hourly: { time: [weatherHour / 1000], temperature_2m: [19.5], relative_humidity_2m: [53], apparent_temperature: [18.2], wind_speed_10m: [2.4], precipitation: [0], cloud_cover: [32], weather_code: [2], shortwave_radiation: [300] } };
   const airPayload = { latitude: 40.8, longitude: -74,
     hourly: { time: [weatherHour / 1000], pm2_5: [0], pm10: [17.2], carbon_monoxide: [200], nitrogen_dioxide: [null], sulphur_dioxide: [-2], ozone: ['8'], us_aqi: [45], european_aqi: [10] } };
   globalThis.fetch = async (url, options) => {
@@ -1496,6 +1497,14 @@ try {
       return new Response(JSON.stringify(airPayload), { status: 200 });
     }
     if (target.hostname === 'api.open-meteo.com') {
+      if (target.searchParams.has('daily')) {
+        daylightLookups += 1;
+        const day = target.searchParams.get('start_date');
+        const noon = Date.parse(`${day}T12:00:00Z`) / 1000;
+        return new Response(JSON.stringify({ daily: { time: [noon], sunrise: [noon], sunset: [noon + 36000], daylight_duration: [36000] } }), { status: 200 });
+      }
+      assert.strictEqual(target.searchParams.get('wind_speed_unit'), 'ms');
+      assert.strictEqual(target.searchParams.get('precipitation_unit'), 'mm');
       weatherLookups += 1;
       if (failWeather) return new Response('{}', { status: 503 });
       return new Response(JSON.stringify(weatherPayload), { status: 200 });
@@ -1515,18 +1524,26 @@ try {
     async function environmentRows(device) {
       const result = await request('GET', `${mobileRoot}/export/environment_measures`, { headers: mobileAuth });
       assert.strictEqual(result.status, 200);
-      return device ? result.json.rows.filter(row => row.device_id === device) : result.json.rows;
+      const rows = result.json.rows.filter(row => row.data.source !== 'open_meteo_daylight');
+      return device ? rows.filter(row => row.device_id === device) : rows;
     }
     for (let i = 0; i < 2; i += 1) {
       const result = await request('POST', `${mobileRoot}/sensors/locations/data`, { headers: { Authorization: 'Bearer enroll-pw', 'Content-Type': 'application/json' }, body: JSON.stringify(weatherBody) });
       assert.strictEqual(result.status, 201);
     }
     const weatherRows = await request('GET', `${mobileRoot}/export/environment_measures`, { headers: mobileAuth });
-    assert.strictEqual(weatherRows.json.rows.length, 1, 'one weather observation per device-hour despite retries');
-    assert.strictEqual(weatherRows.json.rows[0].data.temperature_c, 19.5);
-    assert.strictEqual(weatherRows.json.rows[0].data.light_lux, null, 'modeled sunshine is never reported as measured lux');
-    assert.strictEqual(weatherRows.json.rows[0].data.latitude_rounded, 40.71);
-    assert.strictEqual(weatherRows.json.rows[0].data.longitude_rounded, -74.01);
+    const hourlyWeather = weatherRows.json.rows.filter(row => row.data.source === 'open_meteo');
+    assert.strictEqual(hourlyWeather.length, 1, 'one weather observation per device-hour despite retries');
+    assert.strictEqual(hourlyWeather[0].data.temperature_c, 19.5);
+    assert.strictEqual(hourlyWeather[0].data.relative_humidity_percent, 53);
+    assert.strictEqual(hourlyWeather[0].data.apparent_temperature_c, 18.2);
+    assert.strictEqual(hourlyWeather[0].data.wind_speed_m_s, 2.4);
+    assert.strictEqual(hourlyWeather[0].data.precipitation_mm, 0, 'no precipitation is a valid zero');
+    assert.strictEqual(hourlyWeather[0].data.light_lux, null, 'modeled sunshine is never reported as measured lux');
+    assert.strictEqual(hourlyWeather[0].data.latitude_rounded, 40.71);
+    assert.strictEqual(hourlyWeather[0].data.longitude_rounded, -74.01);
+    assert.strictEqual(weatherRows.json.rows.filter(row => row.data.source === 'open_meteo_daylight').length, 1);
+    assert.strictEqual(daylightLookups, 1, 'daylight is daily and deduplicates');
     assert.strictEqual(weatherLookups, 1);
     assert.strictEqual(airLookups, 0, 'weather-only opt-in makes no pollution requests');
 

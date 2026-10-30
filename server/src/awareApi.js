@@ -1,4 +1,5 @@
 import { collectEnvironment } from './environment.js';
+import { withEnvironmentContext } from './environmentContext.js';
 // AWARE-protocol front-end.
 //
 // Implements the subset of the AWARE REST protocol that the bundled
@@ -89,7 +90,7 @@ export function createAwareRouter(getPublicBaseUrl) {
     const batterySchedule = Array.isArray(config.battery_screenshot_schedule) ? config.battery_screenshot_schedule : [];
     const activitySchedule = Array.isArray(config.screen_time_activity_schedule) ? config.screen_time_activity_schedule : [];
     const appUsageSchedule = Array.isArray(config.app_usage_screenshot_schedule) ? config.app_usage_screenshot_schedule : [];
-    res.json([...esmSchedule, ...batterySchedule, ...activitySchedule, ...appUsageSchedule]);
+    res.json(withEnvironmentContext(req.study, [...esmSchedule, ...batterySchedule, ...activitySchedule, ...appUsageSchedule]));
   });
 
   // ---- Per-sensor actions ---------------------------------------------------

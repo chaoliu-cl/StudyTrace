@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node --test test/deployment.test.js && node server/test/smoke.test.js",
+    "test": "node --test test/deployment.test.js server/test/environment.test.js && node server/test/smoke.test.js",
     "preview": "node server/scripts/dev-preview.mjs"
   },
   "engines": {
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "express": "^4.21.2",
+    "geotiff": "^3.0.5",
     "pg": "^8.13.1",
     "qrcode-generator": "^2.0.4",
     "tesseract.js": "^7.0.0"
