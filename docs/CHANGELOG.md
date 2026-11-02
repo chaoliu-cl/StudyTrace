@@ -1,5 +1,14 @@
 # Changelog
 
+## November 2, 2026 — iPhone build 17
+
+- Dashboard shows only Battery Usage Screenshot, including in demo mode.
+- Survey and location cards are omitted from Dashboard. Questionnaires remain
+  available through Surveys and their notification links.
+- Returning to Dashboard refreshes the Battery section without automatically
+  switching tabs when a questionnaire is available.
+- Reload removes old card views and keeps a single Battery section.
+
 ## November 2, 2026 — iPhone build 16
 
 - Notification taps open the specific questionnaire or screenshot task and keep

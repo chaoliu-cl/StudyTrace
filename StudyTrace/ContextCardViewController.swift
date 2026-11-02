@@ -97,13 +97,6 @@ class ContextCardViewController: UIViewController {
     
     @objc func willEnterForegroundNotification(notification: NSNotification) {
         refreshVisibleContextCards()
-        let esmManager = ESMScheduleManager.shared()
-        let schedules = esmManager.getValidSchedules()
-        if(schedules.count > 0){
-            if !IOSESM.hasESMAppearedInThisSession(){
-                self.tabBarController?.selectedIndex = 0
-            }
-        }
         if StudyParticipationController.hasConsent() {
             _ = LocationPermissionManager().isAuthorizedAlways(with: self)
         }
@@ -121,19 +114,14 @@ class ContextCardViewController: UIViewController {
         for card in contextCards {
             card.baseStackView.isHidden = true
             self.mainStackView.removeArrangedSubview(card)
+            card.removeFromSuperview()
         }
         contextCards.removeAll()
     }
     
     func setupContextCards(){
         self.removeAllContextCards()
-        if AppStoreDemo.isEnabled {
-            addDemoCards()
-        } else {
-            addESMCard()
-            addLocationCard()
-            addDeviceUsageCard()
-        }
+        addDeviceUsageCard()
 
         if contextCards.count == 0 {
             refreshButton.isEnabled = false
@@ -141,7 +129,7 @@ class ContextCardViewController: UIViewController {
             emptyStateStack.isHidden = false
         }else{
             refreshButton.isEnabled = true
-            deleteButton.isEnabled = true
+            deleteButton.isEnabled = false
             emptyStateStack.isHidden = true
             animateCardsIn()
         }
