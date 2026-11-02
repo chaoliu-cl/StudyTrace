@@ -10,6 +10,18 @@ import UIKit
 import CoreData
 import AWAREFramework
 
+struct SurveyNotificationTarget: Equatable {
+    let scheduleId: String
+    let occurrenceId: String
+
+    init?(identifier: String, userInfo: [AnyHashable: Any]) {
+        guard let scheduleId = userInfo["schedule_id"] as? String,
+              !scheduleId.isEmpty, !identifier.isEmpty else { return nil }
+        self.scheduleId = scheduleId
+        self.occurrenceId = identifier
+    }
+}
+
 class ESMViewController: UIViewController {
 
     @IBOutlet weak var surveyButton: UIButton!
@@ -19,6 +31,38 @@ class ESMViewController: UIViewController {
     private var promptButtons: [UsageScreenshotKind: UIButton] = [:]
     private var activeScreenshotSchedules: [UsageScreenshotKind: EntityESMSchedule] = [:]
     private let screenshotCoordinator = UsageScreenshotCoordinator()
+    private var pendingNotification: SurveyNotificationTarget?
+
+    /// Keep the target until this screen is visible, including a cold launch
+    /// or a tap while another questionnaire/photo picker is still open.
+    func openNotification(_ target: SurveyNotificationTarget) {
+        if let form = navigationController?.topViewController as? ESMScrollViewController,
+           form.studytraceTargetOccurrenceId == target.occurrenceId { return }
+        pendingNotification = target
+        openPendingNotificationIfReady()
+    }
+
+    private func openPendingNotificationIfReady() {
+        guard let target = pendingNotification, viewIfLoaded?.window != nil,
+              presentedViewController == nil, !screenshotCoordinator.isBusy,
+              navigationController?.topViewController == self else { return }
+        pendingNotification = nil
+        guard StudyParticipationController.hasConsent() else { return }
+        let manager = ESMScheduleManager.shared()
+        let schedules = manager.getValidSchedules() as? [EntityESMSchedule] ?? []
+        guard let schedule = schedules.first(where: { $0.schedule_id == target.scheduleId }),
+              let occurrence = manager.studytraceOccurrence(identifier: target.occurrenceId, at: Date()),
+              occurrence["schedule_id"] as? String == target.scheduleId else {
+            showScreenshotResult(title: "Request no longer available",
+                                 message: "This request has been completed, removed, or its response window has ended. Check Surveys for your current requests.")
+            return
+        }
+        if let kind = screenshotKind(for: schedule) {
+            startScreenshot(kind, schedule: schedule, occurrence: occurrence)
+        } else {
+            performSegue(withIdentifier: "toESMScrollView", sender: target)
+        }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -44,6 +88,7 @@ class ESMViewController: UIViewController {
 
         setupEmptyState()
         setupScreenshotPrompts()
+        screenshotCoordinator.onReturnToPresenter = { [weak self] in self?.openPendingNotificationIfReady() }
 
         if OnboardingManager.needsOnboarding() {
             OnboardingManager().startOnboarding(with: self)
@@ -118,23 +163,29 @@ class ESMViewController: UIViewController {
     }
 
     override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
         self.tabBarController?.tabBar.isHidden = false
         NotificationCenter.default.addObserver(self, selector: #selector(willEnterForegroundNotification(notification:)), name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(surveyTimingUpdated), name: Notification.Name("StudyTraceSurveyTimingUpdated"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(surveyTimingUpdated), name: Notification.Name("StudyTraceESMConfigurationUpdated"), object: nil)
         self.checkESMSchedules()
         self.hideContextViewIfNeeded()
         if StudyParticipationController.hasConsent() {
             _ = LocationPermissionManager().isAuthorizedAlways(with: self)
         }
+        openPendingNotificationIfReady()
     }
     
     override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
         NotificationCenter.default.removeObserver(self, name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.removeObserver(self, name: Notification.Name("StudyTraceSurveyTimingUpdated"), object: nil)
+        NotificationCenter.default.removeObserver(self, name: Notification.Name("StudyTraceESMConfigurationUpdated"), object: nil)
     }
 
     @objc private func surveyTimingUpdated() {
         checkESMSchedules()
+        openPendingNotificationIfReady()
     }
     
     @objc func willEnterForegroundNotification(notification: NSNotification) {
@@ -142,6 +193,7 @@ class ESMViewController: UIViewController {
         if StudyParticipationController.hasConsent() {
             _ = LocationPermissionManager().isAuthorizedAlways(with: self)
         }
+        openPendingNotificationIfReady()
     }
     
     func checkESMSchedules(){
@@ -241,14 +293,18 @@ class ESMViewController: UIViewController {
             return
         }
         guard let schedule = activeScreenshotSchedules[kind],
-              let occurrence = ESMScheduleManager.shared().studytraceOccurrence(for: schedule, at: Date()),
-              let identifier = occurrence["id"] as? String,
-              let delivered = occurrence["delivered_at"] as? NSNumber,
-              let expires = occurrence["expires_at"] as? NSNumber else {
+              let occurrence = ESMScheduleManager.shared().studytraceOccurrence(for: schedule, at: Date()) else {
             checkESMSchedules()
             showScreenshotResult(title: "Screenshot request closed", message: "There is no open request. Please wait for the next notification.")
             return
         }
+        startScreenshot(kind, schedule: schedule, occurrence: occurrence)
+    }
+
+    private func startScreenshot(_ kind: UsageScreenshotKind, schedule: EntityESMSchedule, occurrence: [AnyHashable: Any]) {
+        guard let identifier = occurrence["id"] as? String,
+              let delivered = occurrence["delivered_at"] as? NSNumber,
+              let expires = occurrence["expires_at"] as? NSNumber else { return }
         let scheduleId = schedule.schedule_id ?? ""
         let period = ["morning", "afternoon", "evening"].first { scheduleId.contains("_\($0)_") } ?? "test"
         let prompt = UsageScreenshotPrompt(identifier: identifier, scheduleId: scheduleId, period: period,
@@ -269,23 +325,9 @@ class ESMViewController: UIViewController {
     private func handleScreenshotOutcome(_ kind: UsageScreenshotKind, _ outcome: UsageScreenshotUploader.Outcome, schedule: EntityESMSchedule) {
         switch outcome {
         case .uploaded(let feedback):
-            if feedback?.needsReview == true {
-                let alert = UIAlertController(title: "Please Retake Screenshot",
-                                              message: feedback?.message ?? "Your screenshot uploaded, but StudyTrace could not read it clearly. Please retake it and upload it again.",
-                                              preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "Retake / Choose Again", style: .default) { [weak self] _ in
-                    self?.startScreenshot(kind)
-                })
-                // Keeping the upload still counts as answering the prompt.
-                alert.addAction(UIAlertAction(title: "Keep Uploaded Screenshot", style: .cancel) { [weak self] _ in
-                    self?.completeScreenshotSchedule(schedule)
-                })
-                present(alert, animated: true)
-                return
-            }
             completeScreenshotSchedule(schedule)
             showScreenshotResult(title: "Screenshot Uploaded",
-                                 message: feedback?.message ?? "Your screenshot was uploaded to the study server.")
+                                 message: feedback?.participantMessage ?? "Your screenshot was uploaded to the study server.")
         case .queued:
             // The screenshot is safely stored and will upload on its own,
             // so the participant has done their part for this prompt.
@@ -321,7 +363,9 @@ class ESMViewController: UIViewController {
 
     private func showScreenshotResult(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self, weak alert] _ in
+            alert?.dismiss(animated: true) { self?.openPendingNotificationIfReady() }
+        })
         present(alert, animated: true)
     }
 
@@ -329,6 +373,12 @@ class ESMViewController: UIViewController {
 
     // In a storyboard-based application, you will often want to do a little preparation before navigation
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
+        if segue.identifier == "toESMScrollView",
+           let target = sender as? SurveyNotificationTarget,
+           let form = segue.destination as? ESMScrollViewController {
+            form.studytraceTargetScheduleId = target.scheduleId
+            form.studytraceTargetOccurrenceId = target.occurrenceId
+        }
         // Get the new view controller using segue.destination.
         // Pass the selected object to the new view controller.
         

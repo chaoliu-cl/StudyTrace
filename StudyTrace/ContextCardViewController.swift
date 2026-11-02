@@ -259,15 +259,8 @@ class ContextCardViewController: UIViewController {
             guard let self = self else { return }
             switch outcome {
             case .uploaded(let feedback):
-                if feedback?.needsReview == true {
-                    self.showBatteryScreenshotUploadResult(
-                        title: "Please Retake Battery Screenshot",
-                        message: feedback?.message ?? "Your screenshot uploaded, but StudyTrace could not read the app usage rows clearly. Please retake it and upload it again."
-                    )
-                } else {
-                    self.showBatteryScreenshotUploadResult(title: "Battery Screenshot Uploaded",
-                                                           message: feedback?.message ?? "Your screenshot was uploaded to the study server.")
-                }
+                self.showBatteryScreenshotUploadResult(title: "Battery Screenshot Uploaded",
+                                                       message: feedback?.participantMessage ?? "Your screenshot was uploaded to the study server.")
             case .queued:
                 self.showBatteryScreenshotUploadResult(title: "Screenshot Saved",
                                                        message: "StudyTrace could not reach the study server right now. Your screenshot is saved on this iPhone and will upload automatically when a connection is available.")

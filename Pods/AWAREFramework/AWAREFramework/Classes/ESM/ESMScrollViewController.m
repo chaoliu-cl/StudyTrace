@@ -375,9 +375,17 @@ if (studytraceOccurrenceId == nil && esmSchedule.fire_hour.integerValue >= 0) {
 
 
 - (BOOL)studytraceValidateSession {
-    if (studytraceOccurrenceId == nil) return YES; // Context/demo surveys have no delivery window.
     ESMScheduleManager *manager = [ESMScheduleManager sharedESMScheduleManager];
-    if ([manager studytraceOccurrenceIsOpen:studytraceOccurrenceId atDate:[NSDate date]]) return YES;
+    if (studytraceOccurrenceId == nil && self.studytraceTargetOccurrenceId.length > 0) {
+        studytraceOccurrenceId = self.studytraceTargetOccurrenceId;
+        studytraceScheduleId = self.studytraceTargetScheduleId;
+        NSDictionary *target = [manager studytraceOccurrenceForIdentifier:studytraceOccurrenceId atDate:[NSDate date]];
+        sessionTimestamp = @([target[@"delivered_at"] doubleValue] * 1000);
+    }
+    if (studytraceOccurrenceId == nil) return YES; // Context/demo surveys have no delivery window.
+    NSDictionary *record = [manager studytraceOccurrenceForIdentifier:studytraceOccurrenceId atDate:[NSDate date]];
+    if ([record[@"schedule_id"] isEqual:studytraceScheduleId]) return YES;
+    if ([self.presentedViewController isKindOfClass:[UIAlertController class]]) return NO;
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Survey closed" message:@"The response window for this survey has ended." preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self.navigationController popToRootViewControllerAnimated:YES];

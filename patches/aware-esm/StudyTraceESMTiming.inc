@@ -91,6 +91,11 @@
         date.timeIntervalSince1970 < [record[@"expires_at"] doubleValue];
 }
 
+- (NSDictionary *)studytraceOccurrenceForIdentifier:(NSString *)identifier atDate:(NSDate *)date {
+    if (![self studytraceOccurrenceIsOpen:identifier atDate:date]) return nil;
+    return [self studytraceRecords][identifier];
+}
+
 - (NSDictionary *)studytraceOccurrenceForSchedule:(EntityESMSchedule *)schedule atDate:(NSDate *)date {
     NSDictionary *records = [self studytraceRecords];
     NSDictionary *newest = nil;

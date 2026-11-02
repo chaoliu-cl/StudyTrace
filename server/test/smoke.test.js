@@ -1041,6 +1041,32 @@ try {
   assert.ok(activityCsv.json.split('\r\n')[0].includes('pickups'), 'screen_time_activity CSV export');
   console.log('✓ Screen Time activity screenshots: schedule, confirmed values, and OCR parsing');
 
+  // Vision joins an app name and its duration into one visual line. Scrolled
+  // companion images may omit headings/totals; preserve them for review.
+  const activityFixtures = [
+    { id: 'inline-activity', text: 'Screen Time\nToday\n2h 10m\nMost Used Apps\nInstagram 1h 10m\nYouTube 45m', total: 7800, apps: 2, review: false },
+    { id: 'cropped-activity', text: 'Instagram 1h 10m\nYouTube 45m', total: null, apps: 2, review: true },
+    { id: 'heading-first-activity', text: 'Most Used\nYouTube\n45m', total: null, apps: 1, review: true },
+    { id: 'unclear-activity', text: 'text could not be recognized', total: null, apps: 0, review: true },
+  ];
+  for (const [i, fixture] of activityFixtures.entries()) {
+    const submitted = await request('POST', `${apiBase}/usage-screenshots`, {
+      headers: jsonAuth,
+      body: JSON.stringify({ device_id: fixture.id, timestamp: 9420 + i, screenshot_kind: 'screen_time_activity',
+        screenshot_base64: tinyPngBase64, ocr_text: fixture.text, upload_id: fixture.id }),
+    });
+    assert.strictEqual(submitted.status, 201, 'uncertain OCR must not reject a valid image upload');
+    assert.strictEqual(submitted.json.feedback.needs_review, fixture.review);
+    assert.strictEqual(submitted.json.feedback.app_rows_detected, fixture.apps);
+    assert.ok(!/retake/i.test(submitted.json.feedback.message), 'successful uploads must not ask for a repeat upload');
+    const extracted = await request('GET', `${apiBase}/export/screen_time_activity?format=json&device_id=${fixture.id}`, { headers: researcherAuth });
+    const summary = extracted.json.rows.find(row => row.data.row_type === 'summary')?.data;
+    assert.ok(summary?.source_image_url, 'the original image remains available for researcher review');
+    assert.strictEqual(summary.total_screen_time_seconds, fixture.total, 'an app duration must not become the missing daily total');
+    assert.strictEqual(extracted.json.rows.filter(row => row.data.row_type === 'app').length, fixture.apps);
+  }
+  console.log('✓ inline and cropped Screen Time screenshots upload successfully; missing totals remain missing and reviewable');
+
   // 34.5. The iOS app's current upload: phone OCR text, no participant
   // review, so the server parses the values and they are not "confirmed".
   const phoneTextBattery = await request('POST', `${apiBase}/usage-screenshots`, {

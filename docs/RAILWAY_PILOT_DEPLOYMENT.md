@@ -306,6 +306,11 @@ protocols; follow this guide for the current four-notification pilot.
 
 ## 7. Enroll and refresh the phones
 
+For the November 2 notification-tap and screenshot fixes, distribute iPhone
+**1.0.0 build 16** (or a later build containing those fixes). See the
+[iPhone release and pilot checks](IOS_NOTIFICATION_SCREENSHOT_FIXES.md).
+Updating the backend or refreshing schedules cannot install these mobile fixes.
+
 In the researcher dashboard's **Participant join link** section, enter the
 participant password and a unique participant ID, then generate the join link/QR.
 Keep admin/researcher credentials separate from links sent to participants.

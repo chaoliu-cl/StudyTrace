@@ -16,6 +16,18 @@ import CoreLocation
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
+    private var pendingSurveyNotification: SurveyNotificationTarget?
+
+    private func routePendingSurveyNotification() {
+        guard let target = pendingSurveyNotification,
+              let tabs = (window?.rootViewController as? UITabBarController) ?? window?.rootViewController?.tabBarController,
+              let index = tabs.surveysTabIndex else { return }
+        let host = tabs.viewControllers?[index]
+        guard let surveys = (host as? ESMViewController) ?? (host as? UINavigationController)?.viewControllers.first as? ESMViewController else { return }
+        pendingSurveyNotification = nil
+        tabs.selectedIndex = index
+        surveys.openNotification(target)
+    }
 
     static let bgSyncTaskIdentifier = "com.awareframework.client.sync"
     static let bgRefreshTaskIdentifier = "com.awareframework.client.refresh"
@@ -181,6 +193,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         AWAREEventLogger.shared().logEvent(["class":"AppDelegate",
                                             "event":"applicationDidBecomeActive:"]);
         AppStoreCaptureDriver.runIfNeeded(window: window)
+        routePendingSurveyNotification()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
@@ -648,16 +661,17 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        DispatchQueue.main.async {
-            let tabBar = (self.window?.rootViewController as? UITabBarController)
-                ?? self.window?.rootViewController?.tabBarController
-            if let tabBar = tabBar, let surveysIndex = tabBar.surveysTabIndex {
-                tabBar.selectedIndex = surveysIndex
-            }
-        }
         StudyTraceNotificationAudit.markReported(response.notification)
         StudyTraceTelemetry.recordEvent("notification_tapped",
                                         metadata: StudyTraceNotificationAudit.metadata(for: response.notification))
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+           let target = SurveyNotificationTarget(identifier: response.notification.request.identifier,
+                                                userInfo: response.notification.request.content.userInfo) {
+            DispatchQueue.main.async {
+                self.pendingSurveyNotification = target
+                self.routePendingSurveyNotification()
+            }
+        }
         completionHandler()
     }
     
