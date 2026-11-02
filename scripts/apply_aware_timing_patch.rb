@@ -37,6 +37,7 @@ declarations = <<~'OBJC'
   - (BOOL)studytraceRecordDeliveryForIdentifier:(NSString * _Nonnull)identifier atDate:(NSDate * _Nonnull)delivery NS_SWIFT_NAME(studytraceRecordDelivery(identifier:at:));
   - (BOOL)studytraceOccurrenceIsOpen:(NSString * _Nonnull)identifier atDate:(NSDate * _Nonnull)date NS_SWIFT_NAME(studytraceOccurrenceIsOpen(_:at:));
   - (NSDictionary * _Nullable)studytraceOccurrenceForSchedule:(EntityESMSchedule * _Nonnull)schedule atDate:(NSDate * _Nonnull)date NS_SWIFT_NAME(studytraceOccurrence(for:at:));
+  - (NSDictionary * _Nullable)studytraceOccurrenceForIdentifier:(NSString * _Nonnull)identifier atDate:(NSDate * _Nonnull)date NS_SWIFT_NAME(studytraceOccurrence(identifier:at:));
   - (void)studytraceCompleteOccurrence:(NSString * _Nonnull)identifier NS_SWIFT_NAME(studytraceCompleteOccurrence(_:));
   - (void)studytraceClearTiming;
 
@@ -96,6 +97,16 @@ text = insert_once(text, '    return saved;', "    if (saved && notification) [s
 text = text.gsub('if ([identifer hasPrefix:KEY_AWARE_NOTIFICATION_DEFAULT_REQUEST_IDENTIFIER]) {', 'if ([identifer hasPrefix:KEY_AWARE_NOTIFICATION_DEFAULT_REQUEST_IDENTIFIER] || [identifer hasPrefix:@"studytrace.esm.v2|"]) {')
 write_patched(manager, text)
 
+controller_header = esm.join('ESMScrollViewController.h')
+header_text = controller_header.read.gsub("\r\n", "\n")
+header_text = insert_once(header_text, '@property (weak, nonatomic) IBOutlet UIScrollView', <<~'OBJC')
+  // A notification opens only its own questionnaire and response occurrence.
+  @property (nonatomic, copy) NSString * _Nullable studytraceTargetScheduleId;
+  @property (nonatomic, copy) NSString * _Nullable studytraceTargetOccurrenceId;
+
+OBJC
+write_patched(controller_header, header_text)
+
 controller = esm.join('ESMScrollViewController.m')
 text = controller.read.gsub("\r\n", "\n")
 # The guided screenshot activities have their own picker/upload controller.
@@ -103,11 +114,19 @@ text = controller.read.gsub("\r\n", "\n")
 ordinary_schedules = 'esmSchedules = [esmManager getValidSchedulesWithDatetime:[NSDate new]];'
 text = text.gsub(ordinary_schedules, 'esmSchedules = [[esmManager getValidSchedulesWithDatetime:[NSDate new]] filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"NOT (schedule_id CONTAINS[c] %@ OR schedule_id CONTAINS[c] %@ OR schedule_id CONTAINS[c] %@)", @"app_usage_screenshot", @"battery", @"screen_time_activity"]];')
 text = insert_once(text, '    NSNumber * sessionTimestamp;', "    NSString *studytraceOccurrenceId;\n    NSString *studytraceScheduleId;\n")
-text = insert_once(text, '- (void) pushedSubmitButton:(id) senser {', <<~'OBJC')
+validation_method = <<~'OBJC'
   - (BOOL)studytraceValidateSession {
-      if (studytraceOccurrenceId == nil) return YES; // Context/demo surveys have no delivery window.
       ESMScheduleManager *manager = [ESMScheduleManager sharedESMScheduleManager];
-      if ([manager studytraceOccurrenceIsOpen:studytraceOccurrenceId atDate:[NSDate date]]) return YES;
+      if (studytraceOccurrenceId == nil && self.studytraceTargetOccurrenceId.length > 0) {
+          studytraceOccurrenceId = self.studytraceTargetOccurrenceId;
+          studytraceScheduleId = self.studytraceTargetScheduleId;
+          NSDictionary *target = [manager studytraceOccurrenceForIdentifier:studytraceOccurrenceId atDate:[NSDate date]];
+          sessionTimestamp = @([target[@"delivered_at"] doubleValue] * 1000);
+      }
+      if (studytraceOccurrenceId == nil) return YES; // Context/demo surveys have no delivery window.
+      NSDictionary *record = [manager studytraceOccurrenceForIdentifier:studytraceOccurrenceId atDate:[NSDate date]];
+      if ([record[@"schedule_id"] isEqual:studytraceScheduleId]) return YES;
+      if ([self.presentedViewController isKindOfClass:[UIAlertController class]]) return NO;
       UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Survey closed" message:@"The response window for this survey has ended." preferredStyle:UIAlertControllerStyleAlert];
       [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
           [self.navigationController popToRootViewControllerAnimated:YES];
@@ -116,8 +135,12 @@ text = insert_once(text, '- (void) pushedSubmitButton:(id) senser {', <<~'OBJC')
       [self presentViewController:alert animated:YES completion:nil];
       return NO;
   }
-
 OBJC
+if text.include?('- (BOOL)studytraceValidateSession')
+  text = replace_method(text, '- (BOOL)studytraceValidateSession', validation_method)
+else
+  text = insert_once(text, '- (void) pushedSubmitButton:(id) senser {', validation_method + "\n")
+end
 text = insert_once(text, '    AudioServicesPlaySystemSound(1105);', "    if (![self studytraceValidateSession]) return;\n")
 text = insert_once(text, '    AudioServicesPlaySystemSound(1104);', "    if (![self studytraceValidateSession]) return;\n")
 text = text.sub("    esmSchedules = [[NSArray alloc] init];\n    if (![self studytraceValidateSession]) return;", "    esmSchedules = [[NSArray alloc] init];")
@@ -147,4 +170,15 @@ OBJC
 text = text.sub("    if (_isSaveAnswer) {\n        NSError * error", "    if (_isSaveAnswer) {\n        if (![self studytraceValidateSession]) return;\n        NSError * error")
 text = insert_once(text, '    EntityESMAnswerHistory * entityESMHistory', "    [[ESMScheduleManager sharedESMScheduleManager] studytraceCompleteOccurrence:studytraceOccurrenceId];\n    studytraceOccurrenceId = nil;\n")
 write_patched(controller, text)
+
+ios_esm = esm.parent.join('Sensors/IOSESM/IOSESM.m')
+ios_source = ios_esm.read.gsub("\r\n", "\n").sub('- (void) setESMSchedulesWithData:', '- (void)setESMSchedulesWithData:')
+ios_source = ios_source.gsub("// Refresh configuration on the main queue without an empty-cache gap between\n// removing schedules and inserting replacements. A failed fetch keeps the cache.\n", '')
+write_patched(ios_esm, replace_method(ios_source, '- (void)setESMSchedulesWithData:', root.join('patches/aware-esm/StudyTraceESMConfig.inc').read))
+ios_header = ios_esm.sub_ext('.h')
+write_patched(ios_header, insert_once(ios_header.read, '- (void) setViewController:', <<~'OBJC'))
+  // Validated cache refresh shared by the network delegate and regression tests.
+  - (void)setESMSchedulesWithData:(NSData * _Nullable)data response:(NSURLResponse * _Nullable)response error:(NSError * _Nullable)error NS_SWIFT_NAME(studytraceApplyConfiguration(_:response:error:));
+
+OBJC
 puts 'StudyTrace AWARE timing patch applied.'

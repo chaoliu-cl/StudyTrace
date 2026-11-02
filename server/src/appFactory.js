@@ -2364,7 +2364,7 @@ async function batteryScreenshotUploadFeedback(source) {
     needs_review: needsReview,
     qa_reason: qaReason,
     message: needsReview
-      ? 'Screenshot uploaded, but StudyTrace could not confidently read app usage. Please retake it if possible.'
+      ? 'Screenshot uploaded and saved for researcher review. Your upload is complete.'
       : `Screenshot uploaded. StudyTrace detected ${parsedRows.length} app usage row${parsedRows.length === 1 ? '' : 's'}.`,
   };
 }
@@ -2730,7 +2730,7 @@ async function screenTimeActivityUploadFeedback(source) {
     needs_review: needsReview,
     qa_reason: summary.qa_reason || '',
     message: needsReview
-      ? 'Screenshot uploaded, but StudyTrace could not read the screen time totals. Please retake it if possible.'
+      ? 'Screenshot uploaded and saved for researcher review. Your upload is complete.'
       : `Screenshot uploaded with ${apps} app${apps === 1 ? '' : 's'}.`,
   };
 }
@@ -2755,11 +2755,11 @@ function parseScreenTimeActivityOcrText(text) {
     return null;
   };
 
-  const mostUsed = indexOf(/most used|よく使われた/);
+  const mostUsed = indexOf(/most\s*used|apps\s*(?:&|and)\s*websites|よく使われた/);
   const pickupsAt = indexOf(/pickup|持ち上げ/);
   const notificationsAt = indexOf(/notification|通知/);
   let total = null;
-  for (let i = 0; i < (mostUsed > 0 ? mostUsed : lines.length); i += 1) {
+  for (let i = 0; i < Math.max(0, mostUsed); i += 1) {
     const duration = parseBatteryDuration(lines[i]);
     if (duration && !/^\d{1,2}:\d{2}$/.test(lines[i])) {
       total = duration.seconds;
@@ -2768,11 +2768,17 @@ function parseScreenTimeActivityOcrText(text) {
   }
 
   const apps = [];
-  if (mostUsed >= 0) {
-    const stop = [pickupsAt, notificationsAt].filter((i) => i > mostUsed).sort((a, b) => a - b)[0] ?? lines.length;
-    for (let i = mostUsed + 1; i < stop; i += 1) {
+  {
+    const start = mostUsed >= 0 ? mostUsed + 1 : 0;
+    const stop = [pickupsAt, notificationsAt].filter((i) => i >= start).sort((a, b) => a - b)[0] ?? lines.length;
+    for (let i = start; i < stop; i += 1) {
+      const inline = parseBatteryUsageLine(lines[i]);
+      if (inline?.screen_time_seconds != null) {
+        apps.push({ app_name: inline.app_name, screen_time_seconds: inline.screen_time_seconds });
+        continue;
+      }
       if (!looksLikeBatteryAppNameLine(lines[i])) continue;
-      const next = [lines[i + 1], lines[i + 2]].map((line) => parseBatteryDuration(line)).find(Boolean);
+      const next = i + 1 < stop ? parseBatteryDuration(lines[i + 1]) : null;
       if (next) apps.push({ app_name: cleanAppName(lines[i]), screen_time_seconds: next.seconds });
     }
   }
@@ -3053,6 +3059,10 @@ function isUsableAppName(value) {
     'screen off',
     'activity',
     'usage by app',
+    'screen time', 'most used', 'most used apps', 'apps & websites', 'apps and websites',
+    'pickups', 'total pickups', 'notifications', 'total notifications', 'first pickup',
+    'today', 'yesterday', 'day', 'week', 'show categories', 'show apps', 'daily average', 'total screen time',
+    'スクリーンタイム', 'よく使われたもの', '持ち上げ', '通知', '今日', '昨日', '日', '週',
     // iOS section headings; without these the heading was parsed as an app
     // and credited with the next app's time and percentage.
     'battery usage by app',

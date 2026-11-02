@@ -306,6 +306,12 @@ enum UsageScreenshotUploader {
         let needsReview: Bool
         let qaReason: String
         let message: String
+
+        /// OCR quality is for the research team; it must not turn a successful
+        /// image upload into a participant-facing rejection or retake loop.
+        var participantMessage: String {
+            needsReview ? "Your screenshot was uploaded to the study server. No further action is needed." : message
+        }
     }
 
     enum Outcome {

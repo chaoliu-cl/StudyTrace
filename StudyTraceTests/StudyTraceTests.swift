@@ -8,10 +8,133 @@
 
 import XCTest
 import UserNotifications
+import CoreData
 import AWAREFramework
 @testable import StudyTrace
 
 class StudyTraceTests: XCTestCase {
+    func testConfigurationRefreshPreservesCachedObjectsAndDeliveredDeadlines() throws {
+        let manager = ESMScheduleManager.shared(), sensor = IOSESM()
+        let defaults = UserDefaults.standard
+        let keys = ["studytrace.esm.occurrences.v2", "studytrace.esm.options.v2", "previous.ios.esm.plugin.configuration.file"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer {
+            _ = manager.removeAllSchedulesFromDB()
+            for (i, key) in keys.enumerated() {
+                if let value = previous[i] { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+            }
+        }
+        let fixture: [[String: Any]] = [["schedule_id": "config_fixture", "times": ["12:00"], "hours": [12], "randomize": 0,
+            "expiration": 60, "start_date": "", "end_date": "", "interface": 0,
+            "esms": [["esm": ["esm_type": 2, "esm_title": "Fixture question", "esm_radios": ["A", "B"], "esm_trigger": "fixture"]]]]]
+        let data = try JSONSerialization.data(withJSONObject: fixture)
+        let response = HTTPURLResponse(url: URL(string: "https://studytrace-test.invalid/config")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        func apply() {
+            let applied = expectation(description: "configuration applied")
+            let observer = NotificationCenter.default.addObserver(forName: Notification.Name("StudyTraceESMConfigurationUpdated"), object: nil, queue: .main) { _ in applied.fulfill() }
+            sensor.studytraceApplyConfiguration(data, response: response, error: nil)
+            wait(for: [applied], timeout: 10)
+            NotificationCenter.default.removeObserver(observer)
+        }
+        apply()
+        let ids = (manager.getESMSchedules() ?? []).map(\.objectID)
+        XCTAssertEqual(ids.count, 1)
+        let now = Date().timeIntervalSince1970
+        defaults.set(["delivered": ["id": "delivered", "schedule_id": "config_fixture_1200", "status": "delivered", "planned_at": now - 60, "delivered_at": now - 60, "expires_at": now + 3540]], forKey: keys[0])
+        apply()
+        XCTAssertEqual((manager.getESMSchedules() ?? []).map(\.objectID), ids, "an unchanged refresh must not delete live questionnaire objects")
+        XCTAssertEqual(manager.studytraceOccurrence(identifier: "delivered", at: Date())?["expires_at"] as? Double, now + 3540)
+        var failed = false
+        sensor.setErrorHandler { _ in failed = true }
+        let rejected = HTTPURLResponse(url: response.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!
+        sensor.studytraceApplyConfiguration(Data("{\"error\":\"unavailable\"}".utf8), response: rejected, error: nil)
+        XCTAssertTrue(failed)
+        XCTAssertEqual((manager.getESMSchedules() ?? []).map(\.objectID), ids, "a failed download must retain cached surveys")
+    }
+
+    func testNotificationTargetsIgnoreNonStudyMessagesAndKeepTheExactRequest() throws {
+        XCTAssertNil(SurveyNotificationTarget(identifier: "reminder", userInfo: [:]))
+        XCTAssertNil(SurveyNotificationTarget(identifier: "request", userInfo: ["schedule_id": ""]))
+        let target = try XCTUnwrap(SurveyNotificationTarget(identifier: "request-panas", userInfo: ["schedule_id": "panas_1030"]))
+        XCTAssertEqual(target.scheduleId, "panas_1030")
+        XCTAssertEqual(target.occurrenceId, "request-panas")
+        let source = ESMViewController()
+        let form = ESMScrollViewController()
+        source.prepare(for: UIStoryboardSegue(identifier: "toESMScrollView", source: source, destination: form), sender: target)
+        XCTAssertEqual(form.studytraceTargetScheduleId, "panas_1030")
+        XCTAssertEqual(form.studytraceTargetOccurrenceId, "request-panas")
+    }
+
+    func testTappedQuestionnaireDoesNotOpenAnotherOverlappingSurvey() throws {
+        let defaults = UserDefaults.standard, key = "studytrace.esm.occurrences.v2"
+        let previous = defaults.object(forKey: key)
+        let context = try XCTUnwrap(CoreDataHandler.shared().managedObjectContext)
+        let now = Date().timeIntervalSince1970
+        var created: [NSManagedObject] = []
+        defer {
+            created.forEach(context.delete)
+            try? context.save()
+            if let previous = previous { defaults.set(previous, forKey: key) } else { defaults.removeObject(forKey: key) }
+        }
+        var records: [String: Any] = [:]
+        for (id, title) in [("aaa_tapped", "Requested PANAS item"), ("zzz_other", "Other questionnaire") ] {
+            let schedule = EntityESMSchedule(context: context)
+            schedule.schedule_id = id; schedule.fire_hour = 12; schedule.interface = 0
+            schedule.start_date = Date().addingTimeInterval(-86400); schedule.end_date = Date().addingTimeInterval(86400)
+            let question = EntityESM(context: context)
+            question.esm_title = title; question.esm_type = 2; question.esm_number = 0
+            question.esm_radios = "[\"A\",\"B\"]"; question.esm_submit = "Submit"; question.esm_trigger = id
+            question.esm_schedule = schedule
+            schedule.esms = [question]
+            created += [question, schedule]
+            records[id] = ["id": id, "schedule_id": id, "status": "delivered", "delivered_at": now - 60, "expires_at": now + 3600]
+        }
+        try context.save()
+        defaults.set(records, forKey: key)
+        let form = ESMScrollViewController()
+        form.studytraceTargetScheduleId = "aaa_tapped"
+        form.studytraceTargetOccurrenceId = "aaa_tapped"
+        form.loadViewIfNeeded()
+        form.beginAppearanceTransition(true, animated: false)
+        form.endAppearanceTransition()
+        let questions = try XCTUnwrap(form.esms as? [EntityESM])
+        XCTAssertEqual(questions.map(\.esm_title), ["Requested PANAS item"], "the other survey sorts first; a tap must override that default")
+    }
+
+    func testExactOccurrenceLookupNeverSubstitutesANewerRequestOrExtendsADeadline() throws {
+        let key = "studytrace.esm.occurrences.v2", defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: key)
+        defer { if let previous = previous { defaults.set(previous, forKey: key) } else { defaults.removeObject(forKey: key) } }
+        let now = Date().timeIntervalSince1970
+        defaults.set([
+            "old": ["id": "old", "schedule_id": "same", "status": "delivered", "delivered_at": now - 100, "expires_at": now + 60],
+            "new": ["id": "new", "schedule_id": "same", "status": "delivered", "delivered_at": now - 10, "expires_at": now + 3600],
+            "answered": ["id": "answered", "schedule_id": "same", "status": "answered", "delivered_at": now - 10, "expires_at": now + 3600]
+        ], forKey: key)
+        let manager = ESMScheduleManager.shared()
+        XCTAssertEqual(manager.studytraceOccurrence(identifier: "old", at: Date())?["id"] as? String, "old")
+        XCTAssertNil(manager.studytraceOccurrence(identifier: "old", at: Date(timeIntervalSince1970: now + 60)))
+        XCTAssertNil(manager.studytraceOccurrence(identifier: "answered", at: Date()))
+        XCTAssertNil(manager.studytraceOccurrence(identifier: "removed", at: Date()))
+    }
+
+    func testScreenshotOCRUncertaintyCannotRequestAnotherUploadAfterSuccess() {
+        let feedback = UsageScreenshotUploader.Feedback(appRowsDetected: 0, needsReview: true, qaReason: "headings missing", message: "Please retake it")
+        XCTAssertTrue(feedback.needsReview, "researchers still see the quality flag")
+        XCTAssertTrue(feedback.participantMessage.contains("uploaded"))
+        XCTAssertFalse(feedback.participantMessage.lowercased().contains("retake"))
+    }
+
+    func testScreenTimeParsesVisualRowsAndCroppedListsWithoutInventingTotals() {
+        let full = UsageScreenshotParser.activity(from: "Screen Time\nToday\n2h 10m\nMost Used Apps\nInstagram 1h 10m\nYouTube 45m")
+        XCTAssertEqual(full.summary.totalSeconds, 7800)
+        XCTAssertEqual(full.apps.map(\.seconds), [4200, 2700])
+        let cropped = UsageScreenshotParser.activity(from: "Instagram 1h 10m\nYouTube 45m")
+        XCTAssertNil(cropped.summary.totalSeconds)
+        XCTAssertEqual(cropped.apps.map(\.seconds), [4200, 2700])
+        XCTAssertNil(UsageScreenshotParser.activity(from: "Most Used\nYouTube\n45m").summary.totalSeconds)
+        XCTAssertTrue(UsageScreenshotParser.activity(from: "").apps.isEmpty)
+    }
     func testAppUsageScreenshotAsksForTodayAndPreservesItsDeadline() {
         let kind = UsageScreenshotKind.appUsageToday
         XCTAssertEqual(kind.promptTrigger, "app_usage_screenshot")

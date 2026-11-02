@@ -54,6 +54,7 @@ typedef void (^NotificationRemoveCompleteHandler)(void);
 - (BOOL)studytraceRecordDeliveryForIdentifier:(NSString * _Nonnull)identifier atDate:(NSDate * _Nonnull)delivery NS_SWIFT_NAME(studytraceRecordDelivery(identifier:at:));
 - (BOOL)studytraceOccurrenceIsOpen:(NSString * _Nonnull)identifier atDate:(NSDate * _Nonnull)date NS_SWIFT_NAME(studytraceOccurrenceIsOpen(_:at:));
 - (NSDictionary * _Nullable)studytraceOccurrenceForSchedule:(EntityESMSchedule * _Nonnull)schedule atDate:(NSDate * _Nonnull)date NS_SWIFT_NAME(studytraceOccurrence(for:at:));
+- (NSDictionary * _Nullable)studytraceOccurrenceForIdentifier:(NSString * _Nonnull)identifier atDate:(NSDate * _Nonnull)date NS_SWIFT_NAME(studytraceOccurrence(identifier:at:));
 - (void)studytraceCompleteOccurrence:(NSString * _Nonnull)identifier NS_SWIFT_NAME(studytraceCompleteOccurrence(_:));
 - (void)studytraceClearTiming;
 

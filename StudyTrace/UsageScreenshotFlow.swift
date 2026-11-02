@@ -130,6 +130,7 @@ enum UsageScreenshotParser {
         "usage by app", "show activity", "show battery usage", "battery level", "insights and suggestions",
         "screen time", "most used", "pickups", "total pickups", "first pickup", "notifications",
         "total notifications", "today", "yesterday", "day", "week", "show categories", "show apps",
+        "most used apps", "apps & websites", "apps and websites", "daily average", "total screen time",
         "バッテリー", "バッテリーの使用状況", "アプリごとのバッテリー使用状況", "アプリごとのアクティビティ",
         "過去24時間", "過去10日間", "アクティビティを表示", "バッテリー使用状況を表示", "画面オン", "画面オフ",
         "バッテリー残量", "スクリーンタイム", "よく使われたもの", "持ち上げ", "通知", "今日", "昨日", "日", "週"
@@ -225,11 +226,13 @@ enum UsageScreenshotParser {
             return nil
         }
 
-        let mostUsed = index(of: ["most used", "よく使われた"])
+        let mostUsed = index(of: ["most used", "mostused", "apps & websites", "apps and websites", "よく使われた"])
         let pickupsAt = index(of: ["pickup", "持ち上げ"])
         let notificationsAt = index(of: ["notification", "通知"])
         var total: Int?
-        for i in 0..<(mostUsed ?? lines.count) {
+        // A scrolled app list has no visible daily total. Never substitute the
+        // first app's duration for the missing total.
+        for i in 0..<(mostUsed ?? 0) {
             if let seconds = durationSeconds(in: lines[i]) {
                 total = seconds
                 break
@@ -237,17 +240,18 @@ enum UsageScreenshotParser {
         }
 
         var apps: [AppRow] = []
-        if let start = mostUsed {
-            let stop = [pickupsAt, notificationsAt].compactMap { $0 }.filter { $0 > start }.min() ?? lines.count
-            var i = start + 1
+        do {
+            let start = mostUsed.map { $0 + 1 } ?? 0
+            let stop = [pickupsAt, notificationsAt].compactMap { $0 }.filter { $0 >= start }.min() ?? lines.count
+            var i = start
             while i < stop {
-                if looksLikeAppName(lines[i]) {
-                    let next = [i + 1, i + 2].filter { $0 < stop }.compactMap { durationSeconds(in: lines[$0]) }.first
-                    if let seconds = next {
+                // Vision joins app names and durations on the same visual row.
+                if let inline = inlineRow(lines[i]), let seconds = inline.seconds {
+                    apps.append(AppRow(appName: inline.appName, seconds: seconds, percent: nil))
+                } else if looksLikeAppName(lines[i]), i + 1 < stop {
+                    if let seconds = durationSeconds(in: lines[i + 1]) {
                         apps.append(AppRow(appName: lines[i], seconds: seconds, percent: nil))
                     }
-                } else if let inline = inlineRow(lines[i]) {
-                    apps.append(AppRow(appName: inline.appName, seconds: inline.seconds, percent: nil))
                 }
                 i += 1
             }
@@ -447,7 +451,7 @@ struct UsageScreenshotSubmission {
 
 /// Drives the whole flow: instructions → photo picker → on-device OCR →
 /// upload. Owned by the presenting screen.
-final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate {
+final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
 
     private weak var presenter: UIViewController?
     private var kind: UsageScreenshotKind = .battery
@@ -461,6 +465,12 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
     private var uploadGroupId = ""
     private var anyQueued = false
     private var reviewFeedback: UsageScreenshotUploader.Feedback?
+    var onReturnToPresenter: (() -> Void)?
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        isBusy = false
+        onReturnToPresenter?()
+    }
 
     func start(kind: UsageScreenshotKind,
                from presenter: UIViewController,
@@ -505,14 +515,17 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
         let laterButton = UIButton(type: .system)
         laterButton.setTitle(loc("shot_later", "I will upload later"), for: .normal)
         laterButton.titleLabel?.font = UIFont.preferredFont(forTextStyle: .body)
-        laterButton.addAction(UIAction { [weak wizard] _ in wizard?.dismiss(animated: true) }, for: .touchUpInside)
+        laterButton.addAction(UIAction { [weak self, weak wizard] _ in
+            wizard?.dismiss(animated: true) { self?.onReturnToPresenter?() }
+        }, for: .touchUpInside)
 
         let nav = UINavigationController(rootViewController: Self.scrollingController(
             wizard, views: [hero, titleLabel, detailLabel, stepsLabel, chooseButton, laterButton]))
-        wizard.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak wizard] _ in
-            wizard?.dismiss(animated: true)
+        wizard.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak self, weak wizard] _ in
+            wizard?.dismiss(animated: true) { self?.onReturnToPresenter?() }
         })
         presenter.present(nav, animated: true)
+        nav.presentationController?.delegate = self
     }
 
     func presentPicker() {
@@ -524,13 +537,14 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
         let picker = PHPickerViewController(configuration: configuration)
         picker.delegate = self
         presenter.present(picker, animated: true)
+        picker.presentationController?.delegate = self
     }
 
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         guard !results.isEmpty else {
             // Cancelled, possibly after "Choose another screenshot".
             isBusy = false
-            picker.dismiss(animated: true)
+            picker.dismiss(animated: true) { [weak self] in self?.onReturnToPresenter?() }
             return
         }
         providers = results.map { $0.itemProvider }
@@ -579,38 +593,10 @@ final class UsageScreenshotCoordinator: NSObject, PHPickerViewControllerDelegate
             let base = capturedAt ?? Date()
             submission.activityDate = Calendar.current.date(byAdding: .day, value: offset, to: base) ?? base
         }
-        if UsageScreenshotParser.isLikelyScreenshot(of: kind, text: text) {
-            upload(image: image, submission: submission)
-        } else {
-            confirmUnexpectedScreenshot(image: image, submission: submission)
-        }
-    }
-
-    /// The picked image does not look like the requested Settings screen.
-    /// Offers another pick; no values are shown.
-    private func confirmUnexpectedScreenshot(image: UIImage, submission: UsageScreenshotSubmission) {
-        hideProgress { [weak self] in
-            guard let self = self, let presenter = self.presenter else {
-                self?.isBusy = false
-                return
-            }
-            let alert = UIAlertController(
-                title: loc("shot_unexpected_title", "Is this the right screenshot?"),
-                message: self.kind == .battery
-                    ? loc("shot_unexpected_battery", "This does not look like the Battery usage screen. Choose another screenshot, or upload this one anyway.")
-                    : loc("shot_unexpected_activity", "This does not look like the Screen Time activity screen. Choose another screenshot, or upload this one anyway."),
-                preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: loc("shot_choose_again", "Choose another screenshot"), style: .default) { _ in
-                self.presentPicker()
-            })
-            alert.addAction(UIAlertAction(title: loc("shot_upload_anyway", "Upload anyway"), style: .default) { _ in
-                self.showProgress { self.upload(image: image, submission: submission) }
-            })
-            alert.addAction(UIAlertAction(title: loc("shot_cancel", "Cancel"), style: .cancel) { _ in
-                self.isBusy = false
-            })
-            presenter.present(alert, animated: true)
-        }
+        // A scrolled screenshot may omit every section heading. OCR can also
+        // miss text or use a different language. Preserve the participant's
+        // chosen image; uncertain extraction is a researcher review flag.
+        upload(image: image, submission: submission)
     }
 
     private func upload(image: UIImage, submission: UsageScreenshotSubmission) {

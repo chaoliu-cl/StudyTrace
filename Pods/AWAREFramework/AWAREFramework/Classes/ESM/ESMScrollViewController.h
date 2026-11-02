@@ -27,6 +27,10 @@ typedef void (^ESMScrollViewUIComponentReadyHandler)(void);
 
 // @property (nonatomic, weak) id<ESMScrollViewControllerDelegate> delegate;
 
+// A notification opens only its own questionnaire and response occurrence.
+@property (nonatomic, copy) NSString * _Nullable studytraceTargetScheduleId;
+@property (nonatomic, copy) NSString * _Nullable studytraceTargetOccurrenceId;
+
 @property (weak, nonatomic) IBOutlet UIScrollView * _Nullable mainScrollView;
 @property (nonatomic, strong) UITapGestureRecognizer * _Nullable singleTap;
 @property (nullable) NSMutableArray * esms;

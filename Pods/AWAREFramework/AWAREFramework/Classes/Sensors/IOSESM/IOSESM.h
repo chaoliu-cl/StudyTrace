@@ -20,6 +20,9 @@ extern NSString * const AWARE_PREFERENCES_PLUGIN_IOS_ESM_CONFIG_URL;
 @property NSString * url;
 @property NSString * table;
 
+// Validated cache refresh shared by the network delegate and regression tests.
+- (void)setESMSchedulesWithData:(NSData * _Nullable)data response:(NSURLResponse * _Nullable)response error:(NSError * _Nullable)error NS_SWIFT_NAME(studytraceApplyConfiguration(_:response:error:));
+
 - (void) setViewController:(UIViewController *) vc;
 
 typedef void (^ESMConfigurationSetupCompleteHandler)(void);
